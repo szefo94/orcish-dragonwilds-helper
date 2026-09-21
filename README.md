@@ -1,0 +1,274 @@
+# Orcish Dragonwilds Helper
+
+**A Windows companion for RuneScape: Dragonwilds with local OCR interaction automation, repeat and hold controls, performance diagnostics, and experimental fishing assistance.**
+
+Version **2.3** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
+
+Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can read an interaction prompt such as **Collect [E]**, check whether the action is allowed, and press the displayed key. You control where your character stands and looks. Repeat and Hold modes also work as configurable key and mouse-button controls.
+
+The interface uses an Orcish-inspired theme, mode buttons, capture previews, detection feedback, and CPU/RAM charts. Recognition runs locally; the application does not send gameplay frames to a cloud service or use an LLM during play.
+
+> **Fishing is experimental.** Version 2.3 adds recording, calibration, and a supervised single-round controller. Its Windows overlay and live-game recognition still need gameplay validation. Automated tests do not establish in-game reliability.
+
+## Contents
+
+- [Features and modes](#features-and-modes)
+- [Requirements and installation](#requirements-and-installation)
+- [Controls and window behavior](#controls-and-window-behavior)
+- [Auto Presser guide](#auto-presser-guide)
+- [Experimental fishing](#experimental-fishing)
+- [Performance and diagnostics](#performance-and-diagnostics)
+- [Updates](#updates)
+- [Local data and privacy](#local-data-and-privacy)
+- [Troubleshooting](#troubleshooting)
+- [Development and contributions](#development-and-contributions)
+- [Project status and licensing](#project-status-and-licensing)
+
+## Features and modes
+
+| Mode | Purpose | Current behavior |
+|---|---|---|
+| **Repeat** | Repeated key or mouse-button presses | Configurable interval and press duration, in milliseconds. |
+| **Hold** | Sustained input | Hold until stopped, or enable a timed hold for automatic release. |
+| **Auto Presser** | React to recognized resource interactions | Reads action text and the displayed key; supports allowlists, exclusions, hold prompts, Preview, and Live execution. |
+| **Fishing · EXP** | Develop and test fishing assistance | Select capture regions, record a manual run, calibrate cast duration, and supervise one fight/reel cycle. |
+| **Stats** | Compare recognition settings on your PC | Benchmarks configurations, displays charts and a comparison table, and suggests options based on measured results. |
+
+Existing OrcPresser installation data and internal `src/orcpresser` paths are retained for compatibility.
+
+## Requirements and installation
+
+- **Windows 10 or 11.** Live capture, input output, and overlay integration are Windows-specific.
+- **Python 3.12, 64-bit**, with the Python launcher and Tcl/Tk selected during installation.
+- RuneScape: Dragonwilds, preferably in **borderless or windowed mode**, with **English interaction prompts**.
+- Internet access to install Python packages. An optional DirectML configuration can accelerate supported recognition workloads; a dedicated GPU is not required for the normal CPU setup.
+
+### Install from GitHub
+
+1. Download **Code → Download ZIP** and extract it, or clone the repository:
+
+   ```sh
+   git clone https://github.com/szefo94/orcish-dragonwilds-helper.git
+   ```
+
+2. Open the extracted or cloned project folder.
+3. Run **Setup.cmd** and choose **1** to install or repair dependencies in the local `.venv`.
+4. Run **Run.cmd** to open the helper.
+
+Keep the entire project folder together. You do not need to copy individual Python modules or install packages globally.
+
+### Setup menu
+
+| Option | Purpose |
+|---|---|
+| **1** | Install or repair the application environment. |
+| **2** | Enable the optional GPU/DirectML environment. |
+| **3** | Return to the CPU environment. |
+| **4** | Safe start with default window settings and without loading learned recognition data. |
+| **5** | Run automated self-tests. |
+| **6** | Review and clean old backups, archives, and caches. |
+
+## Controls and window behavior
+
+| Control | Behavior |
+|---|---|
+| **`\`** | Start/stop the selected mode. |
+| **F8** | Emergency stop and release held inputs. |
+| **Preview** | Observe and display proposed actions without sending gameplay keys. Available for Auto Presser and Fishing. |
+| **Live** | Arm actual input execution; switch back to the bound game to run. |
+| **Bind Game** | Start a three-second countdown during which you switch to the game window. |
+
+Input is restricted to the bound foreground target. Moving focus away stops active output. Hovering over the helper alone does not count as focusing it; clicking it can change focus and stop the run.
+
+The **unfocused opacity** slider controls how visible the panel remains when it is not focused. At **0**, the panel minimizes when it loses focus instead of remaining as an invisible window. Keep the panel outside capture regions: even a translucent panel can obscure the pixels being analyzed.
+
+## Auto Presser guide
+
+### First run
+
+1. Choose **Auto Presser**, click **Bind Game**, and switch to Dragonwilds during the countdown.
+2. Use **Select Region** to frame the interaction text and its keycap. Include the resource name above the action if you intend to use exclusions.
+3. Move the helper outside that region, place it on another monitor, or minimize it.
+4. Select the actions you want to allow.
+5. Start **Preview** and inspect the recognized text, capture image, and intended key.
+6. Once the output matches what you see, select **Live** and return to the game.
+
+The capture region tracks the game window. Different display scaling, resolution, UI layout, or camera framing may require adjusting it.
+
+### Supported interactions
+
+| Action | Enabled by default | Output |
+|---|---|---|
+| Collect | Yes | Tap the displayed key. |
+| Harvest | Yes | Tap, or hold when the prompt includes Hold. |
+| Siphon | Yes | Hold only when a Hold marker is recognized; existing Auto hold limit is 15 seconds. |
+| Collect Water | No | Tap, or hold when indicated. |
+| Fill Watering Can | No | Tap, or hold when indicated. |
+| Fill Compost Bucket | No | Tap, or hold when indicated. |
+| Uproot | No; explicit opt-in | Activate the shown interaction, which can remove a plant. |
+
+When multiple allowed prompts are visible, priority is:
+
+**Siphon → Fill Watering Can → Fill Compost Bucket → Collect Water → Harvest → Collect → Uproot.**
+
+### Exclusions
+
+Enter comma-separated resource names or text fragments, for example:
+
+```text
+Stone,Cabbage
+```
+
+The detector checks recognized surrounding text to suppress matching interactions. The relevant resource name must be inside the capture area and readable. Exclusions are OCR-based, so verify them in Preview before relying on them. Editing exclusions stops the current run so the new rules can take effect.
+
+### Repeated prompts and hold behavior
+
+By default, a tap is latched to a recognized prompt to avoid repeatedly activating the same interaction. **Repeat persistent tap prompts** enables repeated taps using the configured interval and tap length while the prompt remains recently confirmed.
+
+Two neighboring objects with identical labels can look like one continuous prompt. Look away briefly between them if a new interaction does not trigger. Auto Presser does not walk, navigate to resources, or aim your character.
+
+### Recognition timing
+
+Auto Presser starts scans no more often than every **120 ms**, with **one scan in flight**. That is a scheduling ceiling of approximately **8.3 scans per second**, not a guaranteed OCR rate. Capture, OCR runtime, and UI scheduling determine the actual rate.
+
+The default controller requires **two matching scans** before acting. The optional **Single-scan confirm** setting reduces confirmation latency at the cost of less evidence. Tap duration, repeat interval, and confirmation also affect perceived reaction speed; there is no single fixed capture-to-action latency.
+
+## Experimental fishing
+
+Fishing combines fast color observations with slower OCR in a separate controller. It is intended for supervised experiments and collecting evidence for the next iteration.
+
+### What 2.3 implements
+
+- User-selected **BAR** and **PROMPT** capture regions, plus optional **RESULT** and **SPOT** regions.
+- A click-through, non-activating overlay for selected regions and controller state. The overlay is disabled if Windows capture exclusion is unavailable.
+- **Preview** that simulates decisions without sending inputs.
+- Manual test recording of selected image crops, detection timestamps, and physical **A/D/LMB** states.
+- Timed trial casts and manual **short / long / hit** feedback to refine cast duration.
+- A supervised fight loop that tries **A/D** on red, reacts to blue, and holds **LMB** when **Reel (Hold)** is confirmed.
+- Release/stop handling for uncertain indicators, stale capture, focus loss, F8, timeouts, and recognized results.
+
+### Suggested first session
+
+1. Equip a rod, stand near the fishing area, and keep the player position and camera fixed.
+2. Bind the game in the Fishing tab.
+3. Select BAR tightly around the red/blue indicator and PROMPT around Cast/Reel. Add RESULT for result/error messages if needed.
+4. Enable **Record manual test**, start **Preview**, and fish manually.
+5. Review the recording before trying **Live** assistance.
+
+For cast trials, choose a short or long duration, enable **Trial cast only**, and start Live. After the one-shot cast, label the landing **Was Short**, **Was Long**, or **Was Hit**. A hit saves the duration; short/long feedback selects a new midpoint. These are manually calibrated timings, not measured world distances.
+
+Color sampling targets **20 Hz**. Prompt OCR is queued approximately every **400 ms**, subject to processing time, and requires two distinct OCR observations for confirmed text actions. Blue keeps the selected direction by default; **Release direction on blue** exposes the alternative behavior for testing.
+
+### Not implemented yet
+
+Automatic positioning, walking, reliable pond-distance measurement, fish-direction tracking, screen-based stamina measurement, bait inventory management, and unattended repeated fishing cycles are not implemented. The SPOT contour is a visual diagnostic rather than proof of a valid cast. Catch and failure phrases remain provisional until verified against real gameplay.
+
+See the [complete fishing guide](docs/FISHING.md) for timing, calibration limits, recording details, and next steps. Editable in-app notes are stored separately from the shipped [default notes](src/orcpresser/fishing_notes_default.md).
+
+## Performance and diagnostics
+
+The interface displays CPU and RAM history, scan duration, input counts, and capture/recognition status. Auto Presser offers optional faster detection, recognition-only processing, learned memory, templates, single-scan confirmation, DXGI capture, and DirectML acceleration. Some shortcuts are restricted when exclusions require surrounding text.
+
+The **Stats** tab compares a baseline with selected options, both while standing still and during a controlled camera sweep. Charts and recommendations help identify settings that work on your machine.
+
+**Stats does not execute recognized interaction keys, but it does move the mouse for its camera-sweep test.** Keep the game foreground, leave the controls alone during the benchmark, and use F8 to abort. Recommendations are based on that test scene, not a guarantee for every resource or location.
+
+## Updates
+
+### Existing OrcPresser 2.2 installation
+
+1. Close the application.
+2. Put a prepared **`OrcPresser_2.3.zip`** update archive in the existing installation folder without extracting it.
+3. Run **Update.cmd** and confirm.
+4. Start **Run.cmd**.
+
+The legacy archive name is intentional: the 2.2 updater recognizes it. User settings, learned data, fishing notes, and the virtual environment remain in place. A full reinstall is normally unnecessary.
+
+From 2.3 onward, the updater accepts both `OrcPresser_*.zip` and `OrcishDragonwildsHelper_*.zip`. It chooses updates by the internal version, replaces application files, and retains backup material under `data/old_versions/`. Dependency installation runs when requirements change. If that installation fails, run **Setup.cmd → 1** before starting.
+
+**GitHub's automatic “Download ZIP” archive is source code, not the named update package.** For a fresh install it can be extracted directly. To make an updater-compatible package from this checkout, run:
+
+```sh
+python scripts/package.py
+```
+
+The package is written to `dist/OrcPresser_2.3.zip` and excludes user data and virtual environments. Only use update archives from a source you trust; archives are not signed and updates are not transactional.
+
+### Git checkout
+
+Close the app, commit or stash your development changes, then run `git pull`. Run Setup.cmd option 1 if dependencies changed. Do not apply ZIP updates over a checkout with uncommitted source changes.
+
+For installations older than 2.1, copy the new source over the old installation and run Setup.cmd option 1; the migration code handles the legacy flat data layout. Back up your folder first if it contains local code changes.
+
+## Local data and privacy
+
+| Location | Contents |
+|---|---|
+| `data/settings.json` | Saved settings and capture-region configuration. |
+| `data/learned/` | Learned recognition shortcuts. |
+| `data/fishing_notes.md` | User-edited fishing notes. |
+| `data/fishing_sessions/` | Optional cropped recordings and observation/input logs. |
+| `data/orcpresser.log` | Startup and error diagnostics. |
+| `data/old_versions/` | Update archives and backed-up files. |
+| `.venv/` | Locally installed Python dependencies. |
+
+Runtime data is excluded from Git and source packages. Manual fishing recording is opt-in and limited to approximately five minutes / 100 MiB per session; detection may continue afterward. Recording samples A/D/LMB states while the bound game is foreground. Review screen crops and logs before sharing them in an issue.
+
+Installation downloads dependencies. Gameplay recognition and recording remain local; cloud accounts, API keys, and an LLM subscription are not required to run the app.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Recognition is slow | Tighten the capture area, inspect scan duration, and compare options in Stats. Two-scan confirmation adds latency. |
+| A resource is not excluded | Include its name above the interaction in the capture region; verify the OCR text in Preview. |
+| Nothing happens in Live | Check the bound window, foreground focus, allowed action, capture region, and that recognition is ready. |
+| The helper overlaps the capture | Move it aside or use unfocused opacity 0 to minimize it. |
+| Capture is black or distorted | Try borderless/windowed mode; check HDR and optional DXGI capture. |
+| Startup hangs or learned recognition behaves oddly | Use Setup.cmd option 4 for a safe start. |
+| A key seems held | Press F8; physically press/release the affected key if needed. |
+| Inputs fail with an elevated game | A privilege mismatch may prevent input delivery. |
+| Fishing does not progress | Recheck BAR/PROMPT regions, inspect Preview, and record a manual session. The controller is experimental. |
+| More detail is needed | Inspect `data/orcpresser.log` and run Setup.cmd option 5. Share only reviewed diagnostics. |
+
+## Development and contributions
+
+The project separates perception, control, and UI so work on one feature can be reviewed in a focused pull request.
+
+| Path | Responsibility |
+|---|---|
+| `src/orcpresser/app.py` | Tkinter application, window binding, guarded Windows input, and UI integration. |
+| `src/orcpresser/vision.py` | Auto Presser OCR and prompt recognition. |
+| `src/orcpresser/engine.py` | Existing repeat, hold, and automatic interaction control. |
+| `src/orcpresser/game_profile.py` | Game-specific action definitions and recognition rules. |
+| `src/orcpresser/capture.py` | MSS capture and optional DXGI backend. |
+| `src/orcpresser/fishing.py` | Fishing state machine and cast calibration. |
+| `src/orcpresser/fishing_capture.py` | Fishing color detection, OCR workers, and local recording. |
+| `src/orcpresser/fishing_ui.py` / `fishing_overlay.py` | Fishing controls and overlay. |
+| `tests/` | Regression and synthetic evidence tests. |
+| `.github/` | CI workflow and issue/PR templates. |
+| `docs/` | Fishing instructions, architecture, history, and review notes. |
+
+Install `src/requirements.txt` in a Python 3.12 virtual environment, then run:
+
+```sh
+python -m unittest discover -s tests -t . -v
+python -m compileall -q src tests
+```
+
+Before the initial publication, **110 automated tests passed on Linux**, and an isolated upgrade through the original 2.2 updater preserved user notes. Windows/Linux CI is included; check the repository's Actions tab for current results. Live input and overlay behavior require separate Windows gameplay tests.
+
+For work with multiple developers or coding assistants, use **one feature branch and PR per change**. Give each task a clear scope, keep input guards intact, and avoid simultaneous unrelated edits to `app.py`. Do not commit runtime data, credentials, recordings, or model caches.
+
+- [Contribution guide](CONTRIBUTING.md)
+- [Instructions for coding agents](AGENTS.md)
+- [Architecture and reusable game profiles](docs/FRAMEWORK.md)
+- [Changelog](docs/CHANGELOG.md)
+- [Publication review](docs/PUBLICATION_REVIEW.md)
+- [Security reporting](SECURITY.md)
+
+## Project status and licensing
+
+This is an unofficial community helper, not affiliated with Jagex or Blizzard. The theme uses programmatic styling and system fonts; no game artwork is bundled.
+
+No general open-source license has been selected. See [RIGHTS.md](RIGHTS.md) for the current licensing status and [third-party notes](docs/THIRD_PARTY.md) for dependency information.
