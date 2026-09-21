@@ -1,0 +1,22 @@
+# User data must never be committed.
+data/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.env.*
+*.log
+*.onnx
+*.npz
+*.zip
+*.exe
+build/
+dist/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

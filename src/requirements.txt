@@ -1,0 +1,7 @@
+numpy>=1.26,<3
+opencv-python>=4.8,<5
+rapidocr-onnxruntime==1.4.4
+mss>=9,<11
+psutil>=5.9,<8
+Pillow>=10,<13
+dxcam==0.3.0; sys_platform == "win32"
