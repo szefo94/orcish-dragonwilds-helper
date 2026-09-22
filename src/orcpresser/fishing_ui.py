@@ -159,7 +159,8 @@ class FishingPanel:
         a.ctrl.observe(o,now)
         caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}';caption+=f'\nred {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
         if a.ctrl.state in ('FAILED','DEPLETED'):caption+='\nNO FISH / DEPLETED — move manually, then NEW SPOT / REACQUIRE.'
-        elif a.ctrl.state=='WAIT_ACTIVE':caption+='\nROUND ENDED — waiting for next ACTIVE/bar signal.'
+        elif a.ctrl.state=='WAIT_CLEAR':caption+='\nROUND ENDED — waiting for previous ACTIVE/bar signal to disappear.'
+        elif a.ctrl.state=='WAIT_ACTIVE':caption+='\nREADY — waiting for next ACTIVE/bar signal.'
         self.message.set(caption+'\n'+o.text[:180]+'\n'+a.ctrl.reason);a.scan_ms=info['ocr_ms'];a.capture_backend=info['backend']
         if self.show_overlay.get():self.ensure_overlay().show(a.io.rect(a.target),self.regions,caption,info)
         elif self.overlay:self.overlay.hide()
