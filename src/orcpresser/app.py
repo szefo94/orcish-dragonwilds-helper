@@ -129,6 +129,8 @@ class App:
         root.minsize(900,560)
         self.folder=ensure_data()   # user data: <root>/data (settings, learned data, notes, log)
         self.settings=Settings(self.folder/'settings.json',PROFILE.name);self.save_job=None
+        saved_region=self.settings.get('capture_region')
+        if isinstance(saved_region,list) and len(saved_region)==4 and all(isinstance(n,(int,float)) for n in saved_region):self.region=tuple(saved_region)
         # "Zero point": if the previous start never reached a ready engine, or was forced with
         # ORC_SAFE=1 (Setup.cmd → 4), start clean: default window, no learned data, no speed options.
         self.safe=os.environ.get('ORC_SAFE')=='1' or self.settings.get('engine_ok') is False
@@ -664,8 +666,8 @@ class App:
         if self.visual:return
         h=self.io.foreground()
         if self.io.own(h):self.status.set('Switch to the game during the countdown.');return
-        self.target=h;self.io.target=h;self.region=(.25,.2,.65,.6)
-        self.targettext.set(self.io.title(h)[:70]+'\nDefault central region; use SELECT REGION to refine.')
+        self.target=h;self.io.target=h
+        self.targettext.set(self.io.title(h)[:70]+'\nSaved capture region loaded; use SELECT REGION to refine.')
         self.status.set('BOUND — choose region, then start in the game with \\')
     def select_region(self,suggested=None):
         """Region editor. Drag edges/corners to widen or narrow, drag inside to move, drag outside for a
@@ -713,7 +715,7 @@ class App:
         def apply(e=None):
             l,r=sorted((max(0,min(w,box[0])),max(0,min(w,box[2]))));t,b=sorted((max(0,min(h,box[1])),max(0,min(h,box[3]))))
             if r-l>=100 and b-t>=40:
-                self.region=(l/w,t/h,(r-l)/w,(b-t)/h);self.targettext.set(f'Capture region: {int(r-l)} × {int(b-t)} px. Tracks game window.');self.status.set('REGION SET — keep the panel outside this area')
+                self.region=(l/w,t/h,(r-l)/w,(b-t)/h);self.persist('capture_region',list(self.region));self.targettext.set(f'Capture region: {int(r-l)} × {int(b-t)} px. Tracks game window.');self.status.set('REGION SET — saved for next launch; keep the panel outside this area')
             else:self.status.set('Region too small (min 100 × 40 px); unchanged.')
             close()
         c.bind('<Button-1>',down);c.bind('<B1-Motion>',move);c.bind('<Double-Button-1>',apply)
