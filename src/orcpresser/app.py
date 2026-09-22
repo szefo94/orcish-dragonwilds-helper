@@ -604,7 +604,7 @@ class App:
         self.fishing_panel=FishingPanel(self,controls)
         frame=show(tk.Frame(left,bg=PANEL),('Fishing',));frame.pack(fill='both',expand=True)
         sb=tk.Scrollbar(frame);sb.pack(side='right',fill='y')
-        self.fishtext=tk.Text(frame,height=12,wrap='word',bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',10),yscrollcommand=sb.set,padx=8,pady=6)
+        self.fishtext=tk.Text(frame,height=7,wrap='word',bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',10),yscrollcommand=sb.set,padx=8,pady=6)
         self.fishtext.pack(side='left',fill='both',expand=True);sb.configure(command=self.fishtext.yview)
         f=self.folder/'fishing_notes.md'
         try:txt=f.read_text(encoding='utf-8')
