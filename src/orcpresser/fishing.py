@@ -111,7 +111,8 @@ class FishingController:
         self.last_color=o.color
         stable=self.color_count>=2
         previous_stable=getattr(self,'stable_color','unknown')
-        if stable and o.color!=previous_stable:
+        transitioned=bool(stable and o.color!=previous_stable)
+        if transitioned:
             self.previous_stable_color=previous_stable;self.stable_color=o.color
         if self.state=='READY':
             if stable and o.color in ('red','blue'):
@@ -126,8 +127,8 @@ class FishingController:
             else:return
         if self.state not in ('FIGHT','REEL'):return
         if not stable:return
-        if confirmed and kind=='reel':
-            # Reel always wins: release A/D before holding the mouse.
+        if confirmed and kind=='reel' and o.color!='red':
+            # Reel wins while tension is not red: release A/D before holding the mouse.
             self.state='REEL';self.set_key('LMB');self.reason='Reel (Hold) confirmed'
         elif o.color=='red':
             # Direction changes are driven by COLOR TRANSITIONS, never by a timer.
@@ -139,7 +140,7 @@ class FishingController:
                 self.set_key(self.direction);self.changed=now
             elif self.held is None:
                 self.set_key(self.direction);self.changed=now
-            elif getattr(self,'previous_stable_color','unknown')=='blue':
+            elif transitioned and previous_stable=='blue':
                 self.direction='D' if self.direction=='A' else 'A'
                 self.set_key(self.direction);self.changed=now
             self.reason='Red tension — holding '+self.direction
