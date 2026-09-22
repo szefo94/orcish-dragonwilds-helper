@@ -175,11 +175,12 @@ class FishingController:
                     return
             else:return
         if self.state not in ('FIGHT','REEL'):return
+        if confirmed and kind=='reel':
+            # REEL is the highest-priority fight command. It always releases A/D
+            # immediately and holds LMB, regardless of the current bar colour.
+            self.state='REEL';self.set_key('LMB');self.reason='Reel (Hold) confirmed — released A/D, holding LMB';return
         if not stable:return
-        if confirmed and kind=='reel' and o.color!='red':
-            # Reel wins while tension is not red: release A/D before holding the mouse.
-            self.state='REEL';self.set_key('LMB');self.reason='Reel (Hold) confirmed'
-        elif o.color=='red':
+        if o.color=='red':
             # Direction changes are driven by COLOR TRANSITIONS, never by a timer.
             # First red starts first_pull. A later blue keeps that key held. When
             # the indicator returns to red, swap A<->D once and hold it.
