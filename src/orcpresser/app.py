@@ -879,7 +879,7 @@ class App:
                 if self.previous_hot and not hot and not self.selecting:self.toggle()
                 self.previous_hot=hot
                 reacquire=self.io.pressed(0x76)  # F7
-                if self.previous_reacquire and not reacquire and not self.selecting and self.mode=='Fishing':self.fishing_panel.reacquire()
+                if getattr(self,'previous_reacquire',False) and not reacquire and not self.selecting and self.mode=='Fishing':self.fishing_panel.reacquire()
                 self.previous_reacquire=reacquire
                 if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
                 self.drain(now)
