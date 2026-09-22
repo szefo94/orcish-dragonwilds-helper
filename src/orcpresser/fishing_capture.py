@@ -7,12 +7,43 @@ import numpy as np
 from fishing import Observation
 
 
+def _longest_run(mask):
+    best=cur=0
+    for value in mask:
+        if value:cur+=1;best=max(best,cur)
+        else:cur=0
+    return best
+
+
 def indicator(frame):
+    """Classify the burn-down fishing bar.
+
+    The active fill shrinks into black/grey. A red state can therefore be only a
+    very thin vertical strip at the live edge, so whole-ROI colour percentage is
+    not enough. Detect coherent coloured columns instead and give a narrow,
+    full-height red edge priority over the older blue fill behind it.
+    """
     hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-    saturated=(hsv[:,:,1]>100)&(hsv[:,:,2]>90)
-    red=float(np.mean(saturated&((hsv[:,:,0]<12)|(hsv[:,:,0]>168))))
-    blue=float(np.mean(saturated&(hsv[:,:,0]>90)&(hsv[:,:,0]<135)))
-    color='red' if red>.035 and red>blue*1.4 else 'blue' if blue>.035 and blue>red*1.4 else 'unknown'
+    # Reference colours sampled from Dragonwilds captures:
+    # blue ≈ RGB 181/223/230 (HSV ~94/54/230), red ≈ 208/68/50 (HSV ~3/194/208).
+    red_mask=(((hsv[:,:,0]<=10)|(hsv[:,:,0]>=170))&(hsv[:,:,1]>=110)&(hsv[:,:,2]>=90))
+    blue_mask=((hsv[:,:,0]>=88)&(hsv[:,:,0]<=135)&(hsv[:,:,1]>=25)&(hsv[:,:,2]>=120))
+    h,w=red_mask.shape
+    red=float(np.mean(red_mask));blue=float(np.mean(blue_mask))
+    red_cols=np.mean(red_mask,axis=0)>=.55
+    blue_cols=np.mean(blue_mask,axis=0)>=.55
+    red_run=_longest_run(red_cols);blue_run=_longest_run(blue_cols)
+    min_edge=max(2,int(np.ceil(w*.004)))
+    broad=max(3,int(np.ceil(w*.03)))
+    red_edge=(red_run>=min_edge and red_run<=max(4,int(np.ceil(w*.05))) and
+              float(np.max(np.mean(red_mask,axis=0),initial=0))>=.70)
+    red_broad=red_run>=broad;blue_broad=blue_run>=broad
+    if red_edge and blue_broad:color='red'
+    elif red_broad and not blue_broad:color='red'
+    elif blue_broad and not red_broad:color='blue'
+    elif red_broad and blue_broad:
+        color='red' if red_run>blue_run*1.4 else 'blue' if blue_run>red_run*1.4 else 'unknown'
+    else:color='unknown'
     return color,red,blue
 
 
