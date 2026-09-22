@@ -46,12 +46,18 @@ class Fishing(unittest.TestCase):
     def test_unknown_is_not_a_catch(self):
         self.fight();self.see(10.1);self.see(10.15)
         self.assertTrue(self.c.running);self.assertIsNone(self.c.held);self.assertNotEqual(self.c.state,'CAUGHT')
+    def test_no_fish_stops_for_manual_travel(self):
+        self.fight();self.see(10.1,text='No fish here');self.see(10.55,text='No fish here')
+        self.assertFalse(self.c.running);self.assertEqual(self.c.state,'FAILED')
     def test_confirmed_catch_stops(self):
         self.fight();self.see(10.1,text='You caught a fish');self.see(10.55,text='You caught a fish')
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'CAUGHT')
-    def test_blue_release_option(self):
-        self.c.config.blue_release=True;self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
-        self.assertIsNone(self.c.held)
+    def test_blue_releases_direction_while_waiting_for_reel(self):
+        self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
+        self.assertIsNone(self.c.held);self.assertIn('waiting for Reel',self.c.reason)
+    def test_blue_reel_releases_direction_before_lmb(self):
+        self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.5,'blue','Reel (Hold)')
+        self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
     def test_stale_reel_text_does_not_hold_forever(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.5,'blue','Reel (Hold)')
         self.see(12.1,'blue','Reel (Hold)',10.5)

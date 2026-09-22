@@ -15,7 +15,6 @@ class Observation:
 class FishingConfig:
     cast_seconds: float = .6
     auto_cast: bool = False
-    blue_release: bool = False
     first_pull: str = 'A'
     red_probe_seconds: float = .3
     stale_seconds: float = .75
@@ -136,7 +135,9 @@ class FishingController:
         elif confirmed and kind=='reel' and o.color=='blue':
             self.state='REEL';self.set_key('LMB')
         elif o.color=='blue' and self.state=='FIGHT':
-            self.set_key(None if self.config.blue_release else self.direction)
+            # Blue without a confirmed Reel prompt is neutral: stop pulling and wait for OCR.
+            # Once Reel (Hold) is confirmed above, set_key('LMB') releases A/D first.
+            self.release();self.reason='Blue tension — waiting for Reel (Hold) confirmation'
         elif o.color=='unknown':
             self.release();self.reason='Indicator unknown — waiting; not counted as a catch'
         elif self.state=='REEL' and kind!='reel':

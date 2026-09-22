@@ -20,7 +20,7 @@ Label the landing WAS SHORT / LONG / HIT manually. Short and long feedback choos
 
 ## Supervised fight loop
 
-Start LIVE after a manual cast, or enable Automatic cast to begin with the saved duration. Two consistent color samples are needed. Red tries A, then switches A/D after 300 ms of persistent red. Blue keeps the selected direction by default; the optional release-on-blue setting tests the alternative described in user notes. Two fresh OCR observations of Reel + Hold with blue release the direction and hold LMB. Red overrides a cached Reel prompt immediately after color confirmation, releasing LMB before pulling.
+Start LIVE after a manual cast, or enable Automatic cast to begin with the saved duration. Two consistent color samples are needed. Red tries A, then switches A/D after 300 ms of persistent red. Blue is a neutral/wait state: directional input is released while the controller waits for fresh prompt evidence. Two fresh OCR observations of Reel + Hold while blue release any direction before holding LMB. This prevents A/D probing from continuing during a confirmed reel opportunity. Red overrides a cached Reel prompt immediately after color confirmation, releasing LMB before pulling.
 
 A confirmed caught/bait/failure message stops the single round. Disappearing prompts or unknown color never count as a catch. Unknown color releases input; focus loss, stale capture (>750 ms), F8 and timeouts stop/release. Result phrases are provisional: `fish caught`, `you caught`, `caught a`, `consider bait`, `escaped`, `startled`, `too close`, `no fish here`, `depleted`.
 
@@ -31,3 +31,13 @@ Color capture targets 20 Hz; prompt OCR is queued about every 400 ms, subject to
 Verify bite and catch cues, red/blue meaning, pull direction and prompt placement. Add fish-direction tracking, reliable ripple/landing detection and stamina measurement. Stamina support exists in the controller data model but no screen detector feeds it yet. No bait inventory handling, walking, automatic recast loop, stamina management, 3D distance estimation or LLM runtime control is included.
 
 An LLM can analyze selected recording frames offline. It is not in the real-time loop. The recommended structure is fast color/geometry plus slower OCR, with an explicit state machine and bounded actions.
+
+## Fishing Bot 101 and travel
+
+BAR and PROMPT are the two required calibrations. RESULT is recommended for detecting `No fish here`, `depleted`, and other terminal messages. SPOT remains experimental and is not required for the basic mode.
+
+When a result reports no fish/depletion, the controller stops and releases all held input. Move the player manually to another fishing position, then use **NEW SPOT / REACQUIRE**. Player movement or a meaningful camera change invalidates cast timing because the required hold duration depends on geometry; screen-fixed BAR/PROMPT regions remain saved and should be checked in Preview before resuming.
+
+Cast buttons are a bracket search: **USE SHORT** = current lower bound, **USE LONG** = upper bound, **USE MID** = halfway. Label the landing with **WAS SHORT**, **WAS LONG**, or **WAS HIT**; HIT stores the successful duration.
+
+Advanced automatic pool detection, positioning and travel are intentionally separate from Bot 101. See `roadmap.md`.
