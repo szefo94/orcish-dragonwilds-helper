@@ -157,8 +157,9 @@ class FishingPanel:
         except queue.Empty:return
         if error:a.stop(error);return
         a.ctrl.observe(o,now)
-        active_text='YES' if bool(info.get('active')) else 'NO' if 'active' in self.regions else 'N/A'
-        caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}';caption+=f'\nACTIVE {active_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
+        active_text='YES' if info.get('active') is True else 'NO' if info.get('active') is False else 'N/A';active_score=info.get('active_score')
+        score_text='' if active_score is None else f' {active_score:.0%}'
+        caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}';caption+=f'\nACTIVE {active_text}{score_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
         if a.ctrl.state in ('FAILED','DEPLETED'):caption+='\nNO FISH / DEPLETED — move manually, then NEW SPOT / REACQUIRE.'
         elif a.ctrl.state=='WAIT_CLEAR':caption+='\nROUND ENDED — waiting for previous ACTIVE/bar signal to disappear.'
         elif a.ctrl.state=='WAIT_ACTIVE':caption+='\nREADY — waiting for next ACTIVE/bar signal.'
