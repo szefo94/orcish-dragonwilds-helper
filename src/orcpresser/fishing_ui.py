@@ -97,9 +97,20 @@ class FishingPanel:
         x,y,w,h=a.io.rect(a.target)
         if min(w,h)<100:self.message.set('Restore the game window first.');return
         a.selecting=True;over=tk.Toplevel(a.root);over.overrideredirect(True);over.geometry(f'{w}x{h}{x:+d}{y:+d}');over.attributes('-topmost',True);over.attributes('-alpha',.45)
-        c=tk.Canvas(over,bg='#183015',cursor='crosshair',highlightthickness=0);c.pack(fill='both',expand=True);c.create_text(w/2,30,text='DRAG '+name.upper()+' REGION · ESC CANCELS',fill='white',font=('Segoe UI',16,'bold'))
+        c=tk.Canvas(over,bg='#183015',cursor='crosshair',highlightthickness=0);c.pack(fill='both',expand=True)
+        # Keep every saved calibration visible while editing. The region being replaced
+        # is highlighted separately, so the new drag can be compared with the old box.
+        for old_name,(l,t,r,b) in self.regions.items():
+            x1,y1,x2,y2=l*w,t*h,(l+r)*w,(t+b)*h
+            selected=old_name==name
+            outline='#66d9ff' if selected else '#a4d666'
+            label='REEL' if old_name=='prompt' else old_name.upper()
+            c.create_rectangle(x1,y1,x2,y2,outline=outline,width=3 if selected else 2,dash=(7,4) if selected else ())
+            c.create_text(x1,max(12,y1-12),text=('OLD '+label if selected else label),anchor='w',fill=outline,font=('Segoe UI',10,'bold'))
+        c.create_text(w/2,30,text='DRAG NEW '+('REEL' if name=='prompt' else name.upper())+' REGION · BLUE DASH = OLD · ESC CANCELS',fill='white',font=('Segoe UI',16,'bold'))
         start=[];shape=[None]
-        def close():a.selecting=False;over.destroy()
+        def close():
+            a.selecting=False;over.destroy();self.refresh_overlay()
         def down(e):start[:]=[e.x,e.y]
         def drag(e):
             if not start:return
@@ -109,7 +120,7 @@ class FishingPanel:
             if start:
                 l,r=sorted((start[0],max(0,min(w,e.x))));t,b=sorted((start[1],max(0,min(h,e.y))))
                 if r-l>=15 and b-t>=8:self.regions[name]=[l/w,t/h,(r-l)/w,(b-t)/h];a.persist('fishing_regions',self.regions);self.message.set('Regions: '+', '.join(self.regions))
-            close();self.refresh_overlay()
+            close()
         c.bind('<Button-1>',down);c.bind('<B1-Motion>',drag);c.bind('<ButtonRelease-1>',up);over.bind('<Escape>',lambda _:close());over.focus_force()
     def start(self,run):
         a=self.app
