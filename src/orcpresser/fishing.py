@@ -148,7 +148,10 @@ class FishingController:
         if self.state=='WAIT_CAST':
             if stop_fishing_confirmed:
                 self.state='WAIT_BITE';self.reason='Stop Fishing visible — waiting for fish to bite';self.changed=now
-            return
+                return
+            if not self.config.require_active and (pull_confirmed or stable and o.color in ('red','blue')):
+                self.state='FIGHT';self.fight_started=now;self.changed=now;self.reason='New fight evidence detected'
+            else:return
         if self.state=='READY':
             if stop_fishing_confirmed:
                 self.state='WAIT_BITE';self.reason='Stop Fishing visible — waiting for fish to bite';self.changed=now
