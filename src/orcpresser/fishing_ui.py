@@ -34,7 +34,7 @@ class FishingPanel:
         self.trial_box=tk.Checkbutton(parent,text='Advanced: trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.trial_box.pack(fill='x')
         tk.Label(parent,text='Bot 101: hold A/D through blue; swap direction only when blue returns to red. Reel (Hold) overrides A/D.',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
         self.cast_row=row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Advanced cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');self.cast_entry=tk.Entry(row,textvariable=self.duration,width=9);self.cast_entry.pack(side='right')
-        self.duration.trace_add('write',lambda *_:app.stop('Cast duration changed'))
+        self.duration.trace_add('write',self.duration_changed)
         tk.Label(parent,text='USE SHORT/MID/LONG selects a trial. Then label landing WAS SHORT, WAS LONG, or WAS HIT (correct).',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
         self.trial_buttons=[]
         row=tk.Frame(parent,bg=bg);row.pack(fill='x',pady=3)
@@ -46,6 +46,11 @@ class FishingPanel:
         button('RESET CAST BRACKET (100–1200 ms)',self.reset);button('NEW SPOT / REACQUIRE',self.reacquire)
         tk.Label(parent,textvariable=self.message,bg=bg,fg='#98c657',wraplength=365,justify='left',anchor='w').pack(fill='x',pady=6)
         self.mode_changed(initial=True)
+    def duration_changed(self,*_):
+        self.app.stop('Cast duration changed')
+        try:value=int(self.duration.get())
+        except ValueError:return
+        if 50<=value<=3000:self.app.persist('fishing_cast_ms',value)
     def mode_changed(self,initial=False):
         advanced=self.mode.get()=='advanced'
         self.app.persist('fishing_mode',self.mode.get())
