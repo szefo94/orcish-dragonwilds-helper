@@ -7,7 +7,9 @@ class UpdateSecurity(unittest.TestCase):
     def check_rejected(self,name,attrs=0):
         stream=io.BytesIO()
         with zipfile.ZipFile(stream,'w') as z:
-            info=zipfile.ZipInfo(name);info.external_attr=attrs;z.writestr(info,'x')
+            # ZipInfo(name) would itself rewrite \ to / on Windows (os.sep), destroying the case we're
+            # testing before it is ever stored; set .filename directly so the raw name is what gets persisted.
+            info=zipfile.ZipInfo('x');info.filename=name;info.external_attr=attrs;z.writestr(info,'x')
         with zipfile.ZipFile(stream) as z:
             with self.assertRaises(ValueError):updater.validate_archive(z)
     def test_bad_paths(self):

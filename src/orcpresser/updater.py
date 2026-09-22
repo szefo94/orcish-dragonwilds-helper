@@ -60,8 +60,9 @@ def validate_archive(z):
     total=0;seen=set()
     for entry in z.infolist():
         name=entry.filename
+        raw=getattr(entry,'orig_filename',name)   # zipfile silently rewrites \ to / in .filename on Windows (os.sep)
         parts=PurePosixPath(name).parts
-        if (not parts or name.startswith('/') or '\\' in name or ':' in name or
+        if (not parts or name.startswith('/') or '\\' in raw or ':' in name or
             any(p in ('.','..') or p.endswith((' ','.')) for p in parts) or
             any(p.split('.')[0].upper() in {'CON','PRN','AUX','NUL',*(f'COM{i}' for i in range(1,10)),*(f'LPT{i}' for i in range(1,10))} for p in parts) or
             stat.S_ISLNK(entry.external_attr >> 16)):
