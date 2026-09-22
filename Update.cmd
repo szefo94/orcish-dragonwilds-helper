@@ -1,5 +1,6 @@
 @echo off
-rem Applies the newest OrcPresser_<version>.zip found in this folder (see src\orcpresser\updater.py).
+rem Applies the newest supported update ZIP found in this folder (see src\orcpresser\updater.py).
+rem GitHub Code ^> Download ZIP is supported directly: orcish-dragonwilds-helper-main.zip
 rem Everything runs inside one parenthesized block: cmd reads the whole block before running it,
 rem so the updater can safely replace this very file.
 (
