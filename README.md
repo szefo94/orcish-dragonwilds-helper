@@ -155,9 +155,17 @@ Fishing combines fast color observations with slower OCR in a separate controlle
 4. Enable **Record manual test**, start **Preview**, and fish manually.
 5. Review the recording before trying **Live** assistance.
 
-For cast trials, choose a short or long duration, enable **Trial cast only**, and start Live. After the one-shot cast, label the landing **Was Short**, **Was Long**, or **Was Hit**. A hit saves the duration; short/long feedback selects a new midpoint. These are manually calibrated timings, not measured world distances.
+### Fishing Bot 101 controls
 
-Color sampling targets **20 Hz**. Prompt OCR is queued approximately every **400 ms**, subject to processing time, and requires two distinct OCR observations for confirmed text actions. Blue keeps the selected direction by default; **Release direction on blue** exposes the alternative behavior for testing.
+The minimum setup is **BAR + PROMPT**. BAR is the red/blue tension indicator; PROMPT contains **Cast/Reel (Hold)**. RESULT is recommended so the bot can stop on messages such as **No fish here** or **depleted**. SPOT is an advanced/diagnostic region and is not required by Bot 101.
+
+For cast calibration, **USE SHORT** tries the current lower hold-time bound, **USE LONG** the upper bound, and **USE MID** the midpoint. After the bobber lands, **WAS SHORT** means it fell short of the target, **WAS LONG** means it went beyond it, and **WAS HIT** means the cast landed correctly and that duration should be saved. Moving the player or changing the camera invalidates this position-dependent timing; use **NEW SPOT / REACQUIRE** and recalibrate if automatic casting is used.
+
+During a fight, red tension probes A/D. Blue tension stops directional input while the controller waits for fresh OCR evidence. Once blue and **Reel (Hold)** are confirmed, A/D is released before LMB is held. The former release-on-blue experiment is no longer a user option because it conflicts with this core state flow.
+
+If RESULT confirms **No fish here**, **depleted**, or another failure, the controller stops and releases input. Move the character manually to the next spot, use **NEW SPOT / REACQUIRE**, verify BAR/PROMPT in Preview, then resume. Fishing capture regions are stored in `data/settings.json`; Auto Presser's capture region is stored there as well.
+
+Color sampling targets **20 Hz**. Prompt OCR is queued approximately every **400 ms**, subject to processing time, and requires two distinct OCR observations for confirmed text actions.
 
 ### Not implemented yet
 
@@ -265,6 +273,7 @@ For work with multiple developers or coding assistants, use **one feature branch
 - [Architecture and reusable game profiles](docs/FRAMEWORK.md)
 - [Changelog](docs/CHANGELOG.md)
 - [Publication review](docs/PUBLICATION_REVIEW.md)
+- [Roadmap](roadmap.md)
 - [Security reporting](SECURITY.md)
 
 ## Project status and licensing
