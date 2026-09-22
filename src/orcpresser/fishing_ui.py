@@ -17,7 +17,7 @@ class FishingPanel:
         self.record=tk.BooleanVar(value=bool(app.settings.get('fishing_record',False)));self.auto=tk.BooleanVar(value=bool(app.settings.get('fishing_auto_cast',False)))
         self.trial=tk.BooleanVar(value=False)
         self.duration=tk.StringVar(value=str(app.settings.get('fishing_cast_ms',600)))
-        self.message=tk.StringVar(value='Select the fish indicator and Cast/Reel prompt regions. PREVIEW records decisions only.')
+        self.message=tk.StringVar(value='Fishing Bot 101: set BAR and PROMPT first. RESULT is recommended for No fish/depleted detection.')
         bg=parent['bg']
         def button(text,fn):
             tk.Button(parent,text=text,command=fn,bg='#384829',fg='#e6d8b0',activebackground='#526737',relief='flat').pack(fill='x',pady=2)
@@ -25,7 +25,7 @@ class FishingPanel:
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
         for name in ('bar','prompt','result','spot'):
             tk.Button(row,text=name.upper(),command=lambda n=name:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
-        tk.Label(parent,text='BAR = red/blue fish indicator · PROMPT = Cast/Reel\nRESULT = messages (optional) · SPOT = ripple area (optional)',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
+        tk.Label(parent,text='BAR = red/blue tension · PROMPT = Cast/Reel (required)\nRESULT = no-fish/catch messages (recommended) · SPOT = advanced/experimental',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
         for title,var,key in [('Record manual test (cropped images + A/D/LMB states)',self.record,'fishing_record'),('Automatic cast from the current position',self.auto,'fishing_auto_cast')]:
             tk.Checkbutton(parent,text=title,variable=var,command=lambda v=var,k=key:(app.stop('Fishing settings changed'),app.persist(k,v.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
         tk.Checkbutton(parent,text='Trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
