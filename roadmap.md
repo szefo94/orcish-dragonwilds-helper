@@ -2,12 +2,15 @@
 
 The project should become easier to install, easier to calibrate, and increasingly self-configuring while keeping the real-time control loop local and deterministic.
 
-## Priority 1 — biggest wins, lowest risk
+## Completed foundation
 
-- **Persist every calibration.** Auto Presser capture region and Fishing BAR/PROMPT/RESULT/SPOT regions should survive restarts. Persist cast calibration separately and invalidate only the geometry-dependent part after player/camera movement.
-- **Fishing Bot 101.** Make BAR (tension) and PROMPT (especially `Reel (Hold)`) the minimum supported setup. Keep player movement and positioning manual. RESULT is recommended for `No fish` / depleted messages; SPOT remains optional.
-- **Guided setup.** The Fishing tab should say exactly what it needs next: bind game → select BAR → select PROMPT → Preview → Live. A failed/no-fish result should stop input and ask the player to move, then reacquire.
-- **Remove experimental switches that contradict confirmed logic.** Prefer one safe behavior over checkboxes for obsolete alternatives.
+- Persistent Auto Presser capture region and Fishing BAR/REEL/RESULT/SPOT regions.
+- Persistent Repeat/Hold/Auto settings, action allowlist, speed/learning options, opacity, Stats parameters, Fishing mode, and cast calibration.
+- Explicit **Fishing Bot 101** and **Advanced · EXP** UI modes.
+- Bot 101 requires BAR + REEL, keeps movement/casting manual, and supports F7 / **New spot / Reacquire** after travel.
+- Transition-driven fight control: hold A/D continuously, swap once on stable blue→red, and let `Reel (Hold)` override with LMB.
+- Obsolete Fishing notes/preview text area removed; runtime guidance is contextual.
+- GitHub `orcish-dragonwilds-helper-main.zip` can be applied directly by Update.cmd, including same-version snapshots from newer commits.
 
 ## Priority 2 — automatic calibration
 
@@ -34,7 +37,7 @@ Advanced mode is deliberately separate from Bot 101. Add capabilities only after
 - controlled travel between spots after depletion;
 - repeated cast/fight/catch cycles with bounded timeouts and emergency release.
 
-Movement or meaningful camera rotation must invalidate position-dependent cast calibration. BAR/PROMPT HUD regions can remain valid when they are screen-fixed.
+Movement or meaningful camera rotation must invalidate position-dependent cast calibration. BAR/REEL HUD regions can remain valid when they are screen-fixed.
 
 ## Priority 5 — data-assisted improvement
 
