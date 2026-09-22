@@ -14,11 +14,12 @@ class FishingPanel:
         if isinstance(saved,dict) and isinstance(saved.get('confirmed'),(int,float)):self.calibration.confirmed=float(saved['confirmed'])
         self.regions=app.settings.get('fishing_regions',{})
         if not isinstance(self.regions,dict):self.regions={}
-        self.regions={k:v for k,v in self.regions.items() if k in ('bar','prompt','result','spot') and isinstance(v,list) and len(v)==4 and all(isinstance(n,(float,int)) and 0<=n<=1 for n in v) and v[2]>0 and v[3]>0 and v[0]+v[2]<=1.001 and v[1]+v[3]<=1.001}
+        self.regions={k:v for k,v in self.regions.items() if k in ('bar','prompt','result','spot','active') and isinstance(v,list) and len(v)==4 and all(isinstance(n,(float,int)) and 0<=n<=1 for n in v) and v[2]>0 and v[3]>0 and v[0]+v[2]<=1.001 and v[1]+v[3]<=1.001}
         self.mode=tk.StringVar(value=app.settings.get('fishing_mode','101'))
         if self.mode.get() not in ('101','advanced'):self.mode.set('101')
         self.record=tk.BooleanVar(value=bool(app.settings.get('fishing_record',False)));self.auto=tk.BooleanVar(value=bool(app.settings.get('fishing_auto_cast',False)))
         self.show_overlay=tk.BooleanVar(value=bool(app.settings.get('fishing_show_overlay',False)))
+        self.recurring=tk.BooleanVar(value=bool(app.settings.get('fishing_recurring',False)))
         self.trial=tk.BooleanVar(value=False);self.duration=tk.StringVar(value=str(app.settings.get('fishing_cast_ms',600)))
         self.message=tk.StringVar(value='Fishing Bot 101: set BAR and PROMPT first. RESULT is recommended for No fish/depleted detection.')
         bg=parent['bg']
@@ -28,9 +29,10 @@ class FishingPanel:
         for value,title in [('101','FISHING BOT 101'),('advanced','ADVANCED · EXP')]:
             tk.Radiobutton(modes,text=title,value=value,variable=self.mode,command=self.mode_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg).pack(side='left',expand=True,fill='x')
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
-        for key,label in [('bar','BAR'),('prompt','REEL'),('result','RESULT'),('spot','SPOT')]:tk.Button(row,text=label,command=lambda n=key:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
-        tk.Label(parent,text='BOT 101 requires BAR + REEL only. REEL is the screen area where Reel (Hold) appears.\nRESULT improves catch/no-fish detection. SPOT and automatic casting belong to Advanced.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
-        self.overlay_box=tk.Checkbutton(parent,text='Show calibration overlay (BAR / REEL / RESULT / SPOT)',variable=self.show_overlay,command=self.overlay_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.overlay_box.pack(fill='x')
+        for key,label in [('bar','BAR'),('prompt','REEL'),('active','ACTIVE'),('result','RESULT'),('spot','SPOT')]:tk.Button(row,text=label,command=lambda n=key:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
+        tk.Label(parent,text='BOT 101 requires BAR + REEL. ACTIVE is optional and should frame the Stop Fishing indicator.\nRESULT improves catch/no-fish detection. SPOT and automatic casting belong to Advanced.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
+        self.overlay_box=tk.Checkbutton(parent,text='Show calibration overlay (BAR / REEL / ACTIVE / RESULT / SPOT)',variable=self.show_overlay,command=self.overlay_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.overlay_box.pack(fill='x')
+        self.recurring_box=tk.Checkbutton(parent,text='Recurring rounds · after catch/failure, wait for next ACTIVE/bar signal',variable=self.recurring,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_recurring',self.recurring.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.recurring_box.pack(fill='x')
         self.record_box=tk.Checkbutton(parent,text='Record manual test (cropped images + A/D/LMB states)',variable=self.record,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_record',self.record.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.record_box.pack(fill='x')
         self.auto_box=tk.Checkbutton(parent,text='Advanced: automatic cast from current position',variable=self.auto,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_auto_cast',self.auto.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.auto_box.pack(fill='x')
         self.trial_box=tk.Checkbutton(parent,text='Advanced: trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.trial_box.pack(fill='x')
@@ -51,7 +53,7 @@ class FishingPanel:
     def ensure_overlay(self):
         if self.overlay is None:self.overlay=FishingOverlay(self.app.root)
         return self.overlay
-    def refresh_overlay(self,caption='CALIBRATION OVERLAY · adjust BAR / REEL / RESULT / SPOT'):
+    def refresh_overlay(self,caption='CALIBRATION OVERLAY · adjust BAR / REEL / ACTIVE / RESULT / SPOT'):
         a=self.app
         if not self.show_overlay.get():
             if self.overlay:self.overlay.hide()
@@ -104,10 +106,10 @@ class FishingPanel:
             x1,y1,x2,y2=l*w,t*h,(l+r)*w,(t+b)*h
             selected=old_name==name
             outline='#66d9ff' if selected else '#a4d666'
-            label='REEL' if old_name=='prompt' else old_name.upper()
+            label='REEL' if old_name=='prompt' else 'ACTIVE' if old_name=='active' else old_name.upper()
             c.create_rectangle(x1,y1,x2,y2,outline=outline,width=3 if selected else 2,dash=(7,4) if selected else ())
             c.create_text(x1,max(12,y1-12),text=('OLD '+label if selected else label),anchor='w',fill=outline,font=('Segoe UI',10,'bold'))
-        c.create_text(w/2,30,text='DRAG NEW '+('REEL' if name=='prompt' else name.upper())+' REGION · BLUE DASH = OLD · ESC CANCELS',fill='white',font=('Segoe UI',16,'bold'))
+        c.create_text(w/2,30,text='DRAG NEW '+('REEL' if name=='prompt' else 'ACTIVE' if name=='active' else name.upper())+' REGION · BLUE DASH = OLD · ESC CANCELS',fill='white',font=('Segoe UI',16,'bold'))
         start=[];shape=[None]
         def close():
             a.selecting=False;over.destroy();self.refresh_overlay()
@@ -128,12 +130,12 @@ class FishingPanel:
         if not a.target or not a.io.game(a.target):a.status.set('Bind a Dragonwilds game window first.');return
         if not all(k in self.regions for k in ('bar','prompt')):a.status.set('Select BAR and REEL regions first.');return
         if self.record.get() and run!='Preview':a.status.set('Manual recording uses PREVIEW, so only you control the game.');return
-        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.mode.get()=='advanced' and self.auto.get()).validate()
+        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.mode.get()=='advanced' and self.auto.get(),recurring=self.recurring.get(),require_active=self.recurring.get() and 'active' in self.regions).validate()
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False
         if self.show_overlay.get():self.ensure_overlay()
         a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
-        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set('Watching BAR + REEL. Hold A/D through blue; swap only on blue→red. Reel (Hold) overrides with LMB. No fish/depleted stops safely.')
+        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set(('Recurring: waiting for ACTIVE, then BAR + REEL.' if self.recurring.get() and 'active' in self.regions else 'Watching BAR + REEL.')+' Hold A/D through blue; swap only on blue→red. Reel (Hold) overrides with LMB.')
     def stop(self):
         if self.session:self.session.close();self.session=None
         if self.overlay:
@@ -156,7 +158,9 @@ class FishingPanel:
         if error:a.stop(error);return
         a.ctrl.observe(o,now)
         caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}';caption+=f'\nred {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
-        if a.ctrl.state=='FAILED':caption+='\nNO FISH / FAILED — move manually, then NEW SPOT / REACQUIRE.'
+        if a.ctrl.state in ('FAILED','DEPLETED'):caption+='\nNO FISH / DEPLETED — move manually, then NEW SPOT / REACQUIRE.'
+        elif a.ctrl.state=='WAIT_CLEAR':caption+='\nROUND ENDED — waiting for previous ACTIVE/bar signal to disappear.'
+        elif a.ctrl.state=='WAIT_ACTIVE':caption+='\nREADY — waiting for next ACTIVE/bar signal.'
         self.message.set(caption+'\n'+o.text[:180]+'\n'+a.ctrl.reason);a.scan_ms=info['ocr_ms'];a.capture_backend=info['backend']
         if self.show_overlay.get():
             overlay_info=dict(info);overlay_info.update(app_minimized=a.root.state()=='iconic',running=a.ctrl.running,preview=a.ctrl.preview,state=a.ctrl.state,held=a.ctrl.held)
