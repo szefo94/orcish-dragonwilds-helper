@@ -12,6 +12,9 @@ class Observation:
     stamina: float | None = None
     active: bool | None = None
     active_stamp: float = 0.
+    pull_left: bool | None = None
+    pull_right: bool | None = None
+    pull_stamp: float = 0.
 
 @dataclass
 class FishingConfig:
@@ -58,13 +61,13 @@ class FishingController:
         self.state='IDLE';self.reason='';self.started=None;self.last_observation=None
         self.last_color='unknown';self.color_count=0;self.direction=self.config.first_pull
         self.changed=0.;self.cast_until=0.;self.text_kind='';self.text_count=0;self.text_seen=None;self.unknown_since=None
-        self.trial_only=False;self.active_seen=None;self.active_count=0;self.inactive_count=0
+        self.trial_only=False;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.pull_seen=None;self.pull_count=0
     def start(self,preview=True,trial_only=False):
         self.stop();self.running=True;self.preview=preview;self.trial_only=trial_only
         self.state='READY';self.reason='Waiting for current fishing evidence';self.started=None
         self.last_observation=None;self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown';self.text_count=0
         self.text_kind='';self.text_seen=None;self.direction=self.config.first_pull;self.base_count=self.count
-        self.changed=0.;self.cast_until=0.;self.unknown_since=None;self.active_seen=None;self.active_count=0;self.inactive_count=0
+        self.changed=0.;self.cast_until=0.;self.unknown_since=None;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.pull_seen=None;self.pull_count=0
     def release(self):
         if self.held:
             if not self.preview:self.output(self.held,False)
@@ -89,7 +92,7 @@ class FishingController:
         if self.state=='CAST' and now>=self.cast_until:
             self.release();self.state='WAIT_BITE';self.changed=now
             if self.trial_only:self.state='TRIAL_DONE';self.stop('Trial cast released; record short / long / hit')
-        if self.state in ('READY','WAIT_BITE') and not self.config.recurring and now-(self.changed or self.started)>self.config.bite_timeout:
+        if self.state in ('READY','WAIT_CAST','WAIT_BITE') and not self.config.recurring and now-(self.changed or self.started)>self.config.bite_timeout:
             self.stop('No bite / cast evidence before timeout')
         if self.state in ('FIGHT','REEL') and now-self.fight_started>self.config.fight_timeout:
             self.stop('Fight timeout')
@@ -103,7 +106,11 @@ class FishingController:
             if o.active:self.active_count+=1;self.inactive_count=0
             else:self.inactive_count+=1;self.active_count=0
             self.active_seen=o.active_stamp
-        active_confirmed=bool(o.active and self.active_count>=2)
+        stop_fishing_confirmed=bool(o.active and self.active_count>=2)
+        if o.pull_stamp!=self.pull_seen:
+            self.pull_count=self.pull_count+1 if (o.pull_left or o.pull_right) else 0
+            self.pull_seen=o.pull_stamp
+        pull_confirmed=bool((o.pull_left or o.pull_right) and self.pull_count>=2)
         # Text confirmations count distinct OCR images, not fast ticks reusing cached text.
         kind=('caught' if re.search(r'\b(?:fish caught|you caught|caught a)\b',text) else
               'bait' if 'consider bait' in text else
@@ -115,10 +122,10 @@ class FishingController:
             self.text_count=self.text_count+1 if kind==self.text_kind else 1
             self.text_seen=o.text_stamp;self.text_kind=kind
         confirmed=kind and self.text_count>=2
-        if self.state not in ('WAIT_CLEAR','WAIT_ACTIVE') and confirmed and kind in ('caught','failed'):
+        if self.state not in ('WAIT_CAST','WAIT_BITE') and confirmed and kind in ('caught','failed'):
             self.release()
             if self.config.recurring:
-                self.state='WAIT_CLEAR';self.reason='Round ended: '+kind+' — waiting for previous fishing signal to clear';self.changed=now
+                self.state='WAIT_CAST';self.reason='Round ended: '+kind+' — waiting for you to cast again';self.changed=now
                 self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown';self.direction=self.config.first_pull
                 return
             self.state={'caught':'CAUGHT','failed':'FAILED'}[kind];self.stop('Observed result: '+kind);return
@@ -135,26 +142,28 @@ class FishingController:
         if transitioned:
             self.previous_stable_color=previous_stable;self.stable_color=o.color
         if o.color!='unknown':self.unknown_since=None
-        if self.state=='WAIT_CLEAR':
-            cleared=(self.inactive_count>=2) if self.config.require_active else (stable and o.color=='unknown')
-            if not cleared:return
-            self.state='WAIT_ACTIVE';self.reason='Previous round cleared — waiting for next fishing signal';self.changed=now
+        # Stop Fishing is a WAITING-FOR-BITE signal, not a fight-active signal.
+        # Pull Left / Pull Right appearing after it disappears is the strongest
+        # evidence that the fish has taken the bobber and the minigame has begun.
+        if self.state=='WAIT_CAST':
+            if stop_fishing_confirmed:
+                self.state='WAIT_BITE';self.reason='Stop Fishing visible — waiting for fish to bite';self.changed=now
             return
-        if self.state=='WAIT_ACTIVE':
-            signal=active_confirmed if self.config.require_active else (stable and o.color in ('red','blue'))
-            if not signal:return
-            self.state='READY';self.reason='New fishing signal detected — waiting for fight';self.changed=now
         if self.state=='READY':
-            if self.config.require_active and not active_confirmed:return
-            if stable and o.color in ('red','blue'):
+            if stop_fishing_confirmed:
+                self.state='WAIT_BITE';self.reason='Stop Fishing visible — waiting for fish to bite';self.changed=now
+                return
+            if pull_confirmed or (not self.config.require_active and stable and o.color in ('red','blue')):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
             elif confirmed and kind=='cast' and (self.config.auto_cast or self.trial_only):
                 self.state='CAST';self.cast_until=now+self.config.cast_seconds;self.changed=now
                 self.set_key('LMB');return
             else:return
         if self.state=='WAIT_BITE':
-            if stable and o.color in ('red','blue'):
+            if stop_fishing_confirmed:return
+            if pull_confirmed or stable and o.color in ('red','blue'):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
+                self.reason='Fish hooked — pull prompts/bar detected'
             else:return
         if self.state not in ('FIGHT','REEL'):return
         if not stable:return
