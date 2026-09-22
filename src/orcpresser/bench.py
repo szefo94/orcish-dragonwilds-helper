@@ -17,21 +17,34 @@ from pathlib import Path
 
 OPTION_LABELS = {'fast_det': 'Fast detection', 'rec_only': 'Recognition only', 'memory': 'Learned memory',
                  'templates': 'Templates', 'single': 'Single-scan confirm', 'dxgi': 'DXGI capture', 'gpu': 'GPU'}
-SHORT = {'baseline': 'BASE', 'fast_det': 'FAST', 'rec_only': 'REC', 'memory': 'MEM', 'templates': 'TPL',
-         'single': '1SCN', 'dxgi': 'DXGI', 'gpu': 'GPU', 'all': 'ALL'}
+LETTER = {k: v[0] for k, v in OPTION_LABELS.items()}   # fast_det->F, rec_only->R, memory->L, templates->T, single->S, dxgi->D, gpu->G
 PHASES = ('static', 'camera')
 
 
+def code(opts):
+    """Letters of every option that is on, in canonical order (e.g. all on = FRLTSDG); '-' when none are."""
+    return ''.join(LETTER[k] for k in OPTION_LABELS if opts.get(k)) or '-'
+
+
 def plan(ticked):
-    """Baseline + each ticked option alone + all ticked together (if 2+). ticked: iterable of option keys."""
+    """Baseline + each ticked option alone + all ticked together (if 2+). ticked: iterable of option keys.
+    Each configuration is named by the letters of the options it turns on (see code())."""
     ticked = [k for k in OPTION_LABELS if k in set(ticked)]
     off = {k: False for k in OPTION_LABELS}
-    configs = [{'id': 'baseline', 'name': 'Baseline (all off)', 'opts': dict(off)}]
+    configs = [{'id': 'baseline', 'name': code(off), 'opts': dict(off)}]
     for k in ticked:
-        configs.append({'id': k, 'name': OPTION_LABELS[k], 'opts': dict(off, **{k: True})})
+        opts = dict(off, **{k: True})
+        configs.append({'id': k, 'name': code(opts), 'opts': opts})
     if len(ticked) >= 2:
-        configs.append({'id': 'all', 'name': 'All ticked', 'opts': dict(off, **{k: True for k in ticked})})
+        opts = dict(off, **{k: True for k in ticked})
+        configs.append({'id': 'all', 'name': code(opts), 'opts': opts})
     return configs
+
+
+def fmt_time(seconds):
+    """Seconds as M:SS, floored at 0."""
+    m, s = divmod(max(0, int(round(seconds))), 60)
+    return f'{m}:{s:02d}'
 
 
 class CameraPath:

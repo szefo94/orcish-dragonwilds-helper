@@ -425,15 +425,17 @@ class App:
     def build_stats_controls(self,left,show):
         S=('Stats',)
         show(self.text(left,'01  /  AUTOMATED TEST',12,GOLD),S).pack(fill='x')
-        show(tk.Label(left,text='1. AUTO tab: bind the game, select the region, tick the options to compare (section 03).\n'
+        show(tk.Label(left,text='1. AUTO tab: bind the game, select the region.\n'
             '2. Stand still in the water facing a prompt, e.g. Collect Water.\n'
             '3. RUN TEST (or \\ in the game), then click into the game and let go of mouse and keyboard.\n'
-            'Each configuration runs a STATIC phase, then a CAMERA phase: the app sweeps the camera left/right the same way '
-            'every time and brings it back. PREVIEW only: no keys are sent. F8 or leaving the game aborts.',
+            'RUN TEST ticks off every speed option in section 03 itself and tests the whole set: Baseline, each option '
+            'alone, then all of them together. Each configuration runs a STATIC phase (default 5 s), then a CAMERA phase '
+            '(default 5 s): the app sweeps the camera left/right the same way every time and brings it back. PREVIEW '
+            'only: no keys are sent. F8 or leaving the game aborts.',
             bg=PANEL,fg=MUTED,justify='left',anchor='w',wraplength=410,font=('Segoe UI',9)),S).pack(fill='x',pady=(2,6))
-        self.bphase=tk.IntVar(value=int(self.settings.get('bench_phase',15)));self.bamp=tk.IntVar(value=int(self.settings.get('bench_amp',250)))
+        self.bphase=tk.IntVar(value=int(self.settings.get('bench_phase',5)));self.bamp=tk.IntVar(value=int(self.settings.get('bench_amp',250)))
         self.bperiod=tk.IntVar(value=int(self.settings.get('bench_period',4)))
-        for title,var,lo,hi,key in (('Seconds per phase',self.bphase,8,60,'bench_phase'),('Camera sweep · px each side',self.bamp,40,1200,'bench_amp'),
+        for title,var,lo,hi,key in (('Seconds per phase',self.bphase,5,60,'bench_phase'),('Camera sweep · px each side',self.bamp,40,1200,'bench_amp'),
                                     ('Camera sweep period · s',self.bperiod,2,10,'bench_period')):
             show(self.text(left,title,9,GOLD),S).pack(fill='x')
             show(tk.Scale(left,from_=lo,to=hi,orient='horizontal',variable=var,command=lambda v,k=key,var=var:(self.persist(k,var.get()),self.update_plan()),
@@ -467,22 +469,26 @@ class App:
         RuneButton(row,'APPLY SUGGESTED',self.apply_suggested,170,36).pack(side='left')
         self.runs=[];self.shown=None;self.suggestions={}
         self.root.after_idle(self.refresh_runs)
+    def available_options(self):
+        """Every speed option the test can use on this setup (GPU/DXGI only if actually available)."""
+        return [k for k in benchmod.OPTION_LABELS if (k!='gpu' or self.gpu_ok) and (k!='dxgi' or self.dxgi_ok)]
     def update_plan(self):
         try:
-            ticked=[k for k,v in self.opt.items() if v.get() and (k!='gpu' or self.gpu_ok) and (k!='dxgi' or self.dxgi_ok)]
-            cfg=benchmod.plan(ticked);b=benchmod.Benchmark(cfg,self.bphase.get(),2.,self.bamp.get(),self.bperiod.get())
-            names=', '.join(benchmod.SHORT[c['id']] for c in cfg)
-            self.plantext.set(f'Plan: {len(cfg)} configurations ({names})\n{len(cfg)} × (static {b.phase_s:.0f} s + camera {b.camera_s:.0f} s) ≈ {b.total_s()/60:.1f} min'
-                              +('' if len(cfg)>1 else '\nTick options in AUTO → 03 to compare them with Baseline.'))
+            cfg=benchmod.plan(self.available_options());b=benchmod.Benchmark(cfg,self.bphase.get(),2.,self.bamp.get(),self.bperiod.get())
+            codes=', '.join(c['name'] for c in cfg)
+            self.plantext.set(f'Pending tests ({len(cfg)}): {codes}\n'
+                              f'Each: static {b.phase_s:.0f} s + camera {b.camera_s:.0f} s + settle. '
+                              f'Total pending time ≈ {benchmod.fmt_time(b.total_s())}')
         except Exception:log.exception('plan')
     def start_bench(self):
         if self.visual or self.bench:return
         if not self.target:self.status.set('Bind the game first (AUTO tab).');return
         if not self.io.game(self.target):self.status.set(f'The bound window is not {PROFILE.name}.');return
         if not self.ready:self.status.set('Recognition engine is not ready yet.');return
-        ticked=[k for k,v in self.opt.items() if v.get() and (k!='gpu' or self.gpu_ok) and (k!='dxgi' or self.dxgi_ok)]
+        available=self.available_options()
+        for k in available:self.opt[k].set(True)   # RUN TEST ticks off every option it is about to cover
         self.stop('Starting test…')
-        self.bench=benchmod.Benchmark(benchmod.plan(ticked),self.bphase.get(),2.,self.bamp.get(),self.bperiod.get())
+        self.bench=benchmod.Benchmark(benchmod.plan(available),self.bphase.get(),2.,self.bamp.get(),self.bperiod.get())
         self.bench_config(0);self.armed=True;self.draw_run()
         self.benchtext.set('ARMED — click into the game; the test starts when it has focus.')
         self.status.set('TEST ARMED — switch to the game, then hands off')
@@ -498,7 +504,7 @@ class App:
             if kind=='config' and val>0:self.bench_config(val)
         b.events.clear()
         if b.done:self.finish_bench();self.stop('TEST FINISHED — see the STATS tab');return
-        self.benchtext.set(f'Running: {b.progress(now)} · {"settling" if b.settling else "measuring"} · ~{b.remaining(now):.0f} s left')
+        self.benchtext.set(f'Running: {b.progress(now)} · {"settling" if b.settling else "measuring"} · {benchmod.fmt_time(b.remaining(now))} pending')
     def finish_bench(self):
         b,self.bench=self.bench,None
         if b is None:return
@@ -529,13 +535,13 @@ class App:
         r=self.shown
         if not r:self.tabletext.set('—');return
         lines=[f"{r['started']}  ref: {r.get('reference') or 'none seen in Baseline static!'}",
-               f"{'cfg':5} {'phase':6} {'scan':>6} {'p95':>6} {'det%':>5} {'agr%':>5} {'dec ms':>6} {'chg/m':>5} {'cpu%':>5} {'lrn%':>5}"]
+               f"{'cfg':7} {'phase':6} {'scan':>6} {'p95':>6} {'det%':>5} {'agr%':>5} {'dec ms':>6} {'chg/m':>5} {'cpu%':>5} {'lrn%':>5}"]
         for c in r['configs']:
             for ph in benchmod.PHASES:
                 m=c.get(ph)
                 if not m:continue
                 f=lambda k,w:(f"{m[k]:>{w}}" if m.get(k) is not None else ' '*(w-1)+'-')
-                lines.append(f"{benchmod.SHORT.get(c['id'],c['id'])[:5]:5} {ph:6} {f('scan_ms',6)} {f('scan_p95',6)} {f('detect_pct',5)} {f('agree_pct',5)} {f('confirm_ms',6)} {f('changes_per_min',5)} {f('cpu_pct',5)} {f('learned_pct',5)}")
+                lines.append(f"{c.get('name',c['id'])[:7]:7} {ph:6} {f('scan_ms',6)} {f('scan_p95',6)} {f('detect_pct',5)} {f('agree_pct',5)} {f('confirm_ms',6)} {f('changes_per_min',5)} {f('cpu_pct',5)} {f('learned_pct',5)}")
         self.tabletext.set('\n'.join(lines))
     def draw_charts(self):
         c=getattr(self,'benchcanvas',None)
@@ -554,7 +560,7 @@ class App:
             c.create_line(gx,gy+gh,gx+gw,gy+gh,fill='#4c5035')
             for i,cf in enumerate(cfgs):
                 cx=gx+slot*i+slot/2
-                c.create_text(cx,gy+gh+10,text=benchmod.SHORT.get(cf['id'],cf['id']),fill=MUTED,font=('Segoe UI',7))
+                c.create_text(cx,gy+gh+10,text=cf.get('name',cf['id']),fill=MUTED,font=('Segoe UI',7))
                 for j,ph in enumerate(benchmod.PHASES):
                     v=cf.get(ph,{}).get(key)
                     if v is None:continue
@@ -581,7 +587,7 @@ class App:
         if latest and not lines and not benchmod.baseline_ok(latest):
             self.rectext.set('No suggestions: Baseline saw no prompt in its static phase. Stand facing a prompt (e.g. in water) and run again.');return
         self.rectext.set('Suggestions from the newest complete test (highlighted in AUTO → 03):\n'+'\n'.join(lines) if lines else
-                         'No suggestions yet: run a test with some options ticked in AUTO → 03.')
+                         'No suggestions yet: RUN TEST in the STATS tab.')
     def apply_suggested(self):
         if not self.suggestions:self.status.set('No suggestions yet — run a test first.');return
         for k,(kind,_) in self.suggestions.items():

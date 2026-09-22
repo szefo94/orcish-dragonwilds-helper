@@ -2,7 +2,7 @@
 
 **A Windows companion for RuneScape: Dragonwilds with local OCR interaction automation, repeat and hold controls, performance diagnostics, and experimental fishing assistance.**
 
-Version **2.3** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
+Version **2.4** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
 
 Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can read an interaction prompt such as **Collect [E]**, check whether the action is allowed, and press the displayed key. You control where your character stands and looks. Repeat and Hold modes also work as configurable key and mouse-button controls.
 
@@ -169,7 +169,7 @@ See the [complete fishing guide](docs/FISHING.md) for timing, calibration limits
 
 The interface displays CPU and RAM history, scan duration, input counts, and capture/recognition status. Auto Presser offers optional faster detection, recognition-only processing, learned memory, templates, single-scan confirmation, DXGI capture, and DirectML acceleration. Some shortcuts are restricted when exclusions require surrounding text.
 
-The **Stats** tab compares a baseline with selected options, both while standing still and during a controlled camera sweep. Charts and recommendations help identify settings that work on your machine.
+The **Stats** tab compares a Baseline with every speed option available on your setup — automatically ticking them off in section 03 for you — both while standing still and during a controlled camera sweep. Each configuration is labelled by the letters of the options it has on (e.g. `FRLTSDG` = all seven on, `-` = Baseline); the plan and the running test both show pending time as M:SS. Charts and recommendations help identify settings that work on your machine.
 
 **Stats does not execute recognized interaction keys, but it does move the mouse for its camera-sweep test.** Keep the game foreground, leave the controls alone during the benchmark, and use F8 to abort. Recommendations are based on that test scene, not a guarantee for every resource or location.
 
@@ -192,7 +192,7 @@ From 2.3 onward, the updater accepts both `OrcPresser_*.zip` and `OrcishDragonwi
 python scripts/package.py
 ```
 
-The package is written to `dist/OrcPresser_2.3.zip` and excludes user data and virtual environments. Only use update archives from a source you trust; archives are not signed and updates are not transactional.
+The package is written to `dist/OrcPresser_<version>.zip` (the version in `src/orcpresser/version.py`, currently 2.4) and excludes user data and virtual environments. Only use update archives from a source you trust; archives are not signed and updates are not transactional.
 
 ### Git checkout
 

@@ -19,6 +19,16 @@ class Bench(unittest.TestCase):
         self.assertEqual(ids,['baseline','fast_det','memory','all'])
         self.assertEqual([c['id'] for c in bench.plan([])],['baseline'])
         self.assertTrue(all(not v for v in bench.plan(['gpu'])[0]['opts'].values()))
+    def test_plan_names_are_letter_codes(self):
+        names=[c['name'] for c in bench.plan(bench.OPTION_LABELS.keys())]
+        self.assertEqual(names[0],'-')                              # baseline, all off
+        self.assertEqual(names[1:-1],['F','R','L','T','S','D','G'])  # each option alone, canonical order
+        self.assertEqual(names[-1],'FRLTSDG')                        # all ticked together
+        self.assertEqual(bench.plan(['memory','fast_det'])[-1]['name'],'FL')       # canonical order, not ticked order
+        self.assertEqual(bench.plan([])[0]['name'],'-')
+    def test_fmt_time(self):
+        self.assertEqual(bench.fmt_time(0),'0:00');self.assertEqual(bench.fmt_time(65),'1:05')
+        self.assertEqual(bench.fmt_time(59.6),'1:00');self.assertEqual(bench.fmt_time(-5),'0:00')
     def test_camera_path_returns_home_and_repeats(self):
         paths=[]
         for _ in range(2):
