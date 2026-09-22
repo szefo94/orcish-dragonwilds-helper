@@ -7,12 +7,15 @@ from fishing_overlay import FishingOverlay
 
 class FishingPanel:
     def __init__(self,app,parent):
-        self.app=app;self.session=None;self.overlay=None;self.calibration=CastCalibration()
+        self.app=app;self.session=None;self.overlay=None
+        saved=app.settings.get('fishing_cast_bracket',{})
+        try:self.calibration=CastCalibration(float(saved.get('low',.1)),float(saved.get('high',1.2)))
+        except (AttributeError,TypeError,ValueError):self.calibration=CastCalibration()
         self.regions=app.settings.get('fishing_regions',{})
         if not isinstance(self.regions,dict):self.regions={}
         self.regions={k:v for k,v in self.regions.items() if k in ('bar','prompt','result','spot') and isinstance(v,list) and len(v)==4 and all(isinstance(n,(float,int)) and 0<=n<=1 for n in v) and v[2]>0 and v[3]>0 and v[0]+v[2]<=1.001 and v[1]+v[3]<=1.001}
-        self.record=tk.BooleanVar(value=False);self.auto=tk.BooleanVar(value=False)
-        self.release_blue=tk.BooleanVar(value=False);self.trial=tk.BooleanVar(value=False)
+        self.record=tk.BooleanVar(value=bool(app.settings.get('fishing_record',False)));self.auto=tk.BooleanVar(value=bool(app.settings.get('fishing_auto_cast',False)))
+        self.trial=tk.BooleanVar(value=False)
         self.duration=tk.StringVar(value=str(app.settings.get('fishing_cast_ms',600)))
         self.message=tk.StringVar(value='Select the fish indicator and Cast/Reel prompt regions. PREVIEW records decisions only.')
         bg=parent['bg']
@@ -26,7 +29,7 @@ class FishingPanel:
         for title,var in [('Record manual test (cropped images + A/D/LMB states)',self.record),
                           ('Automatic cast from the current position',self.auto),
                           ('Trial cast only (one cast, then stop)',self.trial),
-                          ('Release direction on blue (unverified alternative)',self.release_blue)]:
+                          ('Bot 101: blue waits for Reel (Hold)',tk.BooleanVar(value=True))]:
             tk.Checkbutton(parent,text=title,variable=var,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
         tk.Label(row,text='Cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left')
@@ -39,14 +42,17 @@ class FishingPanel:
         for kind in ('short','hit','long'):
             tk.Button(row,text='WAS '+kind.upper(),command=lambda k=kind:self.feedback(k)).pack(side='left',expand=True,fill='x')
         button('RESET CAST BRACKET (100–1200 ms)',self.reset)
+        button('NEW SPOT / REACQUIRE',self.reacquire)
         tk.Label(parent,textvariable=self.message,bg=bg,fg='#98c657',wraplength=365,justify='left',anchor='w').pack(fill='x',pady=6)
-    def reset(self):self.app.stop();self.calibration=CastCalibration();self.message.set('Bracket reset; maintain a fixed player position and camera.')
+    def save_bracket(self):self.app.persist('fishing_cast_bracket',{'low':self.calibration.low,'high':self.calibration.high})
+    def reset(self):self.app.stop();self.calibration=CastCalibration();self.save_bracket();self.message.set('Bracket reset; maintain a fixed player position and camera.')
+    def reacquire(self):self.app.stop('New spot / camera changed');self.calibration=CastCalibration();self.save_bracket();self.message.set('Move complete: cast timing invalidated. BAR/PROMPT regions remain saved; verify Preview before resuming.')
     def use_trial(self,kind):self.duration.set(str(round(self.calibration.trial(kind)*1000)));self.trial.set(True)
     def feedback(self,kind):
         self.app.stop()
         try:
             seconds=float(self.duration.get())/1000
-            next_=self.calibration.feedback(seconds,kind)
+            next_=self.calibration.feedback(seconds,kind);self.save_bracket()
             if kind=='hit':self.app.persist('fishing_cast_ms',round(seconds*1000));self.trial.set(False);self.message.set('Cast duration saved. Recalibrate if player/camera/rod changes.')
             else:self.duration.set(str(round(next_*1000)));self.message.set('Next midpoint selected; enable Trial cast and LIVE to try it.')
         except ValueError as e:self.message.set(str(e))
@@ -81,7 +87,7 @@ class FishingPanel:
         if not a.target or not a.io.game(a.target):a.status.set('Bind a Dragonwilds game window first.');return
         if not all(k in self.regions for k in ('bar','prompt')):a.status.set('Select BAR and PROMPT regions first.');return
         if self.record.get() and run!='Preview':a.status.set('Manual recording uses PREVIEW, so only you control the game.');return
-        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.auto.get(),blue_release=self.release_blue.get()).validate()
+        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.auto.get()).validate()
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False
         self.overlay=FishingOverlay(a.root)
