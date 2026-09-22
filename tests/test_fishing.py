@@ -93,6 +93,11 @@ class Fishing(unittest.TestCase):
     def test_blue_reel_releases_direction_before_lmb(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.5,'blue','Reel (Hold)')
         self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
+    def test_red_reel_also_overrides_direction_immediately(self):
+        self.fight();self.assertEqual(self.c.held,'A')
+        self.see(10.1,'red','Reel (Hold)');self.see(10.5,'red','Reel (Hold)')
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
     def test_stale_reel_text_does_not_hold_forever(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.5,'blue','Reel (Hold)')
         self.see(12.1,'blue','Reel (Hold)',10.5)
