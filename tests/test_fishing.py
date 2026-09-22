@@ -25,10 +25,12 @@ class Fishing(unittest.TestCase):
         self.see(10.2,'red');self.see(10.25,'red')
         self.assertEqual(self.c.held,'D');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
         self.see(10.8,'red');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
-    def test_reel_then_red_releases_mouse_before_direction(self):
+    def test_reel_stays_lmb_even_when_red_until_reel_disappears(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.55,'blue','Reel (Hold)')
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.see(10.6,'red','Reel (Hold)',10.55);self.see(10.65,'red','Reel (Hold)',10.55)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.see(11.0,'red','',11.0);self.see(11.1,'red','',11.1)
         self.assertEqual(self.events[-2:],[('LMB',False),('D',True)])
     def test_cached_ocr_is_not_second_confirmation(self):
         self.c.config.auto_cast=True
