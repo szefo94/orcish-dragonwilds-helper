@@ -15,14 +15,20 @@ class Fishing(unittest.TestCase):
     def test_preview_never_outputs(self):
         self.c.start(preview=True);self.fight();self.c.stop()
         self.assertEqual(self.events,[])
-    def test_red_probe_releases_before_opposite(self):
-        self.fight();self.see(10.4,'red')
-        self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
+    def test_red_holds_same_direction_without_pulsing(self):
+        self.fight();self.see(10.4,'red');self.see(11.0,'red')
+        self.assertEqual(self.events,[('A',True)])
+    def test_blue_keeps_direction_then_next_red_swaps_once(self):
+        self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
+        self.assertEqual(self.c.held,'A');self.assertEqual(self.events,[('A',True)])
+        self.see(10.2,'red');self.see(10.25,'red')
+        self.assertEqual(self.c.held,'D');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
+        self.see(10.8,'red');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
     def test_reel_then_red_releases_mouse_before_direction(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.55,'blue','Reel (Hold)')
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.see(10.6,'red','Reel (Hold)',10.55);self.see(10.65,'red','Reel (Hold)',10.55)
-        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
+        self.assertEqual(self.events[-2:],[('LMB',False),('D',True)])
     def test_cached_ocr_is_not_second_confirmation(self):
         self.c.config.auto_cast=True
         self.see(10,text='Cast (Hold)',stamp=10);self.see(10.1,text='Cast (Hold)',stamp=10)
@@ -52,9 +58,9 @@ class Fishing(unittest.TestCase):
     def test_confirmed_catch_stops(self):
         self.fight();self.see(10.1,text='You caught a fish');self.see(10.55,text='You caught a fish')
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'CAUGHT')
-    def test_blue_releases_direction_while_waiting_for_reel(self):
+    def test_blue_holds_direction_while_waiting_for_reel(self):
         self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
-        self.assertIsNone(self.c.held);self.assertIn('waiting for Reel',self.c.reason)
+        self.assertEqual(self.c.held,'A');self.assertIn('keep direction',self.c.reason)
     def test_blue_reel_releases_direction_before_lmb(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.5,'blue','Reel (Hold)')
         self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])

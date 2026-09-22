@@ -27,7 +27,7 @@ class FishingPanel:
         for title,var,key in [('Record manual test (cropped images + A/D/LMB states)',self.record,'fishing_record'),('Automatic cast from the current position',self.auto,'fishing_auto_cast')]:
             tk.Checkbutton(parent,text=title,variable=var,command=lambda v=var,k=key:(app.stop('Fishing settings changed'),app.persist(k,v.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
         tk.Checkbutton(parent,text='Trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
-        tk.Label(parent,text='Bot 101 rule: blue releases A/D and waits for confirmed Reel (Hold).',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
+        tk.Label(parent,text='Bot 101: hold A/D through blue; swap direction only when blue returns to red. Reel (Hold) overrides A/D.',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
         row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');tk.Entry(row,textvariable=self.duration,width=9).pack(side='right')
         self.duration.trace_add('write',lambda *_:app.stop('Cast duration changed'))
         tk.Label(parent,text='USE SHORT/MID/LONG selects a trial. Then label landing WAS SHORT, WAS LONG, or WAS HIT (correct).',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
@@ -77,7 +77,7 @@ class FishingPanel:
         try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.auto.get()).validate()
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False;self.overlay=FishingOverlay(a.root);a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
-        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set('Watching BAR + PROMPT. Blue waits for Reel (Hold). No fish/depleted stops safely: move manually, then NEW SPOT / REACQUIRE.')
+        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set('Watching BAR + PROMPT. A/D is held until the next red transition; Reel (Hold) overrides it with LMB. No fish/depleted stops safely.')
     def stop(self):
         if self.session:self.session.close();self.session=None
         if self.overlay:self.overlay.close();self.overlay=None

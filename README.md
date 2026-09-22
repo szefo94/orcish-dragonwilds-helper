@@ -161,7 +161,7 @@ The minimum setup is **BAR + PROMPT**. BAR is the red/blue tension indicator; PR
 
 For cast calibration, **USE SHORT** tries the current lower hold-time bound, **USE LONG** the upper bound, and **USE MID** the midpoint. After the bobber lands, **WAS SHORT** means it fell short of the target, **WAS LONG** means it went beyond it, and **WAS HIT** means the cast landed correctly and that duration should be saved. Moving the player or changing the camera invalidates this position-dependent timing; use **NEW SPOT / REACQUIRE** and recalibrate if automatic casting is used.
 
-During a fight, red tension probes A/D. Blue tension stops directional input while the controller waits for fresh OCR evidence. Once blue and **Reel (Hold)** are confirmed, A/D is released before LMB is held. The former release-on-blue experiment is no longer a user option because it conflicts with this core state flow.
+During a fight, the controller holds one direction continuously. When red becomes blue it keeps that same A/D key held; it does **not** pulse or alternate on a timer. When blue becomes red again it swaps A↔D once and holds the new direction. **Reel (Hold)** overrides either direction immediately: A/D is released and LMB is held. When red returns, the direction cycle resumes.
 
 If RESULT confirms **No fish here**, **depleted**, or another failure, the controller stops and releases input. Move the character manually to the next spot, use **NEW SPOT / REACQUIRE**, verify BAR/PROMPT in Preview, then resume. Fishing capture regions are stored in `data/settings.json`; Auto Presser's capture region is stored there as well.
 

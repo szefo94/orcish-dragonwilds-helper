@@ -16,15 +16,13 @@ class FishingConfig:
     cast_seconds: float = .6
     auto_cast: bool = False
     first_pull: str = 'A'
-    red_probe_seconds: float = .3
     stale_seconds: float = .75
     bite_timeout: float = 30.
     fight_timeout: float = 90.
     min_stamina: float = .08
 
     def validate(self):
-        for name,low,high in [('cast_seconds',.05,3.),('red_probe_seconds',.15,1.),
-                              ('stale_seconds',.2,2.),('bite_timeout',3.,120.),
+        for name,low,high in [('cast_seconds',.05,3.),('stale_seconds',.2,2.),('bite_timeout',3.,120.),
                               ('fight_timeout',5.,180.),('min_stamina',0.,1.)]:
             v=getattr(self,name)
             if not math.isfinite(v) or not low<=v<=high:raise ValueError(f'{name} must be {low}–{high}')
@@ -59,7 +57,7 @@ class FishingController:
     def start(self,preview=True,trial_only=False):
         self.stop();self.running=True;self.preview=preview;self.trial_only=trial_only
         self.state='READY';self.reason='Waiting for current fishing evidence';self.started=None
-        self.last_observation=None;self.last_color='unknown';self.color_count=0;self.text_count=0
+        self.last_observation=None;self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown';self.text_count=0
         self.text_kind='';self.text_seen=None;self.direction=self.config.first_pull;self.base_count=self.count
         self.changed=0.;self.cast_until=0.
     def release(self):
@@ -112,6 +110,10 @@ class FishingController:
         self.color_count=self.color_count+1 if o.color==self.last_color else 1
         self.last_color=o.color
         stable=self.color_count>=2
+        previous_stable=getattr(self,'stable_color','unknown')
+        transitioned=bool(stable and o.color!=previous_stable)
+        if transitioned:
+            self.previous_stable_color=previous_stable;self.stable_color=o.color
         if self.state=='READY':
             if stable and o.color in ('red','blue'):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
@@ -125,19 +127,26 @@ class FishingController:
             else:return
         if self.state not in ('FIGHT','REEL'):return
         if not stable:return
-        if o.color=='red':
-            # Red overrides a cached Reel prompt. Never pull and reel simultaneously.
-            if self.state=='REEL':self.release();self.state='FIGHT';self.changed=now
-            if self.held is None:self.set_key(self.direction);self.changed=now
-            elif now-self.changed>=self.config.red_probe_seconds:
+        if confirmed and kind=='reel' and o.color!='red':
+            # Reel wins while tension is not red: release A/D before holding the mouse.
+            self.state='REEL';self.set_key('LMB');self.reason='Reel (Hold) confirmed'
+        elif o.color=='red':
+            # Direction changes are driven by COLOR TRANSITIONS, never by a timer.
+            # First red starts first_pull. A later blue keeps that key held. When
+            # the indicator returns to red, swap A<->D once and hold it.
+            if self.state=='REEL':
+                self.release();self.state='FIGHT'
                 self.direction='D' if self.direction=='A' else 'A'
                 self.set_key(self.direction);self.changed=now
-        elif confirmed and kind=='reel' and o.color=='blue':
-            self.state='REEL';self.set_key('LMB')
+            elif self.held is None:
+                self.set_key(self.direction);self.changed=now
+            elif transitioned and previous_stable=='blue':
+                self.direction='D' if self.direction=='A' else 'A'
+                self.set_key(self.direction);self.changed=now
+            self.reason='Red tension — holding '+self.direction
         elif o.color=='blue' and self.state=='FIGHT':
-            # Blue without a confirmed Reel prompt is neutral: stop pulling and wait for OCR.
-            # Once Reel (Hold) is confirmed above, set_key('LMB') releases A/D first.
-            self.release();self.reason='Blue tension — waiting for Reel (Hold) confirmation'
+            # Keep the current A/D direction held. Do not pulse or alternate it.
+            self.reason='Blue tension — keep direction; watching for Reel (Hold)'
         elif o.color=='unknown':
             self.release();self.reason='Indicator unknown — waiting; not counted as a catch'
         elif self.state=='REEL' and kind!='reel':
