@@ -114,7 +114,7 @@ class FishingController:
             self.text_count=self.text_count+1 if kind==self.text_kind else 1
             self.text_seen=o.text_stamp;self.text_kind=kind
         confirmed=kind and self.text_count>=2
-        if confirmed and kind in ('caught','failed'):
+        if self.state!='WAIT_ACTIVE' and confirmed and kind in ('caught','failed'):
             self.release()
             if self.config.recurring:
                 self.state='WAIT_ACTIVE';self.reason='Round ended: '+kind+' — waiting for next fishing signal';self.changed=now
