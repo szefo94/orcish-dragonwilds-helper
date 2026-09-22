@@ -92,6 +92,7 @@ class FishingPanel:
         except ValueError as e:self.message.set(str(e))
     def select(self,name):
         a=self.app;a.stop()
+        if self.overlay:self.overlay.hide()
         if not a.target or a.visual:self.message.set('Bind the game first.');return
         x,y,w,h=a.io.rect(a.target)
         if min(w,h)<100:self.message.set('Restore the game window first.');return
