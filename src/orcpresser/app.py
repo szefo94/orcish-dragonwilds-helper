@@ -371,7 +371,7 @@ class App:
         b.pack(fill='x');b.basetext=b.cget('text');return b
     def build_speed(self,left):
         self.text(left,'03  /  SPEED & LEARNING',12,GOLD).pack(fill='x',pady=(12,4))
-        saved_opts=self.settings.get('speed_options',{})
+        saved_opts={} if self.safe else self.settings.get('speed_options',{})
         if not isinstance(saved_opts,dict):saved_opts={}
         self.opt={k:tk.BooleanVar(value=bool(saved_opts.get(k,False))) for k in ('fast_det','rec_only','memory','templates','single','dxgi','gpu')}
         self.optboxes['fast_det']=self.check(left,'Fast detection · native-size text finding (extra, ~2× faster OCR)',self.opt['fast_det'])
@@ -600,10 +600,10 @@ class App:
         for k,(kind,_) in self.suggestions.items():
             if kind=='suggest':self.opt[k].set(True)
             elif kind=='avoid':self.opt[k].set(False)
-        self.stop('Suggested options applied in AUTO → 03');self.update_plan()
+        self.persist('speed_options',{k:v.get() for k,v in self.opt.items()});self.stop('Suggested options applied in AUTO → 03');self.update_plan()
     def build_fishing(self,left,show):
         show(self.text(left,'01  /  FISHING · EXPERIMENTAL',12,GOLD),('Fishing',)).pack(fill='x')
-        show(self.text(left,'Calibration and supervised fishing · notes below are auto-saved',9,MUTED),('Fishing',)).pack(fill='x',pady=(2,4))
+        show(self.text(left,'Bot 101 + staged Advanced fishing · runtime guidance below',9,MUTED),('Fishing',)).pack(fill='x',pady=(2,4))
         from fishing_ui import FishingPanel
         controls=show(tk.Frame(left,bg=PANEL),('Fishing',));controls.pack(fill='x')
         self.fishing_panel=FishingPanel(self,controls)
