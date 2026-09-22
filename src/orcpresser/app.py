@@ -117,7 +117,7 @@ class App:
         self.ctrl=Controller(lambda k,d:None) if visual else Controller(self.io.output)
         self.target=0;self.region=(.25,.2,.65,.6);self.mode='Auto';self.generation=0
         self.jobs=queue.Queue(maxsize=1);self.results=queue.Queue();self.busy=False;self.ready=False
-        self.previous_hot=False;self.last_scan=0;self.scan_ms=0;self.history=deque(maxlen=90)
+        self.previous_hot=False;self.previous_reacquire=False;self.last_scan=0;self.scan_ms=0;self.history=deque(maxlen=90)
         self.proc=psutil.Process();self.proc.cpu_percent();self.thumb=None;self.selecting=False;self.last_focused=True
         self.run='Preview';self.last_run='Preview';self.reads=deque(maxlen=5);self.last_read=None
         self.meter=ReactionMeter();self.bench=None;self.benchproc=psutil.Process();self.optboxes={};self.geo=deque(maxlen=40);self.pending_clear=False;self.capture_backend='mss';self.engine='CPU'
@@ -189,7 +189,7 @@ class App:
         def show(w,modes):self.vis[w]=modes;return w
         MAN=('Repeat','Hold','Auto')
         show(self.text(left,'01  /  ORDERS',12,GOLD),MAN).pack(fill='x')
-        self.key=tk.StringVar(value=self.settings.get('key','LMB'));self.interval=tk.StringVar(value='100');self.duration=tk.StringVar(value='50')
+        self.key=tk.StringVar(value=self.settings.get('key','LMB'));self.interval=tk.StringVar(value=str(self.settings.get('interval_ms',100)));self.duration=tk.StringVar(value=str(self.settings.get('duration_ms',50)))
         self.timed=tk.BooleanVar(value=bool(self.settings.get('timed',False)))
         ttk.Style(self.root).theme_use('clam')
         ttk.Style(self.root).configure('Orc.TCombobox',fieldbackground='#12170f',background=PANEL,foreground=BONE,arrowcolor=GOLD,bordercolor='#4c5035')
@@ -208,15 +208,18 @@ class App:
             row=show(tk.Frame(left,bg=PANEL),vmodes);row.pack(fill='x',pady=4)
             self.fieldlabels[name]=self.text(row,title);self.fieldlabels[name].pack(side='left')
             tk.Entry(row,textvariable=var,width=12,bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',11)).pack(side='right')
-            var.trace_add('write',lambda *_:self.stop('Settings changed'))
-        self.repeat=tk.BooleanVar(value=False)
-        self.repeatbox=show(tk.Checkbutton(left,text='Repeat persistent tap prompts (uses interval + tap length above)',variable=self.repeat,command=lambda:self.stop('Options changed'),bg=PANEL,fg=GREEN,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,disabledforeground='#737765',anchor='w',font=('Segoe UI',9)),('Auto',))
+            setting_key='interval_ms' if name=='interval' else 'duration_ms'
+            var.trace_add('write',lambda *_,v=var,k=setting_key:(self.stop('Settings changed'),self.persist(k,v.get())))
+        self.repeat=tk.BooleanVar(value=bool(self.settings.get('repeat_prompts',False)))
+        self.repeatbox=show(tk.Checkbutton(left,text='Repeat persistent tap prompts (uses interval + tap length above)',variable=self.repeat,command=lambda:(self.stop('Options changed'),self.persist('repeat_prompts',self.repeat.get())),bg=PANEL,fg=GREEN,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,disabledforeground='#737765',anchor='w',font=('Segoe UI',9)),('Auto',))
         self.repeatbox.pack(fill='x',pady=(2,0))
         show(self.text(left,'Allowed actions · priority from top to bottom',10,GOLD),('Auto',)).pack(fill='x',pady=(12,4))
-        self.allowed={}
+        self.allowed={};saved_allowed=self.settings.get('allowed_actions',{})
+        if not isinstance(saved_allowed,dict):saved_allowed={}
         for name in getattr(PROFILE,'ui_order',PROFILE.action_names):
-            v=tk.BooleanVar(value=name in PROFILE.default_allowed and name not in PROFILE.opt_in);self.allowed[name]=v
-            show(tk.Checkbutton(left,text=name+(' (opt in)' if name in PROFILE.opt_in else ''),variable=v,command=lambda:self.stop('Action selection changed'),bg=PANEL,fg=BONE,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,font=('Segoe UI',10),anchor='w'),('Auto',)).pack(fill='x')
+            default=name in PROFILE.default_allowed and name not in PROFILE.opt_in
+            v=tk.BooleanVar(value=bool(saved_allowed.get(name,default)));self.allowed[name]=v
+            show(tk.Checkbutton(left,text=name+(' (opt in)' if name in PROFILE.opt_in else ''),variable=v,command=lambda n=name,v=v:(self.stop('Action selection changed'),self.persist('allowed_actions',{k:x.get() for k,x in self.allowed.items()})),bg=PANEL,fg=BONE,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,font=('Segoe UI',10),anchor='w'),('Auto',)).pack(fill='x')
         show(self.text(left,'Exclude · comma separated, e.g. Stone,Cabbage',10,GOLD),('Auto',)).pack(fill='x',pady=(10,2))
         self.exclude=tk.StringVar(value=self.settings.get('exclude',''))
         ex=show(tk.Entry(left,textvariable=self.exclude,bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',11)),('Auto',));ex.pack(fill='x')
@@ -232,8 +235,8 @@ class App:
         self.targettext=tk.StringVar(value='Bind game, then select the prompt area.')
         show(tk.Label(left,textvariable=self.targettext,bg=PANEL,fg=MUTED,wraplength=360,justify='left',anchor='w',font=('Segoe UI',9)),MAN).pack(fill='x',pady=6)
         self.text(left,'Unfocused opacity · 0 = minimize on focus loss',10,GOLD).pack(fill='x',pady=(4,0))
-        self.opacity=tk.IntVar(value=60)
-        tk.Scale(left,from_=0,to=100,orient='horizontal',variable=self.opacity,bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
+        self.opacity=tk.IntVar(value=int(self.settings.get('opacity',60)))
+        tk.Scale(left,from_=0,to=100,orient='horizontal',variable=self.opacity,command=lambda *_:self.persist('opacity',self.opacity.get()),bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
         before=set(left.pack_slaves());self.build_speed(left)
         for w in left.pack_slaves():
             if w not in before:self.vis[w]=('Auto',)
@@ -364,11 +367,13 @@ class App:
         if self.save_job:self.root.after_cancel(self.save_job)
         self.save_job=self.root.after(400,self.settings.save)
     def check(self,parent,text,var,enabled=True,note=''):
-        b=tk.Checkbutton(parent,text=text+(note if not enabled else ''),variable=var,command=lambda:self.stop('Speed options changed'),bg=PANEL,fg=BONE,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,disabledforeground='#737765',anchor='w',font=('Segoe UI',9),state='normal' if enabled else 'disabled')
+        b=tk.Checkbutton(parent,text=text+(note if not enabled else ''),variable=var,command=lambda:(self.stop('Speed options changed'),self.persist('speed_options',{k:v.get() for k,v in self.opt.items()})),bg=PANEL,fg=BONE,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,disabledforeground='#737765',anchor='w',font=('Segoe UI',9),state='normal' if enabled else 'disabled')
         b.pack(fill='x');b.basetext=b.cget('text');return b
     def build_speed(self,left):
         self.text(left,'03  /  SPEED & LEARNING',12,GOLD).pack(fill='x',pady=(12,4))
-        self.opt={k:tk.BooleanVar(value=False) for k in ('fast_det','rec_only','memory','templates','single','dxgi','gpu')}
+        saved_opts=self.settings.get('speed_options',{})
+        if not isinstance(saved_opts,dict):saved_opts={}
+        self.opt={k:tk.BooleanVar(value=bool(saved_opts.get(k,False))) for k in ('fast_det','rec_only','memory','templates','single','dxgi','gpu')}
         self.optboxes['fast_det']=self.check(left,'Fast detection · native-size text finding (extra, ~2× faster OCR)',self.opt['fast_det'])
         self.optboxes['rec_only']=self.check(left,'Recognition only · skip text finding when no exclusions',self.opt['rec_only'])
         self.optboxes['memory']=self.check(left,'Learned memory · skip OCR for prompts seen before',self.opt['memory'])
@@ -378,16 +383,16 @@ class App:
         self.gpucheck=self.optboxes['gpu']=self.check(left,'GPU · DirectML',self.opt['gpu'],self.gpu_ok,'  (Setup.cmd → 2 first)')
         row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=(6,0))
         self.text(row,'Learned data limit · MB').pack(side='left')
-        self.limit=tk.StringVar(value='4')
+        self.limit=tk.StringVar(value=str(self.settings.get('learned_limit_mb','4')))
         tk.Entry(row,textvariable=self.limit,width=6,bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',11)).pack(side='right')
-        self.limit.trace_add('write',lambda *_:self.stop('Learned data limit changed'))
+        self.limit.trace_add('write',lambda *_:(self.stop('Learned data limit changed'),self.persist('learned_limit_mb',self.limit.get())))
         row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=4)
         self.learntext=tk.StringVar(value='Learned: —')
         tk.Label(row,textvariable=self.learntext,bg=PANEL,fg=MUTED,anchor='w',font=('Segoe UI',9)).pack(side='left')
         RuneButton(row,'CLEAR LEARNED',self.clear_learned,165,32).pack(side='right')
         self.text(left,'Text span · keycap widths left of the keycap',10,GOLD).pack(fill='x',pady=(6,0))
-        self.span=tk.IntVar(value=int(SPAN))
-        tk.Scale(left,from_=4,to=30,orient='horizontal',variable=self.span,command=lambda *_:self.stop('Text span changed'),bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
+        self.span=tk.IntVar(value=int(self.settings.get('text_span',SPAN)))
+        tk.Scale(left,from_=4,to=30,orient='horizontal',variable=self.span,command=lambda *_:(self.stop('Text span changed'),self.persist('text_span',self.span.get())),bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
         row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=(2,8))
         RuneButton(row,'SUGGEST CROP',self.suggest_crop,177,38).pack(side='left')
         self.croptext=tk.StringVar(value='Scan a few prompts in PREVIEW first.')
@@ -420,7 +425,7 @@ class App:
     MODEHELP={'Repeat':'Presses the key again and again: each press lasts "Press length", a new press starts every "Repeat interval". Start with LIVE or \\ in the game.',
               'Hold':'Holds the key down. Timed ticked: releases after "Hold duration" and stops. Unticked: holds until you stop (\\, F8, or switching windows).',
               'Stats':'',
-              'Fishing':'Experimental: PREVIEW observes, LIVE assists one fishing round. Select regions, keep camera fixed. F8 releases all input. Read docs/FISHING.md first.'}
+              'Fishing':'Bot 101: BAR + REEL region, manual cast/movement. F7 = New spot / Reacquire, F8 = emergency release. Advanced mode is staged and never requires an online LLM.'}
     # ---------------------------------------------------------------- STATS tab: automated tests
     METRICS=(('scan_ms','Scan time · ms',False),('detect_pct','Detection %',True),('agree_pct','Agreement with baseline %',True),
              ('confirm_ms','Time to decision · ms',False),('changes_per_min','Label changes / min (camera · info only)',None),('cpu_pct','CPU % (this app)',False))
@@ -602,27 +607,7 @@ class App:
         from fishing_ui import FishingPanel
         controls=show(tk.Frame(left,bg=PANEL),('Fishing',));controls.pack(fill='x')
         self.fishing_panel=FishingPanel(self,controls)
-        frame=show(tk.Frame(left,bg=PANEL),('Fishing',));frame.pack(fill='both',expand=True)
-        sb=tk.Scrollbar(frame);sb.pack(side='right',fill='y')
-        self.fishtext=tk.Text(frame,height=7,wrap='word',bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',10),yscrollcommand=sb.set,padx=8,pady=6)
-        self.fishtext.pack(side='left',fill='both',expand=True);sb.configure(command=self.fishtext.yview)
-        f=self.folder/'fishing_notes.md'
-        try:txt=f.read_text(encoding='utf-8')
-        except OSError:
-            try:txt=(CODE/'fishing_notes_default.md').read_text(encoding='utf-8')
-            except OSError:txt=''
-        self.fishtext.insert('1.0',txt);self.fishtext.edit_modified(False);self.fish_job=None
-        self.fishtext.bind('<<Modified>>',self.fish_changed)
-    def fish_changed(self,e=None):
-        if not self.fishtext.edit_modified():return
-        self.fishtext.edit_modified(False)
-        if self.fish_job:self.root.after_cancel(self.fish_job)
-        self.fish_job=self.root.after(600,self.save_fish)
-    def save_fish(self):
-        self.fish_job=None
-        try:
-            tmp=self.folder/'fishing_notes.tmp';tmp.write_text(self.fishtext.get('1.0','end-1c'),encoding='utf-8');os.replace(tmp,self.folder/'fishing_notes.md')
-        except OSError:log.exception('saving fishing notes')
+        show(tk.Label(left,text='Runtime guidance appears above. Detailed instructions are in README.md and docs/FISHING.md.',bg=PANEL,fg=MUTED,justify='left',anchor='w',wraplength=410,font=('Segoe UI',9)),('Fishing',)).pack(fill='x',pady=(4,0))
     def visible(self,w):
         m=self.vis.get(w)
         return True if m is None else (m(self.mode) if callable(m) else self.mode in m)
@@ -893,6 +878,9 @@ class App:
                 hot=self.io.pressed(0xDC)
                 if self.previous_hot and not hot and not self.selecting:self.toggle()
                 self.previous_hot=hot
+                reacquire=self.io.pressed(0x76)  # F7
+                if self.previous_reacquire and not reacquire and not self.selecting and self.mode=='Fishing':self.fishing_panel.reacquire()
+                self.previous_reacquire=reacquire
                 if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
                 self.drain(now)
                 if self.ctrl.running:
