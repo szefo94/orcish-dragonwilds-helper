@@ -17,12 +17,13 @@ class FishingConfig:
     auto_cast: bool = False
     first_pull: str = 'A'
     stale_seconds: float = .75
+    unknown_grace_seconds: float = .4
     bite_timeout: float = 30.
     fight_timeout: float = 90.
     min_stamina: float = .08
 
     def validate(self):
-        for name,low,high in [('cast_seconds',.05,3.),('stale_seconds',.2,2.),('bite_timeout',3.,120.),
+        for name,low,high in [('cast_seconds',.05,3.),('stale_seconds',.2,2.),('unknown_grace_seconds',.1,2.),('bite_timeout',3.,120.),
                               ('fight_timeout',5.,180.),('min_stamina',0.,1.)]:
             v=getattr(self,name)
             if not math.isfinite(v) or not low<=v<=high:raise ValueError(f'{name} must be {low}–{high}')
@@ -52,14 +53,14 @@ class FishingController:
         self.running=False;self.held=None;self.count=0;self.base_count=0;self.preview=True
         self.state='IDLE';self.reason='';self.started=None;self.last_observation=None
         self.last_color='unknown';self.color_count=0;self.direction=self.config.first_pull
-        self.changed=0.;self.cast_until=0.;self.text_kind='';self.text_count=0;self.text_seen=None
+        self.changed=0.;self.cast_until=0.;self.text_kind='';self.text_count=0;self.text_seen=None;self.unknown_since=None
         self.trial_only=False
     def start(self,preview=True,trial_only=False):
         self.stop();self.running=True;self.preview=preview;self.trial_only=trial_only
         self.state='READY';self.reason='Waiting for current fishing evidence';self.started=None
         self.last_observation=None;self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown';self.text_count=0
         self.text_kind='';self.text_seen=None;self.direction=self.config.first_pull;self.base_count=self.count
-        self.changed=0.;self.cast_until=0.
+        self.changed=0.;self.cast_until=0.;self.unknown_since=None
     def release(self):
         if self.held:
             if not self.preview:self.output(self.held,False)
@@ -110,10 +111,13 @@ class FishingController:
         self.color_count=self.color_count+1 if o.color==self.last_color else 1
         self.last_color=o.color
         stable=self.color_count>=2
+        # Only red/blue are control states. Unknown frames are uncertainty, not a transition:
+        # they must not erase the last reliable color or manufacture a false direction change.
         previous_stable=getattr(self,'stable_color','unknown')
-        transitioned=bool(stable and o.color!=previous_stable)
+        transitioned=bool(stable and o.color in ('red','blue') and o.color!=previous_stable)
         if transitioned:
             self.previous_stable_color=previous_stable;self.stable_color=o.color
+        if o.color!='unknown':self.unknown_since=None
         if self.state=='READY':
             if stable and o.color in ('red','blue'):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
@@ -148,6 +152,14 @@ class FishingController:
             # Keep the current A/D direction held. Do not pulse or alternate it.
             self.reason='Blue tension — keep direction; watching for Reel (Hold)'
         elif o.color=='unknown':
-            self.release();self.reason='Indicator unknown — waiting; not counted as a catch'
+            # Scanning/recognition must not pulse a physical A/D hold. Keep the current
+            # directional key through short detector gaps; only a sustained unknown state
+            # beyond the grace window is treated as unsafe and released.
+            if self.unknown_since is None:self.unknown_since=now
+            if self.held in ('A','D') and now-self.unknown_since<self.config.unknown_grace_seconds:
+                self.reason='Indicator uncertain — keeping '+self.held+' held'
+            elif self.held in ('A','D'):
+                self.release();self.reason='Indicator unknown beyond grace — released direction'
+            else:self.reason='Indicator unknown — waiting; not counted as a catch'
         elif self.state=='REEL' and kind!='reel':
             self.release();self.state='FIGHT'
