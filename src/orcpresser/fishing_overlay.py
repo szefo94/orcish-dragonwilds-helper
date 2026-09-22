@@ -36,7 +36,8 @@ class FishingOverlay:
         for name,(l,t,r,b) in regions.items():
             x1,y1,x2,y2=l*w,t*h,(l+r)*w,(t+b)*h
             c.create_rectangle(x1,y1,x2,y2,outline='#a4d666',width=2)
-            c.create_text(x1,max(10,y1-12),text=name.upper(),anchor='w',fill='#f0d698',font=('Segoe UI',10,'bold'))
+            label='REEL' if name=='prompt' else name.upper()
+            c.create_text(x1,max(10,y1-12),text=label,anchor='w',fill='#f0d698',font=('Segoe UI',10,'bold'))
             if name=='spot' and info.get('spot'):
                 sx,sy,sw,sh=info['spot'];c.create_oval(x1+sx,y1+sy,x1+sx+sw,y1+sy+sh,outline='#f0d698',width=2)
         c.create_text(20,25,text=caption,anchor='nw',fill='#f0d698',font=('Consolas',12,'bold'),width=max(300,w-40))

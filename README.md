@@ -158,7 +158,7 @@ Fishing combines fast color observations with slower OCR in a separate controlle
 
 ### Fishing Bot 101 controls
 
-Select **Fishing Bot 101** for the minimal supervised mode. Its minimum setup is **BAR + REEL**. BAR is the red/blue tension indicator; REEL is the screen area where **Reel (Hold)** appears. The player still casts, positions the character, and moves between ponds manually. RESULT is recommended so the bot can stop on messages such as **No fish here** or **depleted**. SPOT is not required by Bot 101.
+Select **Fishing Bot 101** for the minimal supervised mode. Its minimum setup is **BAR + REEL**. The **Show calibration overlay** checkbox can display the currently saved BAR/REEL/RESULT/SPOT rectangles over the game even while the bot is idle, so regions can be adjusted visually; the preference is saved. BAR is the red/blue tension indicator; REEL is the screen area where **Reel (Hold)** appears. The player still casts, positions the character, and moves between ponds manually. RESULT is recommended so the bot can stop on messages such as **No fish here** or **depleted**. SPOT is not required by Bot 101.
 
 For cast calibration, **USE SHORT** tries the current lower hold-time bound, **USE LONG** the upper bound, and **USE MID** the midpoint. After the bobber lands, **WAS SHORT** means it fell short of the target, **WAS LONG** means it went beyond it, and **WAS HIT** means the cast landed correctly and that duration should be saved. Moving the player or changing the camera invalidates this position-dependent timing; use **NEW SPOT / REACQUIRE** and recalibrate if automatic casting is used.
 
