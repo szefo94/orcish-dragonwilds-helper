@@ -49,9 +49,18 @@ class Fishing(unittest.TestCase):
     def test_old_frame_cannot_start_action(self):
         self.c.observe(Observation(1,'red'),10);self.c.observe(Observation(1,'red'),10)
         self.assertEqual(self.events,[])
-    def test_unknown_is_not_a_catch(self):
-        self.fight();self.see(10.1);self.see(10.15)
-        self.assertTrue(self.c.running);self.assertIsNone(self.c.held);self.assertNotEqual(self.c.state,'CAUGHT')
+    def test_brief_unknown_keeps_direction_held(self):
+        self.fight();self.see(10.1);self.see(10.15);self.see(10.3)
+        self.assertTrue(self.c.running);self.assertEqual(self.c.held,'A');self.assertEqual(self.events,[('A',True)])
+    def test_sustained_unknown_releases_after_grace(self):
+        self.fight();self.see(10.1);self.see(10.15);self.see(10.56)
+        self.assertTrue(self.c.running);self.assertIsNone(self.c.held);self.assertEqual(self.events,[('A',True),('A',False)])
+    def test_unknown_gap_preserves_last_reliable_blue_for_swap(self):
+        self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
+        self.see(10.2);self.see(10.25)
+        self.assertEqual(self.c.held,'A')
+        self.see(10.3,'red');self.see(10.35,'red')
+        self.assertEqual(self.c.held,'D');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
     def test_no_fish_stops_for_manual_travel(self):
         self.fight();self.see(10.1,text='No fish here');self.see(10.55,text='No fish here')
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'FAILED')
@@ -76,6 +85,8 @@ class Fishing(unittest.TestCase):
     def test_invalid_config(self):
         for v in (0,99,float('nan'),float('inf')):
             with self.assertRaises(ValueError):FishingConfig(cast_seconds=v).validate()
+        for v in (0,.01,99,float('nan')):
+            with self.assertRaises(ValueError):FishingConfig(unknown_grace_seconds=v).validate()
     def test_calibration_bracket(self):
         b=CastCalibration();self.assertAlmostEqual(b.feedback(.65,'short'),.925)
         self.assertAlmostEqual(b.feedback(1.,'long'),.825)
