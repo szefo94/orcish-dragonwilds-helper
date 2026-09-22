@@ -167,6 +167,12 @@ class FishingController:
             if pull_confirmed or stable and o.color in ('red','blue'):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
                 self.reason='Fish hooked — pull prompts/bar detected'
+                # A confirmed Pull Left/Right prompt is strong phase evidence. If the
+                # same frame already shows red tension, begin the first pull immediately
+                # instead of waiting for a second red frame.
+                if pull_confirmed and o.color=='red':
+                    self.set_key(self.direction);self.reason='Fish hooked + red tension — holding '+self.direction
+                    return
             else:return
         if self.state not in ('FIGHT','REEL'):return
         if not stable:return
