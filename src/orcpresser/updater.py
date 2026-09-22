@@ -43,6 +43,10 @@ def zip_version(path):
         return None
 
 
+def is_github_snapshot(path):
+    return Path(path).name.lower().startswith('orcish-dragonwilds-helper-')
+
+
 def find_zips(root=ROOT):
     """Find packaged updates plus GitHub's Download ZIP name for this repository."""
     patterns=('OrcPresser_*.zip','OrcishDragonwildsHelper_*.zip','orcish-dragonwilds-helper-*.zip')
@@ -147,8 +151,12 @@ def main(argv):
         if not zips: print('No update found. Put orcish-dragonwilds-helper-main.zip (GitHub Download ZIP) or OrcishDragonwildsHelper_<version>.zip into this folder and run Update.cmd again.'); return 1
         v, zp = zips[-1]
     print(f'Installed: {cur}    Update file: {zp.name} (version {v})')
-    if vtuple(v) <= vtuple(cur) and not force:
+    if vtuple(v) < vtuple(cur) and not force:
+        print('Archive is older than the installed build (use Update.cmd --force only for intentional rollback).'); return 0
+    if vtuple(v) == vtuple(cur) and not force and not is_github_snapshot(zp):
         print('Already up to date (use Update.cmd --force to reinstall this version).'); archive_zips(upto=cur); return 0
+    if vtuple(v) == vtuple(cur) and is_github_snapshot(zp) and not force:
+        print('GitHub snapshot has the same public version; applying it because main may contain newer commits.')
     if not yes and input('Apply this update? Close Orcish Dragonwilds Helper first. [Y/n] ').strip().lower() not in ('', 'y', 'yes'):
         print('Cancelled.'); return 1
     old, new, req_changed = apply(zp)
