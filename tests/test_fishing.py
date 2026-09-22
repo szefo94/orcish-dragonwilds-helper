@@ -2,7 +2,7 @@
 import unittest
 import numpy as np
 from fishing import FishingController, FishingConfig, Observation, CastCalibration
-from fishing_capture import indicator, rect_pixels
+from fishing_capture import indicator, active_indicator, rect_pixels
 
 class Fishing(unittest.TestCase):
     def setUp(self):
@@ -122,5 +122,13 @@ class Fishing(unittest.TestCase):
         frame[:,63:65]=(50,68,208)      # sampled 2 px red live edge
         color,red,blue=indicator(frame)
         self.assertEqual(color,'red');self.assertLess(red,.01);self.assertGreater(blue,.15)
+    def test_active_indicator_white_label_and_icon(self):
+        frame=np.full((80,160,3),(110,30,120),dtype=np.uint8)
+        frame[12:20,18:142]=(245,245,245)
+        frame[46:72,68:92]=(245,245,245)
+        active,score=active_indicator(frame);self.assertTrue(active);self.assertGreater(score,.5)
+    def test_active_indicator_rejects_plain_background(self):
+        frame=np.full((80,160,3),(110,30,120),dtype=np.uint8)
+        active,score=active_indicator(frame);self.assertFalse(active);self.assertLess(score,.1)
     def test_region_on_negative_monitor(self):
         self.assertEqual(rect_pixels((-1920,0,1920,1080),(.5,.5,.25,.1)),dict(left=-960,top=540,width=480,height=108))
