@@ -137,9 +137,10 @@ The default controller requires **two matching scans** before acting. The option
 
 Fishing combines fast color observations with slower OCR in a separate controller. It is intended for supervised experiments and collecting evidence for the next iteration.
 
-### What 2.3 implements
+### Current fishing implementation
 
-- User-selected **BAR** and **PROMPT** capture regions, plus optional **RESULT** and **SPOT** regions.
+- Explicit **Fishing Bot 101** and **Advanced · EXP** modes.
+- User-selected **BAR** and **REEL** capture regions (REEL is stored internally as the prompt region for backward compatibility), plus optional **RESULT** and **SPOT** regions.
 - A click-through, non-activating overlay for selected regions and controller state. The overlay is disabled if Windows capture exclusion is unavailable.
 - **Preview** that simulates decisions without sending inputs.
 - Manual test recording of selected image crops, detection timestamps, and physical **A/D/LMB** states.
@@ -151,27 +152,33 @@ Fishing combines fast color observations with slower OCR in a separate controlle
 
 1. Equip a rod, stand near the fishing area, and keep the player position and camera fixed.
 2. Bind the game in the Fishing tab.
-3. Select BAR tightly around the red/blue indicator and PROMPT around Cast/Reel. Add RESULT for result/error messages if needed.
+3. Select **BAR** tightly around the red/blue indicator and **REEL** around the area where `Reel (Hold)` appears. Add RESULT for result/error messages if needed.
 4. Enable **Record manual test**, start **Preview**, and fish manually.
 5. Review the recording before trying **Live** assistance.
 
 ### Fishing Bot 101 controls
 
-The minimum setup is **BAR + PROMPT**. BAR is the red/blue tension indicator; PROMPT contains **Cast/Reel (Hold)**. RESULT is recommended so the bot can stop on messages such as **No fish here** or **depleted**. SPOT is an advanced/diagnostic region and is not required by Bot 101.
+Select **Fishing Bot 101** for the minimal supervised mode. Its minimum setup is **BAR + REEL**. BAR is the red/blue tension indicator; REEL is the screen area where **Reel (Hold)** appears. The player still casts, positions the character, and moves between ponds manually. RESULT is recommended so the bot can stop on messages such as **No fish here** or **depleted**. SPOT is not required by Bot 101.
 
 For cast calibration, **USE SHORT** tries the current lower hold-time bound, **USE LONG** the upper bound, and **USE MID** the midpoint. After the bobber lands, **WAS SHORT** means it fell short of the target, **WAS LONG** means it went beyond it, and **WAS HIT** means the cast landed correctly and that duration should be saved. Moving the player or changing the camera invalidates this position-dependent timing; use **NEW SPOT / REACQUIRE** and recalibrate if automatic casting is used.
 
 During a fight, the controller holds one direction continuously. When red becomes blue it keeps that same A/D key held; it does **not** pulse or alternate on a timer. When blue becomes red again it swaps A↔D once and holds the new direction. **Reel (Hold)** overrides either direction immediately: A/D is released and LMB is held. When red returns, the direction cycle resumes.
 
-If RESULT confirms **No fish here**, **depleted**, or another failure, the controller stops and releases input. Move the character manually to the next spot, use **NEW SPOT / REACQUIRE**, verify BAR/PROMPT in Preview, then resume. Fishing capture regions are stored in `data/settings.json`; Auto Presser's capture region is stored there as well.
+If RESULT confirms **No fish here**, **depleted**, or another failure, the controller stops and releases input. Move the character manually to the next spot, press **F7** or click **NEW SPOT / REACQUIRE**, verify BAR/REEL in Preview, then resume. Position-dependent cast timing is invalidated; screen-fixed regions remain saved.
 
 Color sampling targets **20 Hz**. Prompt OCR is queued approximately every **400 ms**, subject to processing time, and requires two distinct OCR observations for confirmed text actions.
+
+### Advanced · EXP mode
+
+Advanced mode exposes automatic cast timing/calibration and the optional SPOT diagnostic. **USE SHORT**, **USE MID**, and **USE LONG** choose the lower bound, midpoint, or upper bound of the current cast-time bracket. After a trial, **WAS SHORT** raises the lower bound, **WAS LONG** lowers the upper bound, and **WAS HIT** stores the successful duration. This calibration is tied to player/camera geometry and is reset by New spot / Reacquire.
+
+Advanced mode does **not** yet walk the player, steer the camera to ponds, or run unattended multi-spot fishing. Those capabilities remain staged work in `roadmap.md`. Core operation is local and does not require an online LLM.
 
 ### Not implemented yet
 
 Automatic positioning, walking, reliable pond-distance measurement, fish-direction tracking, screen-based stamina measurement, bait inventory management, and unattended repeated fishing cycles are not implemented. The SPOT contour is a visual diagnostic rather than proof of a valid cast. Catch and failure phrases remain provisional until verified against real gameplay.
 
-See the [complete fishing guide](docs/FISHING.md) for timing, calibration limits, recording details, and next steps. Editable in-app notes are stored separately from the shipped [default notes](src/orcpresser/fishing_notes_default.md).
+See the [complete fishing guide](docs/FISHING.md) for timing, calibration limits, recording details, and next steps. The old editable Fishing notes textbox has been removed; runtime guidance is shown directly in the Fishing controls.
 
 ## Performance and diagnostics
 
@@ -192,9 +199,9 @@ The **Stats** tab compares a Baseline with every speed option available on your 
 
 The legacy archive name is intentional: the 2.2 updater recognizes it. User settings, learned data, fishing notes, and the virtual environment remain in place. A full reinstall is normally unnecessary.
 
-From 2.3 onward, the updater accepts both `OrcPresser_*.zip` and `OrcishDragonwildsHelper_*.zip`. It chooses updates by the internal version, replaces application files, and retains backup material under `data/old_versions/`. Dependency installation runs when requirements change. If that installation fails, run **Setup.cmd → 1** before starting.
+The updater accepts packaged `OrcPresser_*.zip` / `OrcishDragonwildsHelper_*.zip` files **and GitHub's `orcish-dragonwilds-helper-main.zip` Download ZIP directly**. Put the downloaded ZIP beside `Update.cmd` and run it without extracting. For a GitHub main snapshot, a same public version is still applied because `main` can contain newer commits between version bumps. Older-version archives are rejected unless `--force` is explicitly used.
 
-**GitHub's automatic “Download ZIP” archive is source code, not the named update package.** For a fresh install it can be extracted directly. To make an updater-compatible package from this checkout, run:
+To build a versioned package from a checkout instead, run:
 
 ```sh
 python scripts/package.py

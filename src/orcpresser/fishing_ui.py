@@ -15,31 +15,53 @@ class FishingPanel:
         self.regions=app.settings.get('fishing_regions',{})
         if not isinstance(self.regions,dict):self.regions={}
         self.regions={k:v for k,v in self.regions.items() if k in ('bar','prompt','result','spot') and isinstance(v,list) and len(v)==4 and all(isinstance(n,(float,int)) and 0<=n<=1 for n in v) and v[2]>0 and v[3]>0 and v[0]+v[2]<=1.001 and v[1]+v[3]<=1.001}
+        self.mode=tk.StringVar(value=app.settings.get('fishing_mode','101'))
+        if self.mode.get() not in ('101','advanced'):self.mode.set('101')
         self.record=tk.BooleanVar(value=bool(app.settings.get('fishing_record',False)));self.auto=tk.BooleanVar(value=bool(app.settings.get('fishing_auto_cast',False)))
         self.trial=tk.BooleanVar(value=False);self.duration=tk.StringVar(value=str(app.settings.get('fishing_cast_ms',600)))
         self.message=tk.StringVar(value='Fishing Bot 101: set BAR and PROMPT first. RESULT is recommended for No fish/depleted detection.')
         bg=parent['bg']
         def button(text,fn):tk.Button(parent,text=text,command=fn,bg='#384829',fg='#e6d8b0',activebackground='#526737',relief='flat').pack(fill='x',pady=2)
         button('BIND GAME · switch to it within 3 seconds',app.bind_game)
+        modes=tk.Frame(parent,bg=bg);modes.pack(fill='x',pady=(2,4))
+        for value,title in [('101','FISHING BOT 101'),('advanced','ADVANCED · EXP')]:
+            tk.Radiobutton(modes,text=title,value=value,variable=self.mode,command=self.mode_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg).pack(side='left',expand=True,fill='x')
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
-        for name in ('bar','prompt','result','spot'):tk.Button(row,text=name.upper(),command=lambda n=name:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
-        tk.Label(parent,text='BAR = red/blue tension · PROMPT = Cast/Reel (required)\nRESULT = no-fish/catch messages (recommended) · SPOT = advanced/experimental',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
-        for title,var,key in [('Record manual test (cropped images + A/D/LMB states)',self.record,'fishing_record'),('Automatic cast from the current position',self.auto,'fishing_auto_cast')]:
-            tk.Checkbutton(parent,text=title,variable=var,command=lambda v=var,k=key:(app.stop('Fishing settings changed'),app.persist(k,v.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
-        tk.Checkbutton(parent,text='Trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
+        for key,label in [('bar','BAR'),('prompt','REEL'),('result','RESULT'),('spot','SPOT')]:tk.Button(row,text=label,command=lambda n=key:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
+        tk.Label(parent,text='BOT 101 requires BAR + REEL only. REEL is the screen area where Reel (Hold) appears.\nRESULT improves catch/no-fish detection. SPOT and automatic casting belong to Advanced.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
+        self.record_box=tk.Checkbutton(parent,text='Record manual test (cropped images + A/D/LMB states)',variable=self.record,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_record',self.record.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.record_box.pack(fill='x')
+        self.auto_box=tk.Checkbutton(parent,text='Advanced: automatic cast from current position',variable=self.auto,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_auto_cast',self.auto.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.auto_box.pack(fill='x')
+        self.trial_box=tk.Checkbutton(parent,text='Advanced: trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.trial_box.pack(fill='x')
         tk.Label(parent,text='Bot 101: hold A/D through blue; swap direction only when blue returns to red. Reel (Hold) overrides A/D.',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
-        row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');tk.Entry(row,textvariable=self.duration,width=9).pack(side='right')
-        self.duration.trace_add('write',lambda *_:app.stop('Cast duration changed'))
+        self.cast_row=row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Advanced cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');self.cast_entry=tk.Entry(row,textvariable=self.duration,width=9);self.cast_entry.pack(side='right')
+        self.duration.trace_add('write',self.duration_changed)
         tk.Label(parent,text='USE SHORT/MID/LONG selects a trial. Then label landing WAS SHORT, WAS LONG, or WAS HIT (correct).',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
+        self.trial_buttons=[]
         row=tk.Frame(parent,bg=bg);row.pack(fill='x',pady=3)
-        for kind in ('short','mid','long'):tk.Button(row,text='USE '+kind.upper(),command=lambda k=kind:self.use_trial(k)).pack(side='left',expand=True,fill='x')
+        for kind in ('short','mid','long'):
+            b=tk.Button(row,text='USE '+kind.upper(),command=lambda k=kind:self.use_trial(k));b.pack(side='left',expand=True,fill='x');self.trial_buttons.append(b)
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
-        for kind in ('short','hit','long'):tk.Button(row,text='WAS '+kind.upper(),command=lambda k=kind:self.feedback(k)).pack(side='left',expand=True,fill='x')
+        for kind in ('short','hit','long'):
+            b=tk.Button(row,text='WAS '+kind.upper(),command=lambda k=kind:self.feedback(k));b.pack(side='left',expand=True,fill='x');self.trial_buttons.append(b)
         button('RESET CAST BRACKET (100–1200 ms)',self.reset);button('NEW SPOT / REACQUIRE',self.reacquire)
         tk.Label(parent,textvariable=self.message,bg=bg,fg='#98c657',wraplength=365,justify='left',anchor='w').pack(fill='x',pady=6)
+        self.mode_changed(initial=True)
+    def duration_changed(self,*_):
+        self.app.stop('Cast duration changed')
+        try:value=int(self.duration.get())
+        except ValueError:return
+        if 50<=value<=3000:self.app.persist('fishing_cast_ms',value)
+    def mode_changed(self,initial=False):
+        advanced=self.mode.get()=='advanced'
+        self.app.persist('fishing_mode',self.mode.get())
+        state='normal' if advanced else 'disabled'
+        for w in [self.auto_box,self.trial_box,self.cast_entry,*self.trial_buttons]:w.configure(state=state)
+        if not advanced:self.trial.set(False)
+        if not initial:self.app.stop('Fishing mode changed')
+        self.message.set('Advanced: BAR + REEL + optional RESULT/SPOT; auto-cast calibration available. Movement/pool navigation is not autonomous yet.' if advanced else 'Fishing Bot 101: set BAR and REEL. Cast, position, and move manually; F7 = New spot / Reacquire.')
     def save_bracket(self):self.app.persist('fishing_cast_bracket',{'low':self.calibration.low,'high':self.calibration.high,'confirmed':self.calibration.confirmed})
     def reset(self):self.app.stop();self.calibration=CastCalibration();self.save_bracket();self.message.set('Bracket reset; maintain a fixed player position and camera.')
-    def reacquire(self):self.app.stop('New spot / camera changed');self.calibration=CastCalibration();self.save_bracket();self.message.set('Move complete: cast timing invalidated. BAR/PROMPT regions remain saved; verify Preview before resuming.')
+    def reacquire(self):self.app.stop('New spot / camera changed');self.calibration=CastCalibration();self.save_bracket();self.message.set('Travel pause complete: cast timing invalidated. BAR/REEL screen regions remain saved; verify Preview before resuming.')
     def use_trial(self,kind):self.duration.set(str(round(self.calibration.trial(kind)*1000)));self.trial.set(True)
     def feedback(self,kind):
         self.app.stop()
@@ -72,12 +94,12 @@ class FishingPanel:
         a=self.app
         if a.visual:return
         if not a.target or not a.io.game(a.target):a.status.set('Bind a Dragonwilds game window first.');return
-        if not all(k in self.regions for k in ('bar','prompt')):a.status.set('Select BAR and PROMPT regions first.');return
+        if not all(k in self.regions for k in ('bar','prompt')):a.status.set('Select BAR and REEL regions first.');return
         if self.record.get() and run!='Preview':a.status.set('Manual recording uses PREVIEW, so only you control the game.');return
-        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.auto.get()).validate()
+        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.mode.get()=='advanced' and self.auto.get()).validate()
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False;self.overlay=FishingOverlay(a.root);a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
-        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set('Watching BAR + PROMPT. A/D is held until the next red transition; Reel (Hold) overrides it with LMB. No fish/depleted stops safely.')
+        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set('Watching BAR + REEL. Hold A/D through blue; swap only on blue→red. Reel (Hold) overrides with LMB. No fish/depleted stops safely.')
     def stop(self):
         if self.session:self.session.close();self.session=None
         if self.overlay:self.overlay.close();self.overlay=None

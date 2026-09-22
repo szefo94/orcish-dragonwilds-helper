@@ -25,9 +25,10 @@ class Updater(unittest.TestCase):
         make_zip(r/'OrcPresser_2.1.zip','2.1');make_zip(r/'OrcPresser_zzz.zip','2.10');(r/'OrcPresser_1.9.zip').write_bytes(b'not a 2.x zip')
         self.assertEqual([v for v,_ in updater.find_zips(r)],['2.1','2.10'])        # numeric, 1.x ignored
     def test_github_download_zip_is_discovered(self):
-        r=self.install();make_zip(r/'orcish-dragonwilds-helper-main.zip','2.5')
+        r=self.install();p=make_zip(r/'orcish-dragonwilds-helper-main.zip','2.5')
         found=updater.find_zips(r);self.assertEqual([(v,p.name) for v,p in found],[('2.5','orcish-dragonwilds-helper-main.zip')])
-        self.assertEqual(updater.zip_version(found[0][1]),'2.5')
+        self.assertEqual(updater.zip_version(found[0][1]),'2.5');self.assertTrue(updater.is_github_snapshot(p))
+        self.assertFalse(updater.is_github_snapshot(r/'OrcishDragonwildsHelper_2.5.zip'))
     def test_apply_mirrors_and_keeps_data(self):
         r=self.install();z=make_zip(r/'OrcPresser_2.1.zip','2.1')
         old,new,req=updater.apply(z,r,r/'data',log=lambda *_:None)
