@@ -1,4 +1,4 @@
-"""Version updater: apply an OrcPresser_*.zip placed in the root folder.
+"""Version updater: apply a packaged release or GitHub repository zip placed in the root folder.
 
 Usage (Update.cmd calls this):  updater.py [zip-path] [--force] [--yes]
 - Picks the NEWEST zip by the version stored inside it (src/orcpresser/version.py), not by file name.
@@ -44,8 +44,12 @@ def zip_version(path):
 
 
 def find_zips(root=ROOT):
-    found = [(zip_version(p), p) for p in sorted(set(Path(root).glob('OrcPresser_*.zip')) | set(Path(root).glob('OrcishDragonwildsHelper_*.zip')))]
-    return sorted([(v, p) for v, p in found if v], key=lambda vp: vtuple(vp[0]))
+    """Find packaged updates plus GitHub's Download ZIP name for this repository."""
+    patterns=('OrcPresser_*.zip','OrcishDragonwildsHelper_*.zip','orcish-dragonwilds-helper-*.zip')
+    paths=set()
+    for pattern in patterns:paths.update(Path(root).glob(pattern))
+    found=[(zip_version(p),p) for p in sorted(paths)]
+    return sorted([(v,p) for v,p in found if v],key=lambda vp:vtuple(vp[0]))
 
 
 def _package_root(extracted):
@@ -140,7 +144,7 @@ def main(argv):
         if not v: print(f'{zp} is not an OrcPresser 2.x update zip.'); return 1
     else:
         zips = find_zips()
-        if not zips: print('No update found. Put OrcishDragonwildsHelper_<version>.zip (or legacy OrcPresser_<version>.zip) into this folder and run Update.cmd again.'); return 1
+        if not zips: print('No update found. Put orcish-dragonwilds-helper-main.zip (GitHub Download ZIP) or OrcishDragonwildsHelper_<version>.zip into this folder and run Update.cmd again.'); return 1
         v, zp = zips[-1]
     print(f'Installed: {cur}    Update file: {zp.name} (version {v})')
     if vtuple(v) <= vtuple(cur) and not force:
