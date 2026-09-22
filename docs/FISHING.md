@@ -1,11 +1,11 @@
-# Fishing 2.3 — experimental first iteration
+# Fishing — Bot 101 and staged Advanced mode
 
 Read `src/orcpresser/fishing_notes_default.md` for the original observations. User-edited `data/fishing_notes.md` remains untouched. This implementation has synthetic tests, but has not been tested in a live Dragonwilds session.
 
 ## First manual recording
 
 1. Equip a rod, stand near the fishing spot and keep position/camera fixed.
-2. Choose Fishing and bind the game. Select BAR tightly around the red/blue indicator, PROMPT around Cast/Reel, and optionally RESULT around result/error messages and SPOT around the ripple.
+2. Choose Fishing and bind the game. Select BAR tightly around the red/blue indicator, REEL around Cast/Reel, and optionally RESULT around result/error messages and SPOT around the ripple.
 3. Move the helper outside these regions or minimize it. Choose Record manual test and PREVIEW, then switch to the game.
 4. Fish manually. F8 stops. A click-through, non-activating overlay shows selected regions and proposed actions. It is hidden if Windows capture exclusion is unavailable.
 5. Review `data/fishing_sessions/`: timestamped observations and physical A/D/LMB states in JSONL, plus up to one set of cropped images per second. Recording is capped at five minutes / approximately 100 MiB per run; detection can continue. Share reviewed crops and timestamps to refine cue recognition.
@@ -41,3 +41,11 @@ When a result reports no fish/depletion, the controller stops and releases all h
 Cast buttons are a bracket search: **USE SHORT** = current lower bound, **USE LONG** = upper bound, **USE MID** = halfway. Label the landing with **WAS SHORT**, **WAS LONG**, or **WAS HIT**; HIT stores the successful duration.
 
 Advanced automatic pool detection, positioning and travel are intentionally separate from Bot 101. See `roadmap.md`.
+
+## Mode split
+
+**Fishing Bot 101** is the minimal supervised mode. Configure BAR and REEL, cast and position manually, and let the controller manage the fight. It holds one A/D direction continuously, keeps it held through blue, swaps once on a stable blue→red transition, and lets confirmed `Reel (Hold)` override A/D with LMB. F7 or **NEW SPOT / REACQUIRE** pauses the workflow after manual movement and invalidates position-dependent cast timing.
+
+**Advanced · EXP** enables automatic cast timing/calibration and the SPOT diagnostic. It is deliberately not presented as autonomous navigation: pool selection, camera steering, walking, and unattended multi-spot cycles are still pending.
+
+The old editable Fishing notes textbox has been removed. Runtime state and next-action guidance are displayed directly in the Fishing panel; longer explanations live here and in the README.
