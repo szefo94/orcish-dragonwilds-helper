@@ -26,15 +26,15 @@ class FishingPanel:
         for name in ('bar','prompt','result','spot'):
             tk.Button(row,text=name.upper(),command=lambda n=name:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
         tk.Label(parent,text='BAR = red/blue fish indicator · PROMPT = Cast/Reel\nRESULT = messages (optional) · SPOT = ripple area (optional)',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
-        for title,var in [('Record manual test (cropped images + A/D/LMB states)',self.record),
-                          ('Automatic cast from the current position',self.auto),
-                          ('Trial cast only (one cast, then stop)',self.trial),
-                          ('Bot 101: blue waits for Reel (Hold)',tk.BooleanVar(value=True))]:
-            tk.Checkbutton(parent,text=title,variable=var,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
+        for title,var,key in [('Record manual test (cropped images + A/D/LMB states)',self.record,'fishing_record'),('Automatic cast from the current position',self.auto,'fishing_auto_cast')]:
+            tk.Checkbutton(parent,text=title,variable=var,command=lambda v=var,k=key:(app.stop('Fishing settings changed'),app.persist(k,v.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
+        tk.Checkbutton(parent,text='Trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w').pack(fill='x')
+        tk.Label(parent,text='Bot 101 rule: blue releases A/D and waits for confirmed Reel (Hold).',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
         tk.Label(row,text='Cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left')
         tk.Entry(row,textvariable=self.duration,width=9).pack(side='right')
         self.duration.trace_add('write',lambda *_:app.stop('Cast duration changed'))
+        tk.Label(parent,text='USE SHORT/MID/LONG selects a trial. Then label landing WAS SHORT, WAS LONG, or WAS HIT (correct).',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
         row=tk.Frame(parent,bg=bg);row.pack(fill='x',pady=3)
         for kind in ('short','mid','long'):
             tk.Button(row,text='USE '+kind.upper(),command=lambda k=kind:self.use_trial(k)).pack(side='left',expand=True,fill='x')
@@ -95,7 +95,7 @@ class FishingPanel:
         self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
         a.run=run;a.last_run=run;a.armed=True;a.draw_run()
         a.status.set('FISHING ARMED — switch to the game; F8 stops')
-        self.message.set('Ready; overlay '+('enabled' if self.overlay.available else 'disabled: capture exclusion unavailable'))
+        self.message.set('Watching BAR + PROMPT. Blue waits for Reel (Hold). No fish/depleted stops safely: move manually, then NEW SPOT / REACQUIRE.')
     def stop(self):
         if self.session:self.session.close();self.session=None
         if self.overlay:self.overlay.close();self.overlay=None
@@ -118,6 +118,7 @@ class FishingPanel:
         a.ctrl.observe(o,now)
         caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}'
         caption+=f'\nred {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
+        if a.ctrl.state=='FAILED':caption+='\nNO FISH / FAILED — move manually, then NEW SPOT / REACQUIRE.'
         self.message.set(caption+'\n'+o.text[:180]+'\n'+a.ctrl.reason)
         a.scan_ms=info['ocr_ms'];a.capture_backend=info['backend']
         if self.overlay:self.overlay.show(a.io.rect(a.target),self.regions,caption,info)
