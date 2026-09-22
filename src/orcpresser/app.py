@@ -654,6 +654,7 @@ class App:
         self.target=h;self.io.target=h
         self.targettext.set(self.io.title(h)[:70]+'\nSaved capture region loaded; use SELECT REGION to refine.')
         self.status.set('BOUND — choose region, then start in the game with \\')
+        if self.mode=='Fishing' and getattr(self,'fishing_panel',None) and self.fishing_panel.show_overlay.get():self.fishing_panel.refresh_overlay()
     def select_region(self,suggested=None):
         """Region editor. Drag edges/corners to widen or narrow, drag inside to move, drag outside for a
         new box. ENTER or double-click applies, ESC cancels. With suggested, starts from the advisor's box."""
