@@ -97,5 +97,14 @@ class Fishing(unittest.TestCase):
         frame[:]=(0,0,255);self.assertEqual(indicator(frame)[0],'red')
         frame[:]=(255,0,0);self.assertEqual(indicator(frame)[0],'blue')
         frame[:10]=(0,0,255);self.assertEqual(indicator(frame)[0],'unknown')
+    def test_dragonwilds_pastel_blue_reference(self):
+        frame=np.full((16,59,3),(230,223,181),dtype=np.uint8)  # RGB 181/223/230 in BGR order
+        self.assertEqual(indicator(frame)[0],'blue')
+    def test_thin_red_burndown_edge_over_blue_fill(self):
+        frame=np.full((16,300,3),(12,13,16),dtype=np.uint8)
+        frame[:,1:63]=(230,223,181)     # sampled Dragonwilds blue
+        frame[:,63:65]=(50,68,208)      # sampled 2 px red live edge
+        color,red,blue=indicator(frame)
+        self.assertEqual(color,'red');self.assertLess(red,.01);self.assertGreater(blue,.15)
     def test_region_on_negative_monitor(self):
         self.assertEqual(rect_pixels((-1920,0,1920,1080),(.5,.5,.25,.1)),dict(left=-960,top=540,width=480,height=108))
