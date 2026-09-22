@@ -28,7 +28,7 @@ class Fishing(unittest.TestCase):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.55,'blue','Reel (Hold)')
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.see(10.6,'red','Reel (Hold)',10.55);self.see(10.65,'red','Reel (Hold)',10.55)
-        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
+        self.assertEqual(self.events[-2:],[('LMB',False),('D',True)])
     def test_cached_ocr_is_not_second_confirmation(self):
         self.c.config.auto_cast=True
         self.see(10,text='Cast (Hold)',stamp=10);self.see(10.1,text='Cast (Hold)',stamp=10)
