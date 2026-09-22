@@ -1,3 +1,21 @@
+# 2.4 — Orcish Dragonwilds Helper
+
+- **STATS tab now tests the whole option matrix itself.** RUN TEST no longer needs the speed options ticked
+  in AUTO → 03 beforehand: it ticks off every option available on this setup (GPU/DXGI only if actually
+  usable) and tests Baseline, each option alone, then all of them together.
+- **Letter codes replace the old 4-letter abbreviations.** Each configuration is named by the first letter
+  of every option it has on — Fast detection/Recognition only/Learned memory/Templates/Single-scan
+  confirm/DXGI capture/GPU → F/R/L/T/S/D/G — so all seven on reads `FRLTSDG` and Baseline (all off) reads
+  `-`. Used in the pending-test list, the results table and the chart axis labels (`bench.code`).
+- **Default phase length is 5 s** (was 15 s), still adjustable 5–60 s per phase; testing the full matrix by
+  default stays quick (Baseline + 7 alone + all ≈ 9 configurations).
+- **Pending/remaining time is shown as M:SS** (`bench.fmt_time`) both before starting (total pending time
+  for the whole plan) and while a test runs (time still pending).
+- Verified with 2 new pure-logic tests (letter-code plan naming in canonical option order, `fmt_time`
+  rounding/negative-clamping); all 11 `tests/test_bench.py` cases pass. The Tk UI changes in `app.py`
+  (auto-ticking options, updated labels/instructions) were reasoned through and compiled but not exercised —
+  this environment has no `tkinter`/`cv2`. Not tested on Windows or against the live game.
+
 # 2.3 — Orcish Dragonwilds Helper
 
 - Broader display/repository name; legacy module/data paths retained.
@@ -7,6 +25,14 @@
 - 110 automated regression and synthetic checks passed; original 2.2 updater compatibility checked with user notes preserved. No live Windows/gameplay test in this release preparation.
 
 # Changelog
+
+## Version 2.3 — public repository and experimental fishing
+
+- Broader display/repository name; legacy module/data paths retained.
+- Experimental fishing capture, no-input preview, manual recording, cast bracketing and supervised single-round fight/reel controller. See FISHING.md for limits.
+- Public repository scaffolding and source-only packaging.
+- Hardened local ZIP update validation and backups of replaced code.
+- 110 automated regression and synthetic checks passed; original 2.2 updater compatibility checked with user notes preserved. No live Windows/gameplay test in this release preparation.
 
 ## Version 2.2 — fewer files
 
