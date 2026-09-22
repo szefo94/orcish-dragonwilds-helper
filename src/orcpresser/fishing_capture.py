@@ -129,7 +129,7 @@ class FishingCapture:
                     with self.lock:text,stamp,active,active_stamp,ocr_ms,error=self.text,self.text_stamp,self.active,self.active_stamp,self.ocr_ms,self.error
                     o=Observation(now,color,text,stamp,active=active,active_stamp=active_stamp)
                     physical={k:self.io.pressed(v) for k,v in [('A',0x41),('D',0x44),('LMB',1)]}
-                    info=dict(red=red,blue=blue,ocr_ms=ocr_ms,backend=grab.last_backend,spot=candidate,physical=physical)
+                    info=dict(red=red,blue=blue,active=active,active_stamp=active_stamp,ocr_ms=ocr_ms,backend=grab.last_backend,spot=candidate,physical=physical)
                     if error:raise RuntimeError(error)
                     if log and now-self.started<300 and self.bytes<100*1024*1024:
                         line=json.dumps(dict(observation=asdict(o),**info))+'\n';log.write(line);self.bytes+=len(line)
