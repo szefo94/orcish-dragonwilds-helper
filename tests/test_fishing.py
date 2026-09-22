@@ -64,7 +64,7 @@ class Fishing(unittest.TestCase):
         self.assertEqual(self.c.held,'D');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
     def test_no_fish_stops_for_manual_travel(self):
         self.fight();self.see(10.1,text='No fish here');self.see(10.55,text='No fish here')
-        self.assertFalse(self.c.running);self.assertEqual(self.c.state,'FAILED')
+        self.assertFalse(self.c.running);self.assertEqual(self.c.state,'DEPLETED')
     def test_confirmed_catch_stops(self):
         self.fight();self.see(10.1,text='You caught a fish');self.see(10.55,text='You caught a fish')
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'CAUGHT')
