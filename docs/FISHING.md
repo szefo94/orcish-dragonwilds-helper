@@ -49,3 +49,7 @@ Advanced automatic pool detection, positioning and travel are intentionally sepa
 **Advanced · EXP** enables automatic cast timing/calibration and the SPOT diagnostic. It is deliberately not presented as autonomous navigation: pool selection, camera steering, walking, and unattended multi-spot cycles are still pending.
 
 The old editable Fishing notes textbox has been removed. Runtime state and next-action guidance are displayed directly in the Fishing panel; longer explanations live here and in the README.
+
+## Recurring rounds and ACTIVE signal
+
+The optional **ACTIVE** region should tightly cover the `Stop Fishing` label/icon that appears while the game considers a fishing round active. With **Recurring rounds** enabled, the controller does not stop after a normal catch or recoverable failure. It releases A/D/LMB, waits for the previous ACTIVE signal to disappear, then waits for a fresh ACTIVE signal before rearming BAR/REEL handling. This clear-then-reappear handshake prevents stale end-of-round UI from immediately starting another fight. If ACTIVE is not calibrated, the controller falls back to waiting for the BAR to disappear and return. `No fish here`, `depleted`, and bait-required states still stop the bot for manual intervention.

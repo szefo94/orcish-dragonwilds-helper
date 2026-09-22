@@ -68,7 +68,7 @@ class FishingCapture:
         self.io,self.target,self.regions=io,target,dict(regions)
         self.record=record;self.dxgi=dxgi;self.closed=threading.Event()
         self.results=queue.Queue(maxsize=1);self.ocr_jobs=queue.Queue(maxsize=1)
-        self.lock=threading.Lock();self.text='';self.text_stamp=0.;self.ocr_ms=0.;self.error=''
+        self.lock=threading.Lock();self.text='';self.text_stamp=0.;self.active=False;self.active_stamp=0.;self.ocr_ms=0.;self.error=''
         self.started=time.monotonic();self.folder=None;self.bytes=0
         if record:
             from datetime import datetime
@@ -92,11 +92,16 @@ class FishingCapture:
             while not self.closed.is_set():
                 try:stamp,images=self.ocr_jobs.get(timeout=.2)
                 except queue.Empty:continue
-                lines=[];start=time.monotonic()
-                for frame in images:
-                    result,_=ocr(frame)
-                    lines += [str(r[1]) for r in result or [] if float(r[2])>=.8]
-                with self.lock:self.text=' | '.join(lines);self.text_stamp=stamp;self.ocr_ms=(time.monotonic()-start)*1000
+                lines=[];active=False;start=time.monotonic()
+                for name,frame in images:
+                    work=cv2.resize(frame,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC) if name=='active' else frame
+                    result,_=ocr(work)
+                    found=[str(r[1]) for r in result or [] if float(r[2])>=.75]
+                    if name=='active':
+                        joined=' '.join(found).lower();active=('stop' in joined and 'fish' in joined)
+                    else:lines += found
+                with self.lock:
+                    self.text=' | '.join(lines);self.text_stamp=stamp;self.active=active;self.active_stamp=stamp;self.ocr_ms=(time.monotonic()-start)*1000
         except Exception as e:
             with self.lock:self.error='Fishing OCR: '+str(e)
     def capture(self):
@@ -116,20 +121,20 @@ class FishingCapture:
                     color,red,blue=indicator(bar)
                     images=[]
                     if now-last_text>=.4 and self.ocr_jobs.empty():
-                        for name in ('prompt','result'):
-                            if name in self.regions:images.append(grab.grab(rect_pixels(client,self.regions[name])))
+                        for name in ('prompt','result','active'):
+                            if name in self.regions:images.append((name,grab.grab(rect_pixels(client,self.regions[name]))))
                         self.ocr_jobs.put_nowait((now,images));last_text=now
                     if 'spot' in self.regions and now-last_spot>.25:
                         candidate=spot_candidate(grab.grab(rect_pixels(client,self.regions['spot'])));last_spot=now
-                    with self.lock:text,stamp,ocr_ms,error=self.text,self.text_stamp,self.ocr_ms,self.error
-                    o=Observation(now,color,text,stamp)
+                    with self.lock:text,stamp,active,active_stamp,ocr_ms,error=self.text,self.text_stamp,self.active,self.active_stamp,self.ocr_ms,self.error
+                    o=Observation(now,color,text,stamp,active=active,active_stamp=active_stamp)
                     physical={k:self.io.pressed(v) for k,v in [('A',0x41),('D',0x44),('LMB',1)]}
                     info=dict(red=red,blue=blue,ocr_ms=ocr_ms,backend=grab.last_backend,spot=candidate,physical=physical)
                     if error:raise RuntimeError(error)
                     if log and now-self.started<300 and self.bytes<100*1024*1024:
                         line=json.dumps(dict(observation=asdict(o),**info))+'\n';log.write(line);self.bytes+=len(line)
                         if now-last_save>=1:
-                            for name,im in [('bar',bar)]+[(f'text{i}',im) for i,im in enumerate(images)]:
+                            for name,im in [('bar',bar)]+[(f'text-{name}',im) for name,im in images]:
                                 p=self.folder/f'{now-self.started:08.3f}-{name}.png';cv2.imwrite(str(p),im);self.bytes+=p.stat().st_size
                             log.flush();last_save=now
                     self.offer((o,info,None))

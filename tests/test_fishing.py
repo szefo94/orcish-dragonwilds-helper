@@ -8,8 +8,9 @@ class Fishing(unittest.TestCase):
     def setUp(self):
         self.events=[];self.c=FishingController(lambda k,d:self.events.append((k,d)))
         self.c.start(preview=False);self.c.tick(10)
-    def see(self,t,color='unknown',text='',stamp=None):
-        self.c.observe(Observation(t,color,text,t if stamp is None else stamp),t)
+    def see(self,t,color='unknown',text='',stamp=None,active=None,active_stamp=None):
+        ts=t if stamp is None else stamp;ats=t if active_stamp is None else active_stamp
+        self.c.observe(Observation(t,color,text,ts,active=active,active_stamp=ats),t)
     def fight(self):
         self.see(10,'red');self.see(10.05,'red')
     def test_preview_never_outputs(self):
@@ -63,10 +64,25 @@ class Fishing(unittest.TestCase):
         self.assertEqual(self.c.held,'D');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
     def test_no_fish_stops_for_manual_travel(self):
         self.fight();self.see(10.1,text='No fish here');self.see(10.55,text='No fish here')
-        self.assertFalse(self.c.running);self.assertEqual(self.c.state,'FAILED')
+        self.assertFalse(self.c.running);self.assertEqual(self.c.state,'DEPLETED')
     def test_confirmed_catch_stops(self):
         self.fight();self.see(10.1,text='You caught a fish');self.see(10.55,text='You caught a fish')
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'CAUGHT')
+    def test_recurring_waits_for_active_clear_then_new_active(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
+        self.see(10,'red',active=True);self.see(10.4,'red',active=True)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+        self.see(10.8,'blue','You caught a fish',active=True);self.see(11.2,'blue','You caught a fish',active=True)
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CLEAR');self.assertIsNone(self.c.held)
+        self.see(11.6,'unknown','You caught a fish',active=True);self.assertEqual(self.c.state,'WAIT_CLEAR')
+        self.see(12.0,'unknown','You caught a fish',active=False);self.see(12.4,'unknown','You caught a fish',active=False)
+        self.assertEqual(self.c.state,'WAIT_ACTIVE')
+        self.see(12.8,'red',active=True);self.see(13.2,'red',active=True)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+    def test_recurring_depleted_still_stops(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True));self.c.start(False);self.c.tick(10);self.fight()
+        self.see(10.5,text='No fish here');self.see(10.9,text='No fish here')
+        self.assertFalse(self.c.running);self.assertEqual(self.c.state,'DEPLETED')
     def test_blue_holds_direction_while_waiting_for_reel(self):
         self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
         self.assertEqual(self.c.held,'A');self.assertIn('keep direction',self.c.reason)
