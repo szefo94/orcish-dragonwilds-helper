@@ -61,7 +61,7 @@ class FishingPanel:
         overlay=self.ensure_overlay()
         if not overlay.available:
             self.message.set('Overlay is unavailable on this system/capture mode.');return
-        overlay.show(a.io.rect(a.target),self.regions,caption,{'spot':None})
+        overlay.show(a.io.rect(a.target),self.regions,caption,{'spot':None,'app_minimized':a.root.state()=='iconic','running':bool(getattr(a.ctrl,'running',False)),'preview':bool(getattr(a.ctrl,'preview',False)),'state':getattr(a.ctrl,'state','IDLE'),'held':getattr(a.ctrl,'held',None)})
     def overlay_changed(self):
         self.app.persist('fishing_show_overlay',self.show_overlay.get())
         if self.show_overlay.get():self.refresh_overlay()
@@ -158,6 +158,8 @@ class FishingPanel:
         caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}';caption+=f'\nred {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
         if a.ctrl.state=='FAILED':caption+='\nNO FISH / FAILED — move manually, then NEW SPOT / REACQUIRE.'
         self.message.set(caption+'\n'+o.text[:180]+'\n'+a.ctrl.reason);a.scan_ms=info['ocr_ms'];a.capture_backend=info['backend']
-        if self.show_overlay.get():self.ensure_overlay().show(a.io.rect(a.target),self.regions,caption,info)
+        if self.show_overlay.get():
+            overlay_info=dict(info);overlay_info.update(app_minimized=a.root.state()=='iconic',running=a.ctrl.running,preview=a.ctrl.preview,state=a.ctrl.state,held=a.ctrl.held)
+            self.ensure_overlay().show(a.io.rect(a.target),self.regions,caption,overlay_info)
         elif self.overlay:self.overlay.hide()
         if not a.ctrl.running:a.stop(a.ctrl.reason)
