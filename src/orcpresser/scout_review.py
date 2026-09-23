@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse,csv,os,time
 from pathlib import Path
 import cv2
-from aim_lab import impact_features,moving_candidates
+from aim_lab import impact_features,moving_candidates,target_hud_candidates
 
 EXTRA=["analysis_status","suggested_label","suggestion_reason","review_status","reviewed_at"]
 LABELS=["target","head","moose_body","moose_head","deer_body","deer_head","chicken_body","chicken_head",
@@ -48,8 +48,12 @@ def analyze_rows(session,rows,reanalyze=False):
                     delay=int(float(r.get("delay_ms") or 0));focus=r.get("focus_source") or "unknown"
                     impact=impact_features(img,prev) if prev is not None and prev.shape==img.shape else {}
                     motions=moving_candidates(img,prev,3) if prev is not None and prev.shape==img.shape else []
+                    huds=target_hud_candidates(img,2)
                     hit=impact.get("change",0)>.025 and (impact.get("bright",0)>.015 or impact.get("warm",0)>.003 or impact.get("yellow",0)>.003)
-                    if delay==0:
+                    if huds:
+                        sug="close_aimed_target"
+                        reason=f"green target HP HUD detected ({huds[0].get('reason')}); confirm species/body/head"
+                    elif delay==0:
                         sug="aim_context" if focus=="crosshair" else "cursor_context"
                         reason=f"first frame; focus={focus}; tell reviewer what is under focus"
                     elif hit:
