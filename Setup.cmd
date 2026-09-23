@@ -126,6 +126,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\Install-TelemetryTo
 if errorlevel 1 goto failed
 goto end_ok
 
+:ue4ss_experimental
+if not exist "%PY%" goto noinstall
+echo.
+echo   Starting WinGDK UE4SS recovery...
+echo   Dragonwilds must be fully closed.
+echo   A Windows Administrator prompt may appear.
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\Install-ExperimentalUE4SS.ps1"
+set "RC=%ERRORLEVEL%"
+echo.
+if not "%RC%"=="0" (
+  echo   UE4SS recovery exited with code %RC%.
+  echo   Read the messages above; nothing should be left half-installed because the script rolls back on failure.
+  goto end_fail
+)
+echo   UE4SS recovery finished successfully.
+goto end_ok
+
 :nopython
 echo   Install Python 3.12 64-bit from python.org (with the Python launcher and Tcl/Tk), then run Setup.cmd again.
 goto end_fail
