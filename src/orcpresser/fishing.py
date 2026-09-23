@@ -29,7 +29,7 @@ class FishingConfig:
     recurring: bool = False
     require_active: bool = False
     first_pull: str = 'A'
-    stale_seconds: float = .75
+    stale_seconds: float = 1.5
     unknown_grace_seconds: float = .4
     bite_timeout: float = 30.
     fight_timeout: float = 90.
