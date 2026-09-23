@@ -38,7 +38,8 @@ class WinIO:
         self.u.VkKeyScanW.argtypes=[w.WCHAR];self.u.VkKeyScanW.restype=ctypes.c_short
         self.lock=threading.RLock();self.held=None;self.target=0;self.heartbeat=time.monotonic();self.tripped=False
         self.used=set()   # every key/button pressed this session; F8, close and exit send key-up for all
-        threading.Thread(target=self.watchdog,daemon=True).start()
+        self.closed=threading.Event()
+        self.watchdog_thread=threading.Thread(target=self.watchdog,daemon=True,name='input-watchdog');self.watchdog_thread.start()
         atexit.register(self.release_all)
     def foreground(self):return self.u.GetForegroundWindow()
     def title(self,h):
@@ -93,11 +94,14 @@ class WinIO:
                 try:self.event(k,False)
                 except Exception:pass
     def watchdog(self):
-        while True:
-            time.sleep(.025)
+        while not self.closed.wait(.025):
             if self.pressed(0x77):self.tripped=True;self.release_all()   # F8: panic, release everything
             elif self.held and (self.foreground()!=self.target or time.monotonic()-self.heartbeat>1.2):
                 self.tripped=True;self.release()
+    def close(self):
+        self.closed.set();self.release_all()
+        t=getattr(self,'watchdog_thread',None)
+        if t and t is not threading.current_thread() and t.is_alive():t.join(timeout=.5)
 
 class RuneButton(tk.Canvas):
     def __init__(self,parent,text,command,width=140,height=46):
@@ -652,20 +656,31 @@ class App:
         if getattr(self,'mode','')=='Stats' and hasattr(self,'plantext'):self.update_plan();self.root.after_idle(self.draw_charts)
         if hasattr(self,'hint'):self.draw_run()
     def choose_mode(self,m):
-        self.stop('Mode changed');self.mode=m
-        if getattr(self.ctrl,'mode','')=='Fishing' and m!='Fishing':self.ctrl=Controller(lambda k,d:None) if self.visual else Controller(self.io.output)
+        if m==self.mode:return
+        old=self.mode
+        self.stop(f'Mode changed: {old} → {m}')
+        # Every tab is a fresh runtime boundary. Persisted configuration/calibration remains,
+        # but controller/session/detector runtime state must not leak across tools.
+        self.mode=m
+        self.ctrl=Controller(lambda k,d:None) if self.visual else Controller(self.io.output)
+        self.armed=False;self.last_scan=0;self.scan_ms=0
+        if self.io:
+            self.io.release_all();self.io.heartbeat=time.monotonic()
         for key,b in self.modebuttons.items():b.active=key==m;b.draw()
         self.update_mode_fields()
+        if hasattr(self,'status'):self.status.set(f'{m} ready — runtime state reset')
     def stop(self,reason='STOPPED'):
         if getattr(self,'bench',None) and not self.bench.done:
             back=self.bench.abort(reason)
             if back and self.io:self.io.move(back)
             self.finish_bench()
-        self.ctrl.stop();self.generation+=1
+        self.ctrl.stop();self.generation+=1;self.armed=False
+        if getattr(self,'io',None):self.io.release_all()
         if getattr(self,'fishing_panel',None):self.fishing_panel.stop()
         if getattr(self,'aim_lab',None):self.aim_lab.stop()
         if getattr(self,'scout_lab',None):self.scout_lab.stop()
         self.scout_stop(reason)
+        if getattr(self,'status_overlay',None):self.status_overlay.hide()
         if hasattr(self,'status'):self.status.set(reason)
         if hasattr(self,'hint'):self.draw_run()
     def scout_start(self,domain,run):
@@ -1124,7 +1139,11 @@ class App:
         import traceback
         traceback.print_exception(typ,value,tb)
     def close(self):
-        self.stop()
+        self.stop('Application closing')
+        # Destroy feature-owned overlays after their worker threads have stopped.
+        if getattr(self,'fishing_panel',None):self.fishing_panel.shutdown()
+        if getattr(self,'aim_lab',None):self.aim_lab.shutdown()
+        if getattr(self,'scout_lab',None):self.scout_lab.shutdown()
         if getattr(self,'settings',None):
             try:self.save_window()
             except tk.TclError:pass
@@ -1132,12 +1151,18 @@ class App:
                 self.settings.set('engine_ok',None)   # closed early, not a stall: no safe start next time
             self.settings.set('clean_exit',True);self.settings.save()
         if getattr(self,"status_overlay",None):self.status_overlay.close()
-        if self.io:self.io.release_all()
         if self.thread:
-            # Let the worker save learned data (bounded wait; a running scan finishes first).
+            # Let the persistent Auto/OCR worker save learned data and exit cleanly.
             try:self.jobs.put(None,timeout=1)
-            except queue.Full:pass
-            self.thread.join(timeout=2)
+            except queue.Full:
+                # An in-flight scan owns the worker; wait briefly for its result and try once more.
+                deadline=time.monotonic()+2.0
+                while self.thread.is_alive() and time.monotonic()<deadline and self.jobs.full():time.sleep(.02)
+                try:self.jobs.put_nowait(None)
+                except queue.Full:pass
+            self.thread.join(timeout=4)
+            if self.thread.is_alive():log.warning('OCR worker did not exit within close timeout; daemon termination will occur with process exit')
+        if self.io:self.io.close()
         self.root.destroy()
 
 log=logging.getLogger('orcpresser')

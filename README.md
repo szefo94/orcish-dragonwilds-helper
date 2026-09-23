@@ -190,6 +190,12 @@ The **Stats** tab compares a Baseline with every speed option available on your 
 
 When **Unfocused opacity = 0**, the main helper minimizes on focus loss and a click-through **four-corner status HUD** becomes the primary runtime view over the bound game. Overlay windows are explicitly revived/reasserted as topmost after tab-out/tab-in and after feature stop/start, rather than relying only on the original Tk window mapping. It also appears when the helper is manually minimized. The HUD is available for Repeat, Hold, Auto Presser, Fishing, Aim Lab, Scout Lab and Stats. The corners use distinct high-contrast colours and show mode/state, live recognition or detector output, performance/Scout telemetry, and in-game controls or configuration. Bottom and right panels are clamped to the game client dimensions so they do not extend beyond the visible game area, including on ultrawide displays. If something genuinely requires returning to the full application — for example binding a target, selecting a calibration region, reacquiring a fishing spot, or handling an error — a small amber/red **↩ APP** badge appears near the top centre rather than covering the screen. The HUD is excluded from capture when Windows display-affinity exclusion is available.
 
+## Runtime lifecycle and tab isolation
+
+Feature tabs are runtime boundaries. Switching between Repeat/Hold/Auto/Fishing/Aim/Scout/Stats stops the active controller, releases every key/mouse button touched by the helper, stops Fishing/Aim/Scout worker sessions, closes Scout memory handles, hides runtime overlays, increments the recognition generation so stale OCR results are discarded, and creates a fresh generic controller for the new tab. Persisted configuration such as calibration regions, memory candidate definitions and user settings remains intact.
+
+Application shutdown additionally joins Fishing capture/OCR, Aim tracking, Scout Lab and the input-watchdog threads. The persistent Auto OCR worker receives its shutdown sentinel, saves learned data, and is given a bounded join window before the process exits. No helper-owned child OS processes are intentionally spawned; OCR/OpenCV runtime threads are in-process.
+
 ## Updates
 
 ### Existing OrcPresser 2.2 installation

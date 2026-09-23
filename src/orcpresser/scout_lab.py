@@ -137,8 +137,12 @@ class ScoutLabSession:
         if self.capture_lmb:self._prepare_labels()
         self.thread=threading.Thread(target=self._run,daemon=True,name="scout-lab");self.thread.start()
 
-    def close(self):
+    def close(self,wait=True):
+        """Stop Scout sampling and release the process handle before returning."""
         self.closed.set()
+        if wait:
+            t=getattr(self,"thread",None)
+            if t and t is not threading.current_thread() and t.is_alive():t.join(timeout=2.0)
         if self.memory:self.memory.close();self.memory=None
 
     def _offer(self,value):
@@ -453,8 +457,14 @@ class ScoutLabPanel:
     def stop(self):
         s=self.session;self.session=None
         if s:s.close()
-        if getattr(self.app,"scout",None):self.app.scout_stop("Scout Lab stopped")
+        # Stop a sidecar even if its recorder was already closed elsewhere.
+        self.stop_sidecar()
+        if s and getattr(self.app,"scout",None):self.app.scout_stop("Scout Lab stopped")
+        self.live.set("No samples yet.")
         if s:self.status.set("Stopped. Raw Scout Lab logs preserved in data/scout_sessions.")
+
+    def shutdown(self):
+        self.stop()
 
     def start_sidecar(self,domain=None):
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return

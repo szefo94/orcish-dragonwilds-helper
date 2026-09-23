@@ -138,9 +138,13 @@ class FishingPanel:
         a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set(('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.')
     def stop(self):
         if self.session:self.session.close();self.session=None
-        if self.overlay:
-            if self.show_overlay.get():self.refresh_overlay()
-            else:self.overlay.hide()
+        # Runtime/calibration overlays must never survive a mode switch or stop.
+        if self.overlay:self.overlay.hide()
+        self.message.set('Fishing stopped — runtime state cleared; saved calibration regions remain available.')
+
+    def shutdown(self):
+        self.stop()
+        if self.overlay:self.overlay.close();self.overlay=None
     def tick(self,now,fg):
         a=self.app
         if not self.session:return

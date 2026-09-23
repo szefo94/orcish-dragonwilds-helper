@@ -95,7 +95,16 @@ class FishingCapture:
         self.reader=threading.Thread(target=self.read_text,daemon=True,name='fishing-ocr')
         self.worker=threading.Thread(target=self.capture,daemon=True,name='fishing-capture')
         self.reader.start();self.worker.start()
-    def close(self):self.closed.set()
+    def close(self,wait=True):
+        """Stop both capture/OCR workers. Safe to call repeatedly."""
+        self.closed.set()
+        # Unblock an OCR worker waiting on queue.get quickly; timeout remains a fallback.
+        try:self.ocr_jobs.put_nowait((time.monotonic(),[]))
+        except queue.Full:pass
+        if wait:
+            current=threading.current_thread()
+            for t in (getattr(self,"worker",None),getattr(self,"reader",None)):
+                if t and t is not current and t.is_alive():t.join(timeout=2.0)
     def offer(self,value):
         try:self.results.put_nowait(value)
         except queue.Full:
