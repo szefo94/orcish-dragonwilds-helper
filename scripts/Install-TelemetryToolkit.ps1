@@ -12,16 +12,12 @@ param(
     [string]$UE4SSZip = ""
 )
 
-
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Py = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 $ExternalRoot = Join-Path $RepoRoot "tools\external"
 $DownloadRoot = Join-Path $ExternalRoot "downloads"
-if (-not $UE4SSZip) {
-    $repoZip = Join-Path $RepoRoot "RE-UE4SS-main.zip"
-    if (Test-Path $repoZip) { $UE4SSZip = $repoZip }
-}
+$PF86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
 New-Item -ItemType Directory -Force -Path $ExternalRoot,$DownloadRoot | Out-Null
 
 function Write-Section([string]$Text) { Write-Host ""; Write-Host ("=== " + $Text + " ===") -ForegroundColor Cyan }
@@ -29,6 +25,14 @@ function Write-Ok([string]$Text) { Write-Host ("[OK]   " + $Text) -ForegroundCol
 function Write-Warn([string]$Text) { Write-Host ("[WARN] " + $Text) -ForegroundColor Yellow }
 function Write-Bad([string]$Text) { Write-Host ("[MISS] " + $Text) -ForegroundColor Red }
 function Test-Command([string]$Name) { return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue) }
+
+function Invoke-Step([string]$Name,[scriptblock]$Body) {
+    try { & $Body }
+    catch {
+        Write-Warn "$Name failed: $($_.Exception.Message)"
+        $script:HadWarnings = $true
+    }
+}
 
 function Invoke-GitHubLatestAsset {
     param([string]$Repository,[string[]]$Patterns,[string]$Destination)
@@ -39,16 +43,18 @@ function Invoke-GitHubLatestAsset {
         $asset = $release.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
         if ($asset) { break }
     }
-    if (-not $asset) { throw "No release asset matched patterns: $($Patterns -join ', ')" }
+    if (-not $asset) { throw "No release asset matched: $($Patterns -join ', ')" }
     $dest = Join-Path $Destination $asset.name
-    Write-Host "Downloading $($asset.name) from $Repository ..."
-    Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $dest
+    if (-not (Test-Path $dest)) {
+        Write-Host "Downloading $($asset.name) from $Repository ..."
+        Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $dest
+    } else { Write-Ok "Using already downloaded $($asset.name)" }
     return $dest
 }
 
 function Get-SteamLibraries {
     $roots = New-Object System.Collections.Generic.List[string]
-    $steam = Join-Path ${env:ProgramFiles(x86)} "Steam"
+    $steam = Join-Path $PF86 "Steam"
     if (Test-Path $steam) { $roots.Add($steam) }
     $vdf = Join-Path $steam "steamapps\libraryfolders.vdf"
     if (Test-Path $vdf) {
@@ -61,21 +67,46 @@ function Get-SteamLibraries {
     return $roots
 }
 
+function Test-DragonwildsExe([string]$Path) {
+    if (-not $Path -or -not (Test-Path $Path)) { return $false }
+    return ([IO.Path]::GetFileName($Path) -ieq "RSDragonwilds-Win64-Shipping.exe")
+}
+
 function Resolve-DragonwildsExe {
-    if ($GameExe -and (Test-Path $GameExe)) { return (Resolve-Path $GameExe).Path }
-    $proc = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.ProcessName -like "*Dragonwilds*" -or $_.ProcessName -like "*Win64-Shipping*"
-    } | Select-Object -First 1
-    if ($proc) {
-        try { $p = $proc.MainModule.FileName; if ($p -and (Test-Path $p)) { return $p } } catch {}
+    if ($GameExe) {
+        if (Test-DragonwildsExe $GameExe) { return (Resolve-Path $GameExe).Path }
+        throw "-GameExe must point to RSDragonwilds-Win64-Shipping.exe, not '$GameExe'"
     }
+
+    $proc = Get-Process -Name "RSDragonwilds-Win64-Shipping" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($proc) {
+        try {
+            $p = $proc.MainModule.FileName
+            if (Test-DragonwildsExe $p) { return $p }
+        } catch {}
+    }
+
     foreach ($root in Get-SteamLibraries) {
         $common = Join-Path $root "steamapps\common"
         if (-not (Test-Path $common)) { continue }
-        $hit = Get-ChildItem -Path $common -Filter "Dragonwilds-Win64-Shipping.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        $hit = Get-ChildItem -Path $common -Filter "RSDragonwilds-Win64-Shipping.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($hit) { return $hit.FullName }
     }
+
+    $commonGuesses = @(
+        (Join-Path $PF86 "Steam\steamapps\common\RSDragonwilds\RSDragonwilds\Binaries\Win64\RSDragonwilds-Win64-Shipping.exe"),
+        (Join-Path $env:ProgramFiles "Steam\steamapps\common\RSDragonwilds\RSDragonwilds\Binaries\Win64\RSDragonwilds-Win64-Shipping.exe")
+    )
+    foreach ($p in $commonGuesses) { if (Test-DragonwildsExe $p) { return $p } }
     return $null
+}
+
+function Find-MistakenEosInstall {
+    $base = Join-Path $PF86 "Epic Games\Epic Online Services\managedArtifacts"
+    if (-not (Test-Path $base)) { return $null }
+    return Get-ChildItem $base -Filter "main.lua" -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\Mods\\OrcishScout\\scripts\\main\.lua$' } |
+        Select-Object -First 1
 }
 
 function Test-Ue4ssBinaryZip([string]$ZipPath) {
@@ -88,30 +119,38 @@ function Test-Ue4ssBinaryZip([string]$ZipPath) {
     } finally { $zip.Dispose() }
 }
 
+function Resolve-UE4SSArchive {
+    if ($UE4SSZip) {
+        if (Test-Ue4ssBinaryZip $UE4SSZip) { return (Resolve-Path $UE4SSZip).Path }
+        Write-Warn "Configured UE4SS archive is source/non-runtime: $UE4SSZip"
+    }
+    foreach ($name in @("zDEV-UE4SS_v3.0.1.zip","UE4SS_v3.0.1.zip","zDEV-UE4SS*.zip","UE4SS_v*.zip")) {
+        $hit = Get-ChildItem $RepoRoot -Filter $name -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($hit -and (Test-Ue4ssBinaryZip $hit.FullName)) {
+            Write-Ok "Using local UE4SS binary archive: $($hit.FullName)"
+            return $hit.FullName
+        }
+    }
+    return Invoke-GitHubLatestAsset -Repository "UE4SS-RE/RE-UE4SS" -Patterns @('^zDEV-UE4SS_v.*\.zip$','^UE4SS_v.*\.zip$') -Destination $DownloadRoot
+}
+
 function Install-UE4SS {
     param([string]$ExePath)
     Write-Section "UE4SS"
-    if (-not $ExePath) { Write-Bad "Dragonwilds executable not found. Start the game once or rerun with -GameExe <path>."; return }
+    if (-not $ExePath) { Write-Bad "RSDragonwilds-Win64-Shipping.exe not found. Start Dragonwilds or pass -GameExe."; return }
+    if (-not (Test-DragonwildsExe $ExePath)) { throw "Refusing UE4SS install: target is not RSDragonwilds-Win64-Shipping.exe" }
+
     $gameDir = Split-Path -Parent $ExePath
-    Write-Host "Game executable: $ExePath"
-
-    $zip = $UE4SSZip
-    if ($zip -and (Test-Path $zip)) {
-        if (Test-Ue4ssBinaryZip $zip) { Write-Ok "Local UE4SS binary archive looks usable: $zip" }
-        else { Write-Warn "Local archive looks like SOURCE CODE, not a runnable UE4SS release: $zip"; $zip = $null }
-    } elseif ($zip) { Write-Warn "Configured local UE4SS archive not found: $zip"; $zip = $null }
-
-    if (-not $zip) {
-        Write-Host "Fetching latest stable zDEV binary release from UE4SS-RE/RE-UE4SS..."
-        $zip = Invoke-GitHubLatestAsset -Repository "UE4SS-RE/RE-UE4SS" -Patterns @('^zDEV-UE4SS_v.*\.zip$','(?i)zDEV.*\.zip$') -Destination $DownloadRoot
-    }
+    Write-Ok "Correct game executable: $ExePath"
+    $zip = Resolve-UE4SSArchive
 
     $backup = Join-Path $gameDir ("orcish_ue4ss_backup_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
-    $existing = @("UE4SS.dll","UE4SS-settings.ini","dwmapi.dll","xinput1_3.dll","Mods","ue4ss") | ForEach-Object { Join-Path $gameDir $_ } | Where-Object { Test-Path $_ }
+    $existing = @("UE4SS.dll","UE4SS-settings.ini","dwmapi.dll","xinput1_3.dll","Mods","ue4ss") |
+        ForEach-Object { Join-Path $gameDir $_ } | Where-Object { Test-Path $_ }
     if ($existing.Count -gt 0) {
         New-Item -ItemType Directory -Force -Path $backup | Out-Null
         foreach ($item in $existing) { Copy-Item -Recurse -Force $item $backup }
-        Write-Ok "Existing UE4SS-related files backed up to $backup"
+        Write-Ok "Existing UE4SS files backed up: $backup"
     }
 
     Expand-Archive -Path $zip -DestinationPath $gameDir -Force
@@ -126,7 +165,7 @@ function Install-UE4SS {
     $modsFile = Join-Path $modsDir "mods.txt"
     if (-not (Test-Path $modsFile)) { New-Item -ItemType File -Force -Path $modsFile | Out-Null }
     $modsText = Get-Content -Raw $modsFile -ErrorAction SilentlyContinue
-    if ($modsText -notmatch '(?im)^\s*OrcishScout\s*:\s*1\s*$') { Add-Content -Path $modsFile -Value "OrcishScout : 1" }
+    if ($modsText -notmatch '(?im)^\s*OrcishScout\s*:\s*1\s*$') { Add-Content $modsFile "OrcishScout : 1" }
 
     $telemetryDir = Join-Path $RepoRoot "data\ue4ss"
     New-Item -ItemType Directory -Force -Path $telemetryDir | Out-Null
@@ -135,62 +174,159 @@ function Install-UE4SS {
     if (Test-Path $lua) {
         $luaText = Get-Content -Raw $lua
         $luaText = [regex]::Replace($luaText,'local OUTPUT = \[\[.*?\]\]','local OUTPUT = [[' + $outFile + ']]')
-        Set-Content -Path $lua -Value $luaText -Encoding UTF8
+        Set-Content $lua $luaText -Encoding UTF8
     }
+    Write-Ok "UE4SS + OrcishScout installed into the Dragonwilds binary folder."
+}
 
-    if ((Test-Path (Join-Path $gameDir "dwmapi.dll")) -or (Test-Path (Join-Path $gameDir "UE4SS.dll")) -or (Test-Path (Join-Path $gameDir "ue4ss\UE4SS.dll"))) {
-        Write-Ok "UE4SS installed beside the game."
-        Write-Ok "OrcishScout bridge installed at $bridgeDst"
-        Write-Ok "Bridge output: $outFile"
-    } else { Write-Warn "Extraction completed, but runtime DLLs were not found in expected locations." }
+function Find-X64Dbg {
+    $cmd = Get-Command x64dbg.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $wingetRoot = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+    if (Test-Path $wingetRoot) {
+        $hit = Get-ChildItem $wingetRoot -Filter "x64dbg.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($hit) { return $hit.FullName }
+    }
+    return $null
+}
+
+function Find-ReClass {
+    $roots = @((Join-Path $ExternalRoot "ReClass.NET"),$RepoRoot)
+    foreach ($root in $roots) {
+        if (Test-Path $root) {
+            $hit = Get-ChildItem $root -Filter "ReClass.NET.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($hit) { return $hit.FullName }
+        }
+    }
+    return $null
+}
+
+function Find-SevenZip {
+    $cmd = Get-Command 7z.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($p in @((Join-Path $env:ProgramFiles "7-Zip\7z.exe"),(Join-Path $PF86 "7-Zip\7z.exe"))) {
+        if (Test-Path $p) { return $p }
+    }
+    return $null
+}
+
+function Ensure-SevenZip {
+    $seven = Find-SevenZip
+    if ($seven) { return $seven }
+    if (-not (Test-Command winget)) { throw "7-Zip required for ReClass.NET .rar extraction and winget is unavailable." }
+    winget install --id 7zip.7zip --exact --silent --accept-package-agreements --accept-source-agreements
+    $seven = Find-SevenZip
+    if (-not $seven) { throw "7-Zip install completed but 7z.exe was not found." }
+    return $seven
+}
+
+function Find-CheatEngine {
+    $uninstallKeys = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    foreach ($key in $uninstallKeys) {
+        foreach ($app in Get-ItemProperty $key -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "Cheat Engine*" }) {
+            if ($app.DisplayIcon) {
+                $p = ($app.DisplayIcon -replace '^"|"$','') -replace ',\d+$',''
+                if (Test-Path $p) { return $p }
+            }
+            if ($app.InstallLocation -and (Test-Path $app.InstallLocation)) {
+                $hit = Get-ChildItem $app.InstallLocation -Filter "cheatengine*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($hit) { return $hit.FullName }
+            }
+        }
+    }
+    foreach ($root in @($env:ProgramFiles,$PF86)) {
+        foreach ($dir in Get-ChildItem $root -Directory -Filter "Cheat Engine*" -ErrorAction SilentlyContinue) {
+            $hit = Get-ChildItem $dir.FullName -Filter "cheatengine*.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($hit) { return $hit.FullName }
+        }
+    }
+    return $null
+}
+
+function Find-Wpa {
+    $cmd = Get-Command wpa.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $root = Join-Path $PF86 "Windows Kits\10\Windows Performance Toolkit"
+    $p = Join-Path $root "wpa.exe"
+    if (Test-Path $p) { return $p }
+    return $null
 }
 
 function Install-Frida {
     Write-Section "Frida"
-    if (-not (Test-Path $Py)) { Write-Bad "Orcish virtual environment missing. Run Setup.cmd option 1 first."; return }
+    if (-not (Test-Path $Py)) { throw "Run Setup.cmd option 1 first." }
     & $Py -m pip install -r (Join-Path $RepoRoot "src\requirements-telemetry.txt")
-    if ($LASTEXITCODE -eq 0) {
-        $v = & $Py -c "import frida; print(frida.__version__)" 2>$null
-        Write-Ok "Frida installed: $v"
-    } else { Write-Bad "Frida installation failed." }
+    if ($LASTEXITCODE -ne 0) { throw "pip returned $LASTEXITCODE" }
+    $v = & $Py -c "import frida; print(frida.__version__)"
+    Write-Ok "Frida $v"
 }
 
 function Install-X64Dbg {
     Write-Section "x64dbg"
-    if (-not (Test-Command "winget")) { Write-Bad "winget not available."; return }
+    $found = Find-X64Dbg
+    if ($found) { Write-Ok "Already installed: $found"; return }
+    if (-not (Test-Command winget)) { throw "winget unavailable" }
     winget install --id x64dbg.x64dbg --exact --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -eq 0) { Write-Ok "x64dbg installed/updated through winget." } else { Write-Warn "x64dbg install returned code $LASTEXITCODE" }
-}
-
-function Install-WPT {
-    Write-Section "Windows Performance Toolkit"
-    if (Test-Command "wpa.exe") { Write-Ok "WPA already available."; return }
-    if (-not (Test-Command "winget")) { Write-Bad "winget not available."; return }
-    winget install --id Microsoft.WindowsADK --exact --accept-package-agreements --accept-source-agreements --override "/quiet /norestart /features OptionId.WindowsPerformanceToolkit"
-    if ($LASTEXITCODE -eq 0) { Write-Ok "ADK/WPT installer completed. Open a new shell before checking PATH." } else { Write-Warn "Windows ADK install returned code $LASTEXITCODE" }
+    $found = Find-X64Dbg
+    if ($found) { Write-Ok "Installed: $found" } else { throw "x64dbg not found after winget install" }
 }
 
 function Install-ReClass {
     Write-Section "ReClass.NET"
+    $found = Find-ReClass
+    if ($found) { Write-Ok "Already installed: $found"; return }
+
+    $archive = Get-ChildItem $RepoRoot -Filter "ReClass.NET.rar" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $archive) {
+        $path = Invoke-GitHubLatestAsset -Repository "ReClassNET/ReClass.NET" -Patterns @('^ReClass\.NET\.rar$') -Destination $DownloadRoot
+        $archive = Get-Item $path
+    } else { Write-Ok "Using local archive: $($archive.FullName)" }
+
+    $seven = Ensure-SevenZip
     $target = Join-Path $ExternalRoot "ReClass.NET"
-    $present = Get-ChildItem $target -Filter "ReClass.NET.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($present) { Write-Ok "ReClass.NET already present: $($present.FullName)"; return }
-    $zip = Invoke-GitHubLatestAsset -Repository "ReClassNET/ReClass.NET" -Patterns @('(?i)(x64|win64).*\.zip$','(?i)ReClass.*\.zip$') -Destination $DownloadRoot
     if (Test-Path $target) { Remove-Item -Recurse -Force $target }
     New-Item -ItemType Directory -Force -Path $target | Out-Null
-    Expand-Archive -Path $zip -DestinationPath $target -Force
-    $exe = Get-ChildItem $target -Filter "ReClass.NET.exe" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($exe) { Write-Ok "ReClass.NET installed portable: $($exe.FullName)" } else { Write-Warn "Downloaded ReClass.NET, but executable was not found automatically." }
+    & $seven x $archive.FullName "-o$target" -y | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "7-Zip extraction failed with code $LASTEXITCODE" }
+
+    $found = Find-ReClass
+    if ($found) { Write-Ok "Installed portable: $found" } else { throw "ReClass.NET.exe not found after extraction" }
 }
 
 function Install-CheatEngine {
     Write-Section "Cheat Engine"
-    $known = Get-ChildItem @($env:ProgramFiles,${env:ProgramFiles(x86)}) -Filter "cheatengine-x86_64.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($known) { Write-Ok "Cheat Engine found: $($known.FullName)"; return }
-    Write-Warn "No reliable current winget package. Downloading latest PUBLIC installer from official cheat-engine/cheat-engine GitHub release."
-    $exe = Invoke-GitHubLatestAsset -Repository "cheat-engine/cheat-engine" -Patterns @('(?i)\.exe$') -Destination $DownloadRoot
-    Write-Host "Launching installer interactively: $exe"
-    Start-Process -FilePath $exe -Wait
+    $found = Find-CheatEngine
+    if ($found) { Write-Ok "Already installed: $found"; return }
+
+    $installer = Get-ChildItem $RepoRoot -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '(?i)^Cheat.*Engine.*\.(exe|msi)$' } | Select-Object -First 1
+    if ($installer) {
+        Write-Host "Launching local installer: $($installer.FullName)"
+        Start-Process $installer.FullName -Wait
+        $found = Find-CheatEngine
+        if ($found) { Write-Ok "Installed: $found"; return }
+    }
+
+    $sourceZip = Get-ChildItem $RepoRoot -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '(?i)^cheat-engine.*\.zip$' } | Select-Object -First 1
+    if ($sourceZip) { Write-Warn "$($sourceZip.Name) is source code, not the Windows installer." }
+
+    Write-Warn "Official Cheat Engine GitHub release 7.5 contains no binary installer asset. Opening the official download page instead."
+    Start-Process "https://www.cheatengine.org/downloads.php"
+}
+
+function Install-WPT {
+    Write-Section "Windows Performance Toolkit"
+    $wpa = Find-Wpa
+    if ($wpa) { Write-Ok "WPA already installed: $wpa"; return }
+    if (-not (Test-Command winget)) { throw "winget unavailable" }
+    winget install --id Microsoft.WindowsADK --exact --accept-package-agreements --accept-source-agreements --override "/quiet /norestart /features OptionId.WindowsPerformanceToolkit"
+    $wpa = Find-Wpa
+    if ($wpa) { Write-Ok "WPA installed: $wpa" } else { Write-Warn "ADK installer completed, but WPA is not visible yet. Reboot/new shell may be required." }
 }
 
 function Show-Status {
@@ -204,49 +340,52 @@ function Show-Status {
     if ($exe) {
         Write-Ok "Dragonwilds executable: $exe"
         $dir = Split-Path -Parent $exe
-        if ((Test-Path (Join-Path $dir "UE4SS.dll")) -or (Test-Path (Join-Path $dir "ue4ss\UE4SS.dll"))) { Write-Ok "UE4SS runtime found" } else { Write-Bad "UE4SS runtime not found beside game" }
-        if ((Test-Path (Join-Path $dir "Mods\OrcishScout\scripts\main.lua")) -or (Test-Path (Join-Path $dir "ue4ss\Mods\OrcishScout\scripts\main.lua"))) { Write-Ok "OrcishScout bridge found" } else { Write-Bad "OrcishScout bridge not found" }
-    } else { Write-Bad "Dragonwilds executable not auto-detected" }
+        $runtime = (Test-Path (Join-Path $dir "UE4SS.dll")) -or (Test-Path (Join-Path $dir "ue4ss\UE4SS.dll")) -or (Test-Path (Join-Path $dir "dwmapi.dll"))
+        if ($runtime) { Write-Ok "UE4SS runtime found at Dragonwilds" } else { Write-Bad "UE4SS runtime not found at Dragonwilds" }
+        $bridge = (Test-Path (Join-Path $dir "Mods\OrcishScout\scripts\main.lua")) -or (Test-Path (Join-Path $dir "ue4ss\Mods\OrcishScout\scripts\main.lua"))
+        if ($bridge) { Write-Ok "OrcishScout bridge found at Dragonwilds" } else { Write-Bad "OrcishScout bridge not found at Dragonwilds" }
+    } else { Write-Bad "RSDragonwilds-Win64-Shipping.exe not auto-detected" }
 
-    if (Test-Command "x64dbg.exe") { Write-Ok "x64dbg command available" } else {
-        $wingetPkg = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
-        $x = Get-ChildItem $wingetPkg -Filter "x64dbg.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($x) { Write-Ok "x64dbg installed: $($x.FullName)" } else { Write-Bad "x64dbg" }
+    $wrong = Find-MistakenEosInstall
+    if ($wrong) {
+        Write-Warn "A previous installer run put OrcishScout under Epic Online Services, not Dragonwilds:"
+        Write-Warn $wrong.FullName
+        Write-Warn "Do not treat that as a valid UE4SS install. Remove/restore that EOS folder separately after checking its orcish_ue4ss_backup_* backup."
     }
 
-    $reclass = Get-ChildItem (Join-Path $ExternalRoot "ReClass.NET") -Filter "ReClass.NET.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($reclass) { Write-Ok "ReClass.NET: $($reclass.FullName)" } else { Write-Bad "ReClass.NET" }
+    $x = Find-X64Dbg; if ($x) { Write-Ok "x64dbg: $x" } else { Write-Bad "x64dbg" }
+    $r = Find-ReClass; if ($r) { Write-Ok "ReClass.NET: $r" } else { Write-Bad "ReClass.NET" }
+    $ce = Find-CheatEngine; if ($ce) { Write-Ok "Cheat Engine: $ce" } else { Write-Bad "Cheat Engine" }
+    if (Test-Command wpr.exe) { Write-Ok "WPR available" } else { Write-Bad "WPR" }
+    $wpa = Find-Wpa; if ($wpa) { Write-Ok "WPA: $wpa" } else { Write-Bad "WPA / Windows Performance Toolkit" }
 
-    $ce = Get-ChildItem @($env:ProgramFiles,${env:ProgramFiles(x86)}) -Filter "cheatengine-x86_64.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($ce) { Write-Ok "Cheat Engine: $($ce.FullName)" } else { Write-Bad "Cheat Engine" }
-
-    if (Test-Command "wpr.exe") { Write-Ok "WPR available" } else { Write-Bad "WPR" }
-    if (Test-Command "wpa.exe") { Write-Ok "WPA available" } else {
-        $wpa = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits" -Filter "wpa.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($wpa) { Write-Ok "WPA installed: $($wpa.FullName)" } else { Write-Bad "WPA / Windows Performance Toolkit" }
+    foreach ($z in Get-ChildItem $RepoRoot -Filter "*UE4SS*.zip" -File -ErrorAction SilentlyContinue) {
+        if (Test-Ue4ssBinaryZip $z.FullName) { Write-Ok "UE4SS binary ZIP: $($z.Name)" }
+        else { Write-Warn "UE4SS source/non-runtime ZIP: $($z.Name)" }
     }
-
-    if (Test-Path $UE4SSZip) {
-        if (Test-Ue4ssBinaryZip $UE4SSZip) { Write-Ok "Provided UE4SS ZIP is a binary release: $UE4SSZip" }
-        else { Write-Warn "Provided UE4SS ZIP looks like SOURCE CODE and cannot be installed directly: $UE4SSZip" }
-    } else { Write-Warn "Provided UE4SS ZIP not found: $UE4SSZip" }
 }
 
+$script:HadWarnings = $false
 Show-Status
 if ($CheckOnly -or -not $Install) {
     Write-Host ""
-    Write-Host "Check complete. Run with -Install -All to install the supported toolkit." -ForegroundColor Cyan
+    Write-Host "Check complete." -ForegroundColor Cyan
     exit 0
 }
 
-Install-Frida
-$game = Resolve-DragonwildsExe
-if (-not $SkipUE4SS) { Install-UE4SS -ExePath $game }
-if (-not $SkipX64dbg) { Install-X64Dbg }
-if (-not $SkipReClass) { Install-ReClass }
-if (-not $SkipCheatEngine) { Install-CheatEngine }
-if (-not $SkipWPT) { Install-WPT }
+Invoke-Step "Frida" { Install-Frida }
+$game = $null
+Invoke-Step "Dragonwilds detection" { $game = Resolve-DragonwildsExe }
+if (-not $SkipUE4SS) { Invoke-Step "UE4SS" { Install-UE4SS -ExePath $game } }
+if (-not $SkipX64dbg) { Invoke-Step "x64dbg" { Install-X64Dbg } }
+if (-not $SkipReClass) { Invoke-Step "ReClass.NET" { Install-ReClass } }
+if (-not $SkipCheatEngine) { Invoke-Step "Cheat Engine" { Install-CheatEngine } }
+if (-not $SkipWPT) { Invoke-Step "Windows Performance Toolkit" { Install-WPT } }
 
 Show-Status
 Write-Host ""
-Write-Host "Toolkit pass complete. Restart PowerShell/Orcish so PATH and optional providers refresh." -ForegroundColor Cyan
+if ($script:HadWarnings) {
+    Write-Warn "Toolkit pass completed with one or more warnings; successful tools were kept installed."
+    exit 2
+}
+Write-Ok "Toolkit pass complete."
