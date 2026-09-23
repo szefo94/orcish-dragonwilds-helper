@@ -32,8 +32,15 @@ class AimOverlay:
             self.available=bool(u.SetWindowDisplayAffinity(hwnd,0x11))
         except Exception:self.available=False
 
-    def show(self,client,tracks,motions=None,impact=None):
-        if not self.available:return
+    def _revive(self):
+        if not self.available:return False
+        try:
+            self.window.deiconify();self.window.attributes("-topmost",True);self.window.attributes("-alpha",.55)
+            self.window.update_idletasks();ctypes.windll.user32.ShowWindow(self.hwnd,4);return True
+        except Exception:return False
+
+    def show(self,client,tracks,motions=None,impact=None,target_huds=None):
+        if not self._revive():return
         x,y,w,h=client;self.window.geometry(f"{w}x{h}{x:+d}{y:+d}");self.window.update_idletasks()
         ctypes.windll.user32.ShowWindow(self.hwnd,4)
         c=self.canvas;c.delete("all")
@@ -59,6 +66,11 @@ class AimOverlay:
             c.create_rectangle(bx,by,bx+bw,by+bh,outline=col,width=2,dash=(5,3))
             c.create_text(bx,max(10,by-12),text=f"M{i} {score:.2f}",anchor="w",fill=col,font=("Consolas",9,"bold"))
             c.create_text(bx,min(h-8,by+bh+4),text=m.get("reason","localized motion"),anchor="nw",fill=col,font=("Consolas",8),width=max(100,bw+100))
+        for hud in (target_huds or [])[:3]:
+            bx,by,bw,bh=hud["bbox"];col="#ff5df0"
+            c.create_rectangle(bx,by,bx+bw,by+bh,outline=col,width=2)
+            c.create_text(bx,min(h-8,by+bh+4),text=hud.get("reason","aimed-target HUD"),anchor="nw",
+                          fill=col,font=("Consolas",8,"bold"),width=max(150,bw+100))
         if impact:
             txt=f"impact candidate  Δ={impact.get('change',0):.3f}  bright={impact.get('bright',0):.3f}  warm={impact.get('warm',0):.3f}"
             c.create_text(20,22,text=txt,anchor="nw",fill="#f0d698",font=("Consolas",10,"bold"))
@@ -67,6 +79,49 @@ class AimOverlay:
     def close(self):
         try:self.window.destroy()
         except Exception:pass
+
+
+def target_hud_candidates(frame,max_results=3):
+    """Detect close/aimed target HP HUD from its horizontal green health segment.
+
+    Strong evidence only: this confirms the crosshair has selected a nearby target.
+    It does not imply a body/head bounding box.
+    """
+    if frame is None or getattr(frame,"size",0)==0:return []
+    h,w=frame.shape[:2]
+    hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
+    green=cv2.inRange(hsv,np.array([35,95,80],dtype=np.uint8),np.array([95,255,255],dtype=np.uint8))
+    valid=np.zeros_like(green);valid[int(h*.05):int(h*.68),int(w*.05):int(w*.95)]=255
+    green=cv2.bitwise_and(green,valid)
+    # Horizontal opening rejects grass/foliage while preserving UI bars.
+    green=cv2.morphologyEx(green,cv2.MORPH_OPEN,cv2.getStructuringElement(cv2.MORPH_RECT,(31,2)),iterations=1)
+    contours,_=cv2.findContours(green,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    out=[]
+    value=hsv[:,:,2];sat=hsv[:,:,1]
+    for cnt in contours:
+        x,y,bw,bh=cv2.boundingRect(cnt)
+        area=float(cv2.contourArea(cnt));aspect=bw/max(1,bh)
+        if bw<35 or bh<2 or bh>24 or aspect<4.0 or area<80:continue
+        # Full/healthy targets expose a long green segment. Damaged targets may expose only
+        # a short green part followed by a long dark rectangular remainder.
+        cy=min(h-1,y+bh//2);scan_end=min(w-1,x+260)
+        row_v=value[cy,x:scan_end];row_s=sat[cy,x:scan_end]
+        dark=((row_v<70)&(row_s<100)).astype(np.uint8)
+        dark_run=0;best_dark=0
+        for v in dark:
+            dark_run=dark_run+1 if v else 0;best_dark=max(best_dark,dark_run)
+        strong_full=bw>=120 and aspect>=6
+        strong_partial=bw>=55 and best_dark>=80
+        if not (strong_full or strong_partial):continue
+        ex=max(8,int(max(bw,120)*.08));ey=max(16,int(bh*2.2))
+        bx=max(0,x-ex);by=max(0,y-ey);x2=min(w,x+max(bw,120)+best_dark+ex);y2=min(h,y+bh+ey)
+        score=.92 if strong_full else .78
+        reason=(f"aimed-target HUD · green HP bar {bw}×{bh}"
+                if strong_full else f"aimed-target HUD · partial HP {bw}px + dark remainder {best_dark}px")
+        out.append({"bbox":[bx,by,x2-bx,y2-by],"bar_bbox":[x,y,bw,bh],"score":score,
+                    "source":"target_hud","reason":reason})
+    out.sort(key=lambda z:z["score"],reverse=True)
+    return out[:max_results]
 
 
 def impact_features(frame,previous=None):
@@ -236,7 +291,9 @@ class AimTrackerSession:
                 if w<100 or h<100:raise RuntimeError("Game is minimized or capture size is invalid")
                 frame=grab.grab({"left":x,"top":y,"width":w,"height":h});gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
                 motions=moving_candidates(frame,self.previous_frame);self.previous_frame=frame.copy()
+                target_huds=target_hud_candidates(frame)
                 for m in motions:self.event_cb("vision","motion_candidate",m,confidence=m.get("score"),mono=started,stream="vision")
+                for hud in target_huds:self.event_cb("vision","target_hud",hud,confidence=hud.get("score"),mono=started,stream="vision")
                 with self.lock:
                     self.frame=frame;self.client=client
                     updated=[]
@@ -261,8 +318,8 @@ class AimTrackerSession:
                 candidate=impact.get("change",0)>.025 and (impact.get("bright",0)>.015 or impact.get("warm",0)>.003 or impact.get("yellow",0)>.003)
                 impact["candidate"]=bool(candidate);impact["roi"]=[rx,ry,roi.shape[1],roi.shape[0]]
                 if candidate:self.event_cb("vision","impact_candidate",impact,mono=started,stream="vision")
-                self.overlay.show(client,public,motions,impact if candidate else None)
-                self._offer({"foreground":True,"tracks":public,"motions":motions,"impact":impact})
+                self.overlay.show(client,public,motions,impact if candidate else None,target_huds)
+                self._offer({"foreground":True,"tracks":public,"motions":motions,"target_huds":target_huds,"impact":impact})
                 self.closed.wait(max(0.,self.interval-(time.monotonic()-started)))
         except Exception as e:
             self.overlay.hide();self._offer({"error":type(e).__name__+": "+str(e)})
@@ -339,8 +396,8 @@ class AimLabPanel:
         if latest is None:return
         if latest.get("error"):self.live.set("ERROR: "+latest["error"]);return
         if not latest.get("foreground"):self.live.set("Game not foreground — tracking paused.");return
-        tracks=latest.get("tracks") or [];motions=latest.get("motions") or [];impact=latest.get("impact") or {}
-        lines=[f"template tracks={len(tracks)}  motion candidates={len(motions)}  impactΔ={impact.get('change',0):.3f}"]
+        tracks=latest.get("tracks") or [];motions=latest.get("motions") or [];huds=latest.get("target_huds") or [];impact=latest.get("impact") or {}
+        lines=[f"template tracks={len(tracks)}  motion={len(motions)}  aimed-HUD={len(huds)}  impactΔ={impact.get('change',0):.3f}"]
         for t in tracks[:6]:
             lines.append(f"T{t['id']} score={t['score']:.2f} bbox={t['bbox']} head={t['head_candidate']} err={t['crosshair_error']}")
         self.live.set("\n".join(lines))

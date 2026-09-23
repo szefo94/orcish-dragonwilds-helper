@@ -52,8 +52,15 @@ class StatusOverlay:
         for i,line in enumerate(clean):
             c.create_text(x1+10,y1+31+i*20,text=line,anchor="nw",fill=fg,font=("Consolas",9),width=max(50,x2-x1-20))
 
+    def _revive(self):
+        if not self.available:return False
+        try:
+            self.window.deiconify();self.window.attributes("-topmost",True);self.window.attributes("-alpha",.55)
+            self.window.update_idletasks();ctypes.windll.user32.ShowWindow(self.hwnd,4);return True
+        except Exception:return False
+
     def show(self,client,panels,attention=None,danger=False):
-        if not self.available:return
+        if not self._revive():return
         x,y,w,h=client
         if w<180 or h<120:return self.hide()
         self.window.geometry(f"{w}x{h}{x:+d}{y:+d}");self.window.update_idletasks()
