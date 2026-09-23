@@ -12,7 +12,7 @@ from capture import dxgi_available
 from game_profile import PROFILE
 from settings import Settings
 from paths import CODE, DATA, migrate_data, ensure_data
-from version import VERSION
+from version import VERSION, DISPLAY_VERSION
 from scout import ScoutRecorder
 from scout_lab import ScoutLabPanel
 from aim_lab import AimLabPanel
@@ -36,7 +36,7 @@ class WinIO:
         self.u.GetClientRect.argtypes=[w.HWND,ctypes.POINTER(w.RECT)]
         self.u.ClientToScreen.argtypes=[w.HWND,ctypes.POINTER(w.POINT)]
         self.u.VkKeyScanW.argtypes=[w.WCHAR];self.u.VkKeyScanW.restype=ctypes.c_short
-        self.lock=threading.RLock();self.held=None;self.target=0;self.heartbeat=time.monotonic();self.tripped=False
+        self.lock=threading.RLock();self.held=None;self.target=0;self.heartbeat=time.monotonic();self.tripped=False;self.trip_reason=None
         self.used=set()   # every key/button pressed this session; F8, close and exit send key-up for all
         self.closed=threading.Event()
         self.watchdog_thread=threading.Thread(target=self.watchdog,daemon=True,name='input-watchdog');self.watchdog_thread.start()
@@ -95,9 +95,12 @@ class WinIO:
                 except Exception:pass
     def watchdog(self):
         while not self.closed.wait(.025):
-            if self.pressed(0x77):self.tripped=True;self.release_all()   # F8: panic, release everything
-            elif self.held and (self.foreground()!=self.target or time.monotonic()-self.heartbeat>1.2):
-                self.tripped=True;self.release()
+            if self.pressed(0x77):
+                self.tripped=True;self.trip_reason='panic';self.release_all()   # F8: panic, release everything
+            elif self.held and self.foreground()!=self.target:
+                self.tripped=True;self.trip_reason='focus';self.release()
+            elif self.held and time.monotonic()-self.heartbeat>1.2:
+                self.tripped=True;self.trip_reason='heartbeat';self.release()
     def close(self):
         self.closed.set();self.release_all()
         t=getattr(self,'watchdog_thread',None)
@@ -136,7 +139,7 @@ class App:
         self.gpu_ok=False   # the worker reports DirectML availability after loading onnxruntime
         self.dxgi_ok=dxgi_available()
         self.stage='starting';self.stage_since=time.monotonic();self.load_started=time.monotonic()
-        root.title(f'Orcish Dragonwilds Helper {VERSION} | {PROFILE.name} | Ashenfall command post');root.configure(bg=BG);root.attributes('-topmost',True)
+        root.title(f'Orcish Dragonwilds Helper {DISPLAY_VERSION} | {PROFILE.name} | Ashenfall command post');root.configure(bg=BG);root.attributes('-topmost',True)
         root.minsize(900,560)
         self.folder=ensure_data()   # user data: <root>/data (settings, learned data, notes, log)
         self.settings=Settings(self.folder/'settings.json',PROFILE.name);self.save_job=None
@@ -1193,7 +1196,11 @@ class App:
                 if getattr(self,'previous_aim_acquire',False) and not aim_acquire and not self.selecting and self.mode=='Aim':
                     self.aim_lab.acquire()
                 self.previous_aim_acquire=aim_acquire
-                if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
+                if self.io.tripped and self.ctrl.running:
+                    if self.mode=='Fishing' and getattr(self.ctrl.config,'persistent_session',False) and self.io.trip_reason in ('focus','heartbeat'):
+                        self.ctrl.release();self.io.tripped=False;self.io.trip_reason=None
+                        self.ctrl._rearm('Paused — still armed; waiting for Stop Fishing')
+                    else:self.stop('STOPPED — F8 pressed' if self.io.trip_reason=='panic' else 'STOPPED — input watchdog')
                 self.drain(now)
                 if getattr(self,'scout_lab',None):self.scout_lab.tick()
                 if self.mode=='Aim' and getattr(self,'aim_lab',None):self.aim_lab.tick()
@@ -1201,10 +1208,12 @@ class App:
                     if self.armed:
                         if fg==self.target:self.armed=False;self.status.set('TEST RUNNING — hands off mouse and keyboard; F8 aborts' if getattr(self,'bench',None) else 'SCOUTING — PREVIEW, no keys sent' if self.mode=='Auto' and self.run=='Preview' else 'LIVE — '+self.mode)
                     else:
-                        # Foreground focus controls stopping; pointer position does not.
-                        self.ctrl.tick(now,fg==self.target)
+                        # Fishing capture is asynchronous. Consume the newest queued observation
+                        # before the stale watchdog runs, otherwise a short UI-thread hiccup can
+                        # stop a healthy fishing session while a fresh frame is already waiting.
+                        if self.mode=='Fishing':self.fishing_panel.tick(now,fg)
+                        if self.ctrl.running:self.ctrl.tick(now,fg==self.target)
                         if not self.ctrl.running:self.stop(getattr(self.ctrl,'reason','STOPPED — finished or target lost focus'))
-                    if self.ctrl.running and not self.armed and self.mode=='Fishing':self.fishing_panel.tick(now,fg)
                     if self.ctrl.running and not self.armed and getattr(self,'bench',None):self.bench_tick(now)
                     if self.ctrl.running and not self.armed and (self.mode=='Auto' or getattr(self,'bench',None)) and not self.busy and now-self.last_scan>=SCAN_GAP:
                         # Do not capture an area covered by our own panel.

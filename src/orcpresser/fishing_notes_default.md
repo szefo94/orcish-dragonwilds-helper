@@ -51,44 +51,55 @@ Net automation is not the current Fishing Bot 101 focus.
 - [IMPLEMENTED] When STOP disappears after being confirmed, the controller enters a bounded `BITE_PENDING` state.
 - [IMPLEMENTED] STOP disappearance alone does not send input; BAR or PULL evidence is still required.
 
-### Pull direction
-- [IMPLEMENTED] Calibrated **PULL L** / **PULL R** regions provide the preferred fast direction evidence when one side is clearly stronger.
-- [IMPLEMENTED] Ambiguous PULL evidence is ignored rather than guessed.
-- [IMPLEMENTED] BAR red/blue state remains a fallback. The controller holds one A/D direction continuously, keeps it held through blue, and swaps once on a stable blue→red transition.
-- [IMPLEMENTED] Short unknown-detector gaps preserve the held direction; sustained uncertainty beyond the safety grace releases it.
+### Fight controls and BAR feedback
+- [WIKI/GUIDE + PLAYER REPORTS] Fishing requires counter-pulling against the fish; the helper does **not** visually track the fish model itself.
+- [TARGET LOGIC] Calibrated **PULL L / PULL R** UI cues are the primary A/D control signal. A fight can request several direction changes in one escape phase, so the helper must react continuously rather than choose one key per phase.
+- [TARGET LOGIC] Repeated confirmation of the same PULL command keeps the same key held; a confirmed opposite PULL command switches immediately.
+- [TARGET LOGIC] BAR colour is validation/fallback rather than the preferred direction source: **blue** means the current counter-pull appears effective; a stable transition to **red** can swap A<->D only when no reliable PULL command is available.
+- [IMPLEMENTED] Ambiguous PULL evidence is ignored rather than guessed. Short detector gaps preserve the held direction; sustained uncertainty releases it.
 
 ### Reel
-- [IMPLEMENTED] **REEL has highest priority** during the fight.
-- [IMPLEMENTED] Two consistent fast REEL samples or two distinct OCR confirmations of `Reel (Hold)` immediately release A/D and hold LMB.
-- [IMPLEMENTED] When the fight returns to red after REEL, LMB is released and A/D control resumes.
+- [WIKI/GUIDE + PLAYER REPORTS] **REEL has highest priority** while the prompt is valid: release A/D and hold LMB.
+- [TARGET LOGIC] If the fish resumes fighting or the REEL signal disappears, release LMB immediately and resume continuous direction tracking; do not assume a fixed direction after REEL.
+- [IMPLEMENTED] Fast REEL detection is preferred over slower OCR when available.
+- [TO VERIFY / TUNING] Current rough manual estimates for red/blue stamina burn, reel duration, and total catch time are useful for simulation only. Measure them with a timer before treating them as controller constants.
 
 ### End of round
 - [IMPLEMENTED] Catch/recoverable-failure messages can return to the recurring-round wait state.
 - [IMPLEMENTED] Depleted/no-fish and bait-required messages are hard stops that require manual intervention.
 - [IMPLEMENTED] With recurring rounds, STOP clear→reappear is the preferred re-arm handshake; BAR disappearance/return is the fallback when STOP is not calibrated.
 
-## 4. Current controller state sketch
+## 4. Target controller sketch
 
 ```text
-READY / WAIT_CAST
-    -> WAIT_BITE          when STOP is confirmed
 WAIT_BITE
-    -> BITE_PENDING       when confirmed STOP disappears
-BITE_PENDING
-    -> FIGHT              when BAR/PULL evidence appears
-    -> WAIT_BITE          when candidate expires / STOP returns
+    -> FIGHT              when the fish takes the hook
+
 FIGHT
-    -> REEL               when fast REEL or OCR Reel (Hold) is confirmed
+    PULL L confirmed      -> hold A
+    PULL R confirmed      -> hold D
+    PULL command changes  -> switch immediately, even multiple times in one fight
+    blue BAR              -> current counter-pull is likely correct
+    red BAR transition    -> fallback A<->D swap only if no reliable PULL cue exists
+    REEL confirmed        -> release A/D -> REEL
+
 REEL
-    -> FIGHT              when red fight state returns
-FIGHT / REEL
-    -> WAIT_CAST          on recoverable round end when recurring mode is enabled
-    -> STOP               on depletion, bait-required, timeout, focus loss, stale capture, or F8
+    while valid           -> hold LMB
+    prompt ends / fight resumes
+                          -> release LMB -> use fresh PULL command if available -> FIGHT
 ```
 
-The exact implementation in `src/orcpresser/fishing.py` is authoritative if this sketch ever falls behind.
+Round-end, depletion, focus-loss, stale-capture and timeout safety behavior remains as implemented. The implementation currently still differs from this target in several direction/fallback cases.
 
-## 5. Signals still worth researching
+## 5. Measurement and fine-tuning data
+
+Runtime measurement is observational and must not steer the fight until validated against real sessions.
+
+Record timestamped JSON for each observation/decision so later analysis can reconstruct the complete sequence: capture timestamp, frame freshness, BAR colour/red/blue scores, PULL L/R scores and OCR results, REEL score/state, controller state/reason, requested/physical A-D-LMB state, OCR latency and capture backend.
+
+Optional future measurements should include **player stamina** and, if a reliable independent value can be extracted, **fish/catch-bar progress**. Store normalized values (0..1) plus timestamps when available. Their burn/progress rates are for offline correlation and tuning first; the rough timing estimates discussed during development are not controller constants.
+
+## 6. Signals still worth researching
 
 - reliable fish/catch progress;
 - stamina;
@@ -99,7 +110,7 @@ The exact implementation in `src/orcpresser/fishing.py` is authoritative if this
 
 Scout can correlate visual/controller events with read-only semantic memory candidates and optional UE4SS/Frida telemetry. See `docs/SCOUT_CANDIDATES.md` and `docs/INTERNAL_TELEMETRY.md`.
 
-## 6. Safety and validation rules
+## 7. Safety and validation rules
 
 - Never act on ambiguous PULL evidence.
 - REEL overrides A/D and releases the directional input first.

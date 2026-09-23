@@ -2,7 +2,7 @@
 import unittest
 import numpy as np
 from fishing import FishingController, FishingConfig, Observation, CastCalibration
-from fishing_capture import indicator, active_indicator, rect_pixels, ui_prompt_score, resolve_pull_direction
+from fishing_capture import indicator, active_indicator, rect_pixels, ui_prompt_score, resolve_pull_direction, bar_fill_estimate
 
 class Fishing(unittest.TestCase):
     def setUp(self):
@@ -47,11 +47,47 @@ class Fishing(unittest.TestCase):
         self.see(10.8);self.c.tick(11.01)
         self.assertEqual(self.events,[('LMB',True),('LMB',False)])
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'TRIAL_DONE')
+    def test_persistent_101_focus_loss_releases_but_stays_armed(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.assertEqual(self.c.state,'WAIT_BITE')
+        self.c.tick(10.3,False)
+        self.assertTrue(self.c.running);self.assertIsNone(self.c.held)
+        self.assertEqual(self.c.state,'WAIT_CAST')
+
+    def test_persistent_101_ignores_bar_until_stop_fishing_seen(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,'red');self.see(10.1,'red')
+        self.assertEqual(self.c.state,'READY');self.assertIsNone(self.c.held)
+        self.see(10.2,active=True);self.see(10.4,active=True)
+        self.assertEqual(self.c.state,'WAIT_BITE')
+
+    def test_persistent_101_stale_capture_rearms_instead_of_stopping(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.c.tick(12)
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST');self.assertIsNone(self.c.held)
+
+    def test_persistent_101_result_rearms_for_next_stop_fishing(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.see(10.4,active=False);self.see(10.5,'red',pull_left=True);self.see(10.9,'red',pull_left=True)
+        self.see(11.3,text='You caught a fish');self.see(11.7,text='You caught a fish')
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST');self.assertIsNone(self.c.held)
+
     def test_focus_loss_releases(self):
         self.fight();self.c.tick(10.1,False)
         self.assertFalse(self.c.running);self.assertEqual(self.events[-1],('A',False))
     def test_stale_capture_releases(self):
-        self.fight();self.c.tick(11)
+        self.fight();self.c.tick(12)
         self.assertFalse(self.c.running);self.assertIsNone(self.c.held)
     def test_old_frame_cannot_start_action(self):
         self.c.observe(Observation(1,'red'),10);self.c.observe(Observation(1,'red'),10)
@@ -75,6 +111,15 @@ class Fishing(unittest.TestCase):
         self.see(10.35,active=False)
         self.assertEqual(self.c.state,'BITE_PENDING');self.assertIsNone(self.c.held)
 
+    def test_ocr_pull_direction_controls_a_d_without_fast_direction(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True);self.see(10.35,active=False)
+        self.see(10.45,pull_right=True);self.see(10.85,pull_right=True)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'D')
+        self.see(11.25,pull_left=True);self.see(11.65,pull_left=True)
+        self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('D',False),('A',True)])
+
     def test_fast_visual_pull_direction_controls_a_d(self):
         self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
         self.see(10,active=True);self.see(10.2,active=True);self.see(10.35,active=False)
@@ -96,6 +141,29 @@ class Fishing(unittest.TestCase):
         self.see(10.2,'blue',reel_visible=True,reel_score=.82)
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
+
+    def test_fast_visual_reel_ending_on_blue_resumes_previous_direction(self):
+        self.fight();self.assertEqual(self.c.held,'A')
+        self.see(10.1,'blue',reel_visible=True,reel_score=.8)
+        self.see(10.2,'blue',reel_visible=True,reel_score=.82)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.see(10.3,'blue',reel_visible=False,reel_score=.1)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.see(10.4,'blue',reel_visible=False,reel_score=.1)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
+
+    def test_fast_reel_absence_beats_cached_reel_ocr(self):
+        self.fight();self.assertEqual(self.c.held,'A')
+        self.see(10.1,'blue','Reel (Hold)',reel_visible=True,reel_score=.8)
+        self.see(10.2,'blue','Reel (Hold)',reel_visible=True,reel_score=.82)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        # OCR stamp/text is still cached, but two fresh fast-negative samples must
+        # end REEL instead of suppressing A/D for the OCR freshness window.
+        self.see(10.3,'blue','Reel (Hold)',stamp=10.2,reel_visible=False,reel_score=.1)
+        self.see(10.4,'blue','Reel (Hold)',stamp=10.2,reel_visible=False,reel_score=.1)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
 
     def test_no_fish_was_caught_is_recoverable_failure(self):
         self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True));self.c.start(False);self.c.tick(10);self.fight()
@@ -148,10 +216,12 @@ class Fishing(unittest.TestCase):
         self.see(10.1,'red','Reel (Hold)');self.see(10.5,'red','Reel (Hold)')
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
-    def test_stale_reel_text_does_not_hold_forever(self):
+    def test_stale_reel_text_does_not_hold_lmb_forever(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.5,'blue','Reel (Hold)')
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.see(12.1,'blue','Reel (Hold)',10.5)
-        self.assertIsNone(self.c.held)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
     def test_restart_resets_wait_timeout(self):
         self.c.changed=10;self.c.start();self.c.tick(100);self.c.tick(100.1)
         self.assertTrue(self.c.running)
@@ -172,6 +242,11 @@ class Fishing(unittest.TestCase):
         frame[:]=(0,0,255);self.assertEqual(indicator(frame)[0],'red')
         frame[:]=(255,0,0);self.assertEqual(indicator(frame)[0],'blue')
         frame[:10]=(0,0,255);self.assertEqual(indicator(frame)[0],'unknown')
+    def test_bar_fill_estimate_tracks_coloured_width(self):
+        frame=np.full((16,300,3),(12,13,16),dtype=np.uint8)
+        frame[:,1:151]=(230,223,181)
+        self.assertAlmostEqual(bar_fill_estimate(frame),.5,delta=.03)
+
     def test_dragonwilds_pastel_blue_reference(self):
         frame=np.full((16,59,3),(230,223,181),dtype=np.uint8)  # RGB 181/223/230 in BGR order
         self.assertEqual(indicator(frame)[0],'blue')

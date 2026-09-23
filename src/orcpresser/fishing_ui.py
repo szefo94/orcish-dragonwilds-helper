@@ -35,7 +35,7 @@ class FishingPanel:
         self.record_box=tk.Checkbutton(parent,text='Record manual test (cropped images + A/D/LMB states)',variable=self.record,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_record',self.record.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.record_box.pack(fill='x')
         self.auto_box=tk.Checkbutton(parent,text='Advanced: automatic cast from current position',variable=self.auto,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_auto_cast',self.auto.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.auto_box.pack(fill='x')
         self.trial_box=tk.Checkbutton(parent,text='Advanced: trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.trial_box.pack(fill='x')
-        tk.Label(parent,text='CONTROL LOGIC · blue steers with A/D; Reel (Hold) releases A/D and overrides with LMB.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
+        tk.Label(parent,text='CONTROL LOGIC · PULL L/R drives A/D; BAR validates/falls back; Reel (Hold) releases A/D and overrides with LMB.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
         self.cast_row=row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Advanced cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');self.cast_entry=tk.Entry(row,textvariable=self.duration,width=9);self.cast_entry.pack(side='right')
         self.duration.trace_add('write',self.duration_changed)
         tk.Label(parent,text='CAST CALIBRATION · choose SHORT/MID/LONG for the next trial, then report SHORT/LONG/HIT so the bracket can converge.',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
@@ -79,7 +79,7 @@ class FishingPanel:
         for w in [self.auto_box,self.trial_box,self.cast_entry,*self.trial_buttons]:w.configure(state=state)
         if not advanced:self.trial.set(False)
         if not initial:self.app.stop('Fishing mode changed')
-        self.message.set('Advanced: BAR + REEL + optional RESULT/SPOT; auto-cast calibration available. Movement/pool navigation is not autonomous yet.' if advanced else 'Fishing Bot 101: set BAR and REEL. Cast, position, and move manually; F7 = New spot / Reacquire.')
+        self.message.set('Advanced: BAR + REEL + optional RESULT/SPOT; auto-cast calibration available. Movement/pool navigation is not autonomous yet.' if advanced else 'Fishing Bot 101: set BAR + REEL + STOP. LIVE stays armed; STOP Fishing appearing is the ready/set/go gate. Cast, position, and move manually.')
     def save_bracket(self):self.app.persist('fishing_cast_bracket',{'low':self.calibration.low,'high':self.calibration.high,'confirmed':self.calibration.confirmed})
     def reset(self):self.app.stop();self.calibration=CastCalibration();self.save_bracket();self.message.set('Bracket reset; maintain a fixed player position and camera.')
     def reacquire(self):self.app.stop('New spot / camera changed');self.calibration=CastCalibration();self.save_bracket();self.message.set('Travel pause complete: cast timing invalidated. BAR/REEL screen regions remain saved; verify Preview before resuming.')
@@ -127,14 +127,22 @@ class FishingPanel:
         a=self.app
         if a.visual:return
         if not a.target or not a.io.game(a.target):a.status.set('Bind a Dragonwilds game window first.');return
-        if not all(k in self.regions for k in ('bar','prompt')):a.status.set('Select BAR and REEL regions first.');return
+        required=('bar','prompt','active') if self.mode.get()=='101' else ('bar','prompt')
+        if not all(k in self.regions for k in required):
+            a.status.set('Fishing Bot 101 requires BAR, REEL and STOP regions.' if self.mode.get()=='101' else 'Select BAR and REEL regions first.');return
         if self.record.get() and run!='Preview':a.status.set('Manual recording uses PREVIEW, so only you control the game.');return
-        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.mode.get()=='advanced' and self.auto.get(),recurring=self.recurring.get(),require_active=self.recurring.get() and 'active' in self.regions).validate()
+        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,
+            auto_cast=self.mode.get()=='advanced' and self.auto.get(),
+            recurring=self.recurring.get(),
+            require_active=(self.mode.get()=='101') or (self.recurring.get() and 'active' in self.regions),
+            persistent_session=self.mode.get()=='101').validate()
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False
         if self.show_overlay.get():self.ensure_overlay()
         a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());a.scout_start('fishing',run);self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
-        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set(('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.')
+        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING 101 ARMED — waiting for Stop Fishing; STOP/F8 ends session' if self.mode.get()=='101' else 'FISHING ARMED — switch to the game; F8 stops')
+        self.message.set('Fishing Bot 101 armed. No aid starts until STOP Fishing is confirmed; alt-tab pauses inputs but keeps the session armed.' if self.mode.get()=='101' else
+                         (('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.'))
     def stop(self):
         if self.session:self.session.close();self.session=None
         # Runtime/calibration overlays must never survive a mode switch or stop.
@@ -163,7 +171,8 @@ class FishingPanel:
         a.scout_event('vision','fishing_observation',{'color':o.color,'text':o.text[:240],'stop':info.get('active'),
             'pull_left':info.get('pull_left'),'pull_right':info.get('pull_right'),'pull_direction':info.get('pull_direction'),
             'pull_confidence':info.get('pull_confidence'),'pull_left_score':info.get('pull_left_score'),'pull_right_score':info.get('pull_right_score'),
-            'reel_visible':info.get('reel_visible'),'reel_score':info.get('reel_score'),'red':info.get('red'),'blue':info.get('blue')},
+            'reel_visible':info.get('reel_visible'),'reel_score':info.get('reel_score'),'red':info.get('red'),'blue':info.get('blue'),
+            'bar_fill':info.get('bar_fill')},
             mono=o.stamp,latency_ms=info.get('ocr_ms'),fresh_ms=(now-o.stamp)*1000,
             details={'text_stamp':o.text_stamp,'active_stamp':o.active_stamp,'pull_stamp':o.pull_stamp,
                      'pull_visual_stamp':info.get('pull_visual_stamp'),'reel_stamp':info.get('reel_stamp'),
@@ -178,7 +187,8 @@ class FishingPanel:
         pd=info.get('pull_direction') or '—';pc=float(info.get('pull_confidence') or 0);rv='YES' if info.get('reel_visible') else 'NO'
         caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}'
         caption+=f'\nSTOP {stop_text}{score_text} | PULL visual {pd} {pc:.0%} (L {float(info.get("pull_left_score") or 0):.0%}/R {float(info.get("pull_right_score") or 0):.0%}) | REEL visual {rv} {float(info.get("reel_score") or 0):.0%}'
-        caption+=f'\nOCR PULL L {left_text} / R {right_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
+        bf=info.get('bar_fill');bf_text='N/A' if bf is None else f'{bf:.0%}'
+        caption+=f'\nOCR PULL L {left_text} / R {right_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | bar {bf_text} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
         if a.ctrl.state in ('FAILED','DEPLETED'):caption+='\nNO FISH / DEPLETED — move manually, then NEW SPOT / REACQUIRE.'
         elif a.ctrl.state=='WAIT_CAST':caption+='\nROUND ENDED — cast again manually; waiting for STOP Fishing.'
         elif a.ctrl.state=='WAIT_BITE':caption+='\nSTOP Fishing visible — waiting for bite / PULL L-R.'

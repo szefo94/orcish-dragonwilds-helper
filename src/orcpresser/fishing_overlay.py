@@ -46,7 +46,10 @@ class FishingOverlay:
             c.create_text(x1,max(10,y1-12),text=label,anchor='w',fill='#f0d698',font=('Segoe UI',10,'bold'))
             if name=='spot' and info.get('spot'):
                 sx,sy,sw,sh=info['spot'];c.create_oval(x1+sx,y1+sy,x1+sx+sw,y1+sy+sh,outline='#f0d698',width=2)
-        c.create_text(20,25,text=caption,anchor='nw',fill='#f0d698',font=('Consolas',12,'bold'),width=max(300,w-40))
+        # Keep fishing diagnostics away from the shared status HUD, which is stacked
+        # from the top-left. Right-align the yellow fishing caption instead.
+        caption_w=min(760,max(320,int(w*.44)))
+        c.create_text(w-20,25,text=caption,anchor='ne',fill='#f0d698',font=('Consolas',12,'bold'),width=caption_w,justify='right')
         if info.get('app_minimized'):
             running=bool(info.get('running'));preview=bool(info.get('preview'))
             mode='PREVIEW' if preview else 'LIVE'

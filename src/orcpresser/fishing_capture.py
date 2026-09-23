@@ -47,6 +47,22 @@ def indicator(frame):
     return color,red,blue
 
 
+def bar_fill_estimate(frame):
+    """Diagnostic 0..1 estimate of the coloured active portion of the fight bar.
+
+    This value is recorded for offline tuning only; controller decisions use the
+    red/blue classification, not this estimate.
+    """
+    if frame is None or getattr(frame,'size',0)==0:return None
+    hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
+    red=(((hsv[:,:,0]<=10)|(hsv[:,:,0]>=170))&(hsv[:,:,1]>=110)&(hsv[:,:,2]>=90))
+    blue=((hsv[:,:,0]>=88)&(hsv[:,:,0]<=135)&(hsv[:,:,1]>=25)&(hsv[:,:,2]>=120))
+    coloured=red|blue
+    if coloured.shape[1]==0:return None
+    active_cols=np.mean(coloured,axis=0)>=.20
+    return float(np.mean(active_cols))
+
+
 def active_indicator(frame):
     """Detect the on-screen Stop Fishing indicator without relying on OCR alone.
 
@@ -177,7 +193,7 @@ class FishingCapture:
                     client=self.io.rect(self.target)
                     if min(client[2:])<100:raise RuntimeError('Game is minimized or capture size is invalid')
                     bar=grab.grab(rect_pixels(client,self.regions['bar']))
-                    color,red,blue=indicator(bar)
+                    color,red,blue=indicator(bar);bar_fill=bar_fill_estimate(bar)
                     images=[]
                     # Fast visual pass for time-critical REEL and A/D direction.
                     if now-last_fast>=.10:
@@ -205,7 +221,7 @@ class FishingCapture:
                                   pull_direction=pull_direction,pull_confidence=pull_confidence,pull_visual_stamp=pull_visual_stamp,
                                   reel_visible=reel_visible if 'prompt' in self.regions else None,reel_score=reel_score,reel_stamp=reel_stamp)
                     physical={k:self.io.pressed(v) for k,v in [('A',0x41),('D',0x44),('LMB',1)]}
-                    info=dict(red=red,blue=blue,active=active if 'active' in self.regions else None,active_score=active_score if 'active' in self.regions else None,active_stamp=active_stamp,
+                    info=dict(red=red,blue=blue,bar_fill=bar_fill,active=active if 'active' in self.regions else None,active_score=active_score if 'active' in self.regions else None,active_stamp=active_stamp,
                               pull_left=pull_left if 'left' in self.regions else None,pull_right=pull_right if 'right' in self.regions else None,pull_stamp=pull_stamp,
                               pull_direction=pull_direction,pull_confidence=pull_confidence,pull_visual_stamp=pull_visual_stamp,
                               pull_left_score=left_score,pull_right_score=right_score,
