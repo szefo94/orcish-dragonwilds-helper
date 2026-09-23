@@ -2,7 +2,7 @@
 import unittest
 import numpy as np
 from fishing import FishingController, FishingConfig, Observation, CastCalibration
-from fishing_capture import indicator, active_indicator, rect_pixels, ui_prompt_score, resolve_pull_direction
+from fishing_capture import indicator, active_indicator, rect_pixels, ui_prompt_score, resolve_pull_direction, bar_fill_estimate
 
 class Fishing(unittest.TestCase):
     def setUp(self):
@@ -74,6 +74,15 @@ class Fishing(unittest.TestCase):
         self.assertEqual(self.c.state,'WAIT_BITE')
         self.see(10.35,active=False)
         self.assertEqual(self.c.state,'BITE_PENDING');self.assertIsNone(self.c.held)
+
+    def test_ocr_pull_direction_controls_a_d_without_fast_direction(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True);self.see(10.35,active=False)
+        self.see(10.45,pull_right=True);self.see(10.85,pull_right=True)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'D')
+        self.see(11.25,pull_left=True);self.see(11.65,pull_left=True)
+        self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('D',False),('A',True)])
 
     def test_fast_visual_pull_direction_controls_a_d(self):
         self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
@@ -195,6 +204,11 @@ class Fishing(unittest.TestCase):
         frame[:]=(0,0,255);self.assertEqual(indicator(frame)[0],'red')
         frame[:]=(255,0,0);self.assertEqual(indicator(frame)[0],'blue')
         frame[:10]=(0,0,255);self.assertEqual(indicator(frame)[0],'unknown')
+    def test_bar_fill_estimate_tracks_coloured_width(self):
+        frame=np.full((16,300,3),(12,13,16),dtype=np.uint8)
+        frame[:,1:151]=(230,223,181)
+        self.assertAlmostEqual(bar_fill_estimate(frame),.5,delta=.03)
+
     def test_dragonwilds_pastel_blue_reference(self):
         frame=np.full((16,59,3),(230,223,181),dtype=np.uint8)  # RGB 181/223/230 in BGR order
         self.assertEqual(indicator(frame)[0],'blue')
