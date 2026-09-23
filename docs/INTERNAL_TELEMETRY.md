@@ -1,5 +1,26 @@
 # Scout game-internal telemetry
 
+## Installer repair notes
+
+The toolkit installer now identifies the Dragonwilds target strictly as:
+
+```text
+RSDragonwilds-Win64-Shipping.exe
+```
+
+It no longer accepts arbitrary `*-Win64-Shipping.exe` processes. This prevents Epic Online Services' `EOSOverlayRenderer-Win64-Shipping.exe` from being mistaken for Dragonwilds.
+
+If an older installer run placed `OrcishScout` / UE4SS under an Epic Online Services `managedArtifacts` directory, option **8 · Telemetry toolkit status** reports the mistaken path explicitly. Treat that installation as invalid and inspect the adjacent `orcish_ue4ss_backup_*` folder before removing/restoring those files.
+
+The installer also now:
+
+- prefers an already-downloaded `zDEV-UE4SS_v*.zip` or `UE4SS_v*.zip` in the Orcish root before downloading again;
+- understands that the official ReClass.NET release asset is `ReClass.NET.rar`; it uses the local archive when present and installs 7-Zip through WinGet if needed;
+- checks Cheat Engine through Windows uninstall registry entries and common install folders before doing anything;
+- no longer expects a Cheat Engine installer asset from GitHub, because the official 7.5 GitHub release has no binary assets; if Cheat Engine is absent it opens the official download page instead;
+- skips x64dbg installation when the executable is already present;
+- continues with the remaining tools when one optional component fails, instead of aborting the whole toolkit pass.
+
 ## Guided Windows toolkit installer
 
 The repository includes:
