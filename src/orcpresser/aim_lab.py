@@ -187,8 +187,9 @@ class AimTrackerSession:
         _,score,_,loc=cv2.minMaxLoc(res)
         nbx=sx+loc[0];nby=sy+loc[1]
         t["score"]=float(score);t["age"]+=1
-        # A low-score match is treated as lost rather than jumping the rectangle to unrelated HUD/background.
-        if score>=.60:
+        # A low-score match or HUD-edge match is treated as lost rather than jumping to unrelated UI/background.
+        in_playfield=(nby>=int(H*.14) and nby+bh<=int(H*.92) and nbx>=int(W*.03) and nbx+bw<=int(W*.97))
+        if score>=.60 and in_playfield:
             t["bbox"]=[int(nbx),int(nby),bw,bh];t["lost"]=0
             if score>=.82 and t["age"]%8==0:
                 fresh=gray[nby:nby+bh,nbx:nbx+bw]
