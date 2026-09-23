@@ -288,3 +288,8 @@ For work with multiple developers or coding assistants, use **one feature branch
 This is an unofficial community helper, not affiliated with Jagex or Blizzard. The theme uses programmatic styling and system fonts; no game artwork is bundled.
 
 No general open-source license has been selected. See [RIGHTS.md](RIGHTS.md) for the current licensing status and [third-party notes](docs/THIRD_PARTY.md) for dependency information.
+
+
+## Scout research
+
+Research/design for parallel visual + process/Unreal telemetry across Auto Picker and Fishing is documented in [`docs/SCOUT_RESEARCH.md`](docs/SCOUT_RESEARCH.md). The proposed first step is parallel logging and offline correlation; experimental process/reflection backends remain optional.
