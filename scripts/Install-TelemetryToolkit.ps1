@@ -19,7 +19,9 @@ $Py = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 $ExternalRoot = Join-Path $RepoRoot "tools\external"
 $DownloadRoot = Join-Path $ExternalRoot "downloads"
 $PF86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
-New-Item -ItemType Directory -Force -Path $ExternalRoot,$DownloadRoot | Out-Null
+$TelemetryDir = Join-Path $RepoRoot "data\ue4ss"
+$TargetCache = Join-Path $TelemetryDir "dragonwilds_target.txt"
+New-Item -ItemType Directory -Force -Path $ExternalRoot,$DownloadRoot,$TelemetryDir | Out-Null
 
 function Write-Section([string]$Text) { Write-Host ""; Write-Host ("=== " + $Text + " ===") -ForegroundColor Cyan }
 function Write-Ok([string]$Text) { Write-Host ("[OK]   " + $Text) -ForegroundColor Green }
@@ -388,6 +390,7 @@ function Show-Status {
 
     $exe = Resolve-DragonwildsExe
     if ($exe) {
+        try { Set-Content -Path $TargetCache -Value $exe -Encoding UTF8 } catch {}
         Write-Ok "Dragonwilds executable: $exe"
         $dir = Split-Path -Parent $exe
         $runtime = (Test-Path (Join-Path $dir "UE4SS.dll")) -or (Test-Path (Join-Path $dir "ue4ss\UE4SS.dll")) -or (Test-Path (Join-Path $dir "dwmapi.dll"))
