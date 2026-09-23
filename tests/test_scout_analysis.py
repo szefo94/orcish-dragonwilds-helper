@@ -18,8 +18,8 @@ class ScoutAnalyzerTests(unittest.TestCase):
             ]
         else:
             vision=[
-                {"mono":1.0,"source":"vision","signal":"prompt","value":{"action":"Collect","key":"E","hold":False,"source":"ocr"},"confidence":.9,"latency_ms":40,"fresh_ms":50},
-                {"mono":2.0,"source":"vision","signal":"prompt","value":None,"latency_ms":35,"fresh_ms":45}
+                {"mono":1.0,"source":"vision","signal":"prompt","value":{"action":"Collect","key":"E","hold":False,"source":"ocr"},"confidence":.9,"latency_ms":40,"fresh_ms":50,"details":{"capture_ms":5,"detect_ms":30,"total_worker_ms":38,"detected_mono":1.04,"consumed_mono":1.05}},
+                {"mono":2.0,"source":"vision","signal":"prompt","value":None,"latency_ms":35,"fresh_ms":45,"details":{"capture_ms":4,"detect_ms":25,"total_worker_ms":32,"detected_mono":2.035,"consumed_mono":2.045}}
             ]
             controller=[{"mono":1.1,"source":"controller","signal":"decision","value":{"sent":True,"held":None,"running":True}}]
         (s/"vision.jsonl").write_text("".join(json.dumps(x)+"\n" for x in vision),encoding="utf-8")
@@ -37,6 +37,8 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertTrue(jp.is_file());self.assertTrue(mp.is_file())
             self.assertEqual(jp.parent,Path(td)/"scout_reports")
             self.assertEqual(r["fishing"]["state_transitions"][-1]["state"],"REEL")
+            self.assertAlmostEqual(r["fishing"]["state_transitions"][0]["duration_s"],.5)
+            self.assertEqual(r["fishing"]["reel_entries"],1)
             self.assertEqual(r["latency_ms"]["median"],85.0)
             self.assertTrue(r["raw_logs_preserved"])
 
@@ -46,6 +48,8 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertEqual(r["auto_picker"]["approved"],1)
             self.assertEqual(r["auto_picker"]["sent_decisions"],1)
             self.assertEqual(len(r["auto_picker"]["prompt_transitions"]),2)
+            self.assertEqual(r["stage_timing_ms"]["capture"]["median"],4.5)
+            self.assertEqual(r["stage_timing_ms"]["detect"]["median"],27.5)
 
     def test_all_sessions_generates_combined_reports_and_preserves_raw(self):
         with tempfile.TemporaryDirectory() as td:
@@ -61,11 +65,30 @@ class ScoutAnalyzerTests(unittest.TestCase):
                 before[s.name]={p.name:sha256_file(p) for p in s.iterdir() if p.is_file()}
             sessions,jp,mp,combo=write_all_reports(td)
             self.assertEqual(len(sessions),2)
-            self.assertEqual(combo["domains"],{"fishing":1,"auto_picker":1})
+            self.assertEqual(combo["domains"],{"fishing":1,"auto_picker":1,"scout_lab":0})
             self.assertTrue(jp.is_file());self.assertTrue(mp.is_file())
             self.assertEqual(jp.name,"ALL_SESSIONS.json");self.assertEqual(mp.name,"ALL_SESSIONS.md")
             for s in (s1,s2):
                 after={p.name:sha256_file(p) for p in s.iterdir() if p.is_file()}
                 self.assertEqual(before[s.name],after)
+
+    def test_scout_lab_summary(self):
+        with tempfile.TemporaryDirectory() as td:
+            s=Path(td)/"scout_sessions"/"20260923-090000-lab";s.mkdir(parents=True)
+            (s/"manifest.json").write_text(json.dumps({"schema":1,"session_id":"z","domain":"scout_lab","run":"Research"}),encoding="utf-8")
+            (s/"summary.json").write_text(json.dumps({"events":5,"reason":"done"}),encoding="utf-8")
+            (s/"vision.jsonl").write_text(
+                json.dumps({"mono":1.0,"source":"vision","signal":"cursor_probe","value":{"screen":[100,100]}})+"\n"+
+                json.dumps({"mono":1.1,"source":"vision","signal":"crosshair_probe","value":{"screen":[200,200]}})+"\n",encoding="utf-8")
+            (s/"controller.jsonl").write_text("",encoding="utf-8")
+            (s/"process.jsonl").write_text("",encoding="utf-8")
+            (s/"memory.jsonl").write_text(json.dumps({"mono":1.2,"source":"memory","signal":"watch","value":{"spec":"game.exe+0x10:u32","ok":True,"value":7}})+"\n",encoding="utf-8")
+            (s/"annotations.jsonl").write_text(json.dumps({"mono":1.3,"source":"annotation","signal":"mark","value":"head"})+"\n",encoding="utf-8")
+            r=analyze_session(s)
+            self.assertEqual(r["scout_lab"]["cursor_probes"],1)
+            self.assertEqual(r["scout_lab"]["memory_samples"],1)
+            self.assertEqual(r["scout_lab"]["memory_success_pct"],100.0)
+            self.assertEqual(r["scout_lab"]["annotations"][0]["label"],"head")
+            self.assertIn("memory.jsonl",r["source_hashes"])
 
 if __name__=="__main__":unittest.main()

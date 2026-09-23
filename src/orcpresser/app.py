@@ -14,6 +14,7 @@ from settings import Settings
 from paths import CODE, DATA, migrate_data, ensure_data
 from version import VERSION
 from scout import ScoutRecorder
+from scout_lab import ScoutLabPanel
 import bench as benchmod
 import keys as keymap
 from tkinter import ttk
@@ -170,8 +171,8 @@ class App:
         header.create_line(0,80,4000,80,fill=GOLD,width=2)
         modes=tk.Frame(self.root,bg=BG);modes.pack(fill='x',padx=24,pady=12)
         self.modebuttons={}
-        for mode,title in [('Repeat','REPEAT'),('Hold','HOLD'),('Auto','AUTO PRESSER'),('Fishing','FISHING · EXP'),('Stats','STATS')]:
-            b=RuneButton(modes,title,lambda m=mode:self.choose_mode(m),170,48);b.pack(side='left',padx=(0,9));self.modebuttons[mode]=b
+        for mode,title in [('Repeat','REPEAT'),('Hold','HOLD'),('Auto','AUTO PRESSER'),('Fishing','FISHING · EXP'),('Scout','SCOUT LAB'),('Stats','STATS')]:
+            b=RuneButton(modes,title,lambda m=mode:self.choose_mode(m),145,48);b.pack(side='left',padx=(0,7));self.modebuttons[mode]=b
         self.modebuttons['Auto'].active=True;self.modebuttons['Auto'].draw()
         body=tk.Frame(self.root,bg=BG);body.pack(fill='both',expand=True,padx=24)
         settings=tk.Frame(body,bg=PANEL);settings.pack(side='left',fill='both',expand=True,padx=(0,12))
@@ -189,7 +190,7 @@ class App:
         right=tk.Frame(body,bg=PANEL,padx=14,pady=12,width=370);right.pack(side='right',fill='both');right.pack_propagate(False)
         self.vis={}      # widget -> modes where it is shown (or a callable(mode)->bool); others always shown
         def show(w,modes):self.vis[w]=modes;return w
-        MAN=('Repeat','Hold','Auto')
+        MAN=('Repeat','Hold','Auto');TARGET=('Repeat','Hold','Auto','Scout')
         show(self.text(left,'01  /  ORDERS',12,GOLD),MAN).pack(fill='x')
         self.key=tk.StringVar(value=self.settings.get('key','LMB'));self.interval=tk.StringVar(value=str(self.settings.get('interval_ms',100)));self.duration=tk.StringVar(value=str(self.settings.get('duration_ms',50)))
         self.timed=tk.BooleanVar(value=bool(self.settings.get('timed',False)))
@@ -228,14 +229,15 @@ class App:
         for k in ('<Return>','<Escape>','<KP_Enter>'):ex.bind(k,lambda e:self.root.focus_set())
         self.exclude.trace_add('write',lambda *_:(self.stop('Exclusions changed'),self.persist('exclude',self.exclude.get())))
         self.build_fishing(left,show)
+        self.build_scout_lab(left,show)
         self.build_stats_controls(left,show)
         left=self.cols[1]
-        show(self.text(left,'02  /  TARGET & CAPTURE',12,GOLD),MAN).pack(fill='x',pady=(0,5))
-        row=show(tk.Frame(left,bg=PANEL),MAN);row.pack(fill='x');self.bindrow=row
+        show(self.text(left,'02  /  TARGET & CAPTURE',12,GOLD),TARGET).pack(fill='x',pady=(0,5))
+        row=show(tk.Frame(left,bg=PANEL),TARGET);row.pack(fill='x');self.bindrow=row
         RuneButton(row,'BIND GAME · 3s',self.bind_game,177,38).pack(side='left')
         show(RuneButton(row,'SELECT REGION',self.select_region,177,38),('Auto',)).pack(side='right')
         self.targettext=tk.StringVar(value='Bind game, then select the prompt area.')
-        show(tk.Label(left,textvariable=self.targettext,bg=PANEL,fg=MUTED,wraplength=360,justify='left',anchor='w',font=('Segoe UI',9)),MAN).pack(fill='x',pady=6)
+        show(tk.Label(left,textvariable=self.targettext,bg=PANEL,fg=MUTED,wraplength=360,justify='left',anchor='w',font=('Segoe UI',9)),TARGET).pack(fill='x',pady=6)
         self.text(left,'Unfocused opacity · 0 = minimize on focus loss',10,GOLD).pack(fill='x',pady=(4,0))
         self.opacity=tk.IntVar(value=int(self.settings.get('opacity',60)))
         tk.Scale(left,from_=0,to=100,orient='horizontal',variable=self.opacity,command=lambda *_:self.persist('opacity',self.opacity.get()),bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
@@ -359,8 +361,11 @@ class App:
     def draw_run(self):
         for r,b in self.runbuttons.items():
             b.active=self.ctrl.running and self.run==r
-            b.enabled=self.mode!='Stats' and (r=='Live' or self.mode in ('Auto','Fishing'))
+            b.enabled=self.mode not in ('Stats','Scout') and (r=='Live' or self.mode in ('Auto','Fishing'))
             b.label=('■ STOP ' if b.active else '')+r.upper();b.draw()
+        if self.mode=='Scout':
+            self.hint.set('SCOUT LAB uses START RECORDING in the tab · observational only · no aim/input automation')
+            return
         run='TEST' if self.mode=='Stats' else ('LIVE' if self.mode not in ('Auto','Fishing') else self.last_run.upper())
         self.hint.set(f'\\  START / STOP {run}     •     F8  RELEASE & STOP     •     Switching windows stops output')
     def persist(self,key,value):
@@ -427,6 +432,7 @@ class App:
     MODEHELP={'Repeat':'Presses the key again and again: each press lasts "Press length", a new press starts every "Repeat interval". Start with LIVE or \\ in the game.',
               'Hold':'Holds the key down. Timed ticked: releases after "Hold duration" and stops. Unticked: holds until you stop (\\, F8, or switching windows).',
               'Stats':'',
+              'Scout':'Observational research: record cursor/crosshair visual probes, process telemetry and optional read-only memory watches on one timeline.',
               'Fishing':'Bot 101: BAR + REEL region, manual cast/movement. F7 = New spot / Reacquire, F8 = emergency release. Advanced mode is staged and never requires an online LLM.'}
     # ---------------------------------------------------------------- STATS tab: automated tests
     METRICS=(('scan_ms','Scan time · ms',False),('detect_pct','Detection %',True),('agree_pct','Agreement with baseline %',True),
@@ -610,6 +616,9 @@ class App:
         controls=show(tk.Frame(left,bg=PANEL),('Fishing',));controls.pack(fill='x')
         self.fishing_panel=FishingPanel(self,controls)
         show(tk.Label(left,text='Runtime guidance appears above. Detailed instructions are in README.md and docs/FISHING.md.',bg=PANEL,fg=MUTED,justify='left',anchor='w',wraplength=410,font=('Segoe UI',9)),('Fishing',)).pack(fill='x',pady=(4,0))
+    def build_scout_lab(self,left,show):
+        controls=show(tk.Frame(left,bg=PANEL),('Scout',));controls.pack(fill='x')
+        self.scout_lab=ScoutLabPanel(self,controls,{'PANEL':PANEL,'GOLD':GOLD,'BONE':BONE,'GREEN':GREEN,'MUTED':MUTED})
     def visible(self,w):
         m=self.vis.get(w)
         return True if m is None else (m(self.mode) if callable(m) else self.mode in m)
@@ -644,6 +653,7 @@ class App:
             self.finish_bench()
         self.ctrl.stop();self.generation+=1
         if getattr(self,'fishing_panel',None):self.fishing_panel.stop()
+        if getattr(self,'scout_lab',None):self.scout_lab.stop()
         self.scout_stop(reason)
         if hasattr(self,'status'):self.status.set(reason)
         if hasattr(self,'hint'):self.draw_run()
@@ -734,6 +744,7 @@ class App:
             same=self.run==run;self.stop()
             if same:return
         if self.mode=='Fishing':self.fishing_panel.start(run);return
+        if self.mode=='Scout':self.status.set('Use START RECORDING inside SCOUT LAB.');return
         if self.mode=='Stats':self.status.set('Use RUN TEST in the STATS tab (or \\ in the game).');return
         if run=='Preview' and self.mode!='Auto':self.status.set('PREVIEW applies to Auto Presser only — use LIVE.');return
         self.last_run=run;self.draw_run();self.start(run)
@@ -741,6 +752,10 @@ class App:
         """Backslash hotkey: start/stop with the last used PREVIEW/LIVE choice."""
         if self.ctrl.running:self.stop();return
         if self.mode=='Fishing':self.fishing_panel.start(self.last_run);return
+        if self.mode=='Scout':
+            if getattr(self.scout_lab,'session',None):self.scout_lab.stop()
+            else:self.scout_lab.start()
+            return
         if self.mode=='Stats':self.start_bench();return
         self.start('Live' if self.mode!='Auto' else self.last_run)
     def start(self,run):
@@ -804,11 +819,13 @@ class App:
             try:
                 if opts['gpu']!=detector.gpu:detector=Detector(gpu=opts['gpu'])
                 learner.set_limit(opts['limit']);grab.set_dxgi(opts['dxgi'])
-                capture_mono=time.monotonic();frame=grab.grab(rect)
+                capture_start=time.monotonic();frame=grab.grab(rect);capture_end=time.monotonic()
                 use=learner if opts['memory'] or opts['templates'] else None
-                prompts,debug,raw,rejected,info=detector.detect(frame,allowed,exclude,opts,use)
-                info['backend']=grab.last_backend;info['stats']=learner.stats();info['rect']=rect;info['gpu']=detector.gpu;info['queue_mono']=stamp;info['capture_mono']=capture_mono
-                self.results.put(('scan',gen,prompts,debug,raw,rejected,info,stamp,time.monotonic()))
+                detect_start=time.monotonic();prompts,debug,raw,rejected,info=detector.detect(frame,allowed,exclude,opts,use);detect_end=time.monotonic()
+                info['backend']=grab.last_backend;info['stats']=learner.stats();info['rect']=rect;info['gpu']=detector.gpu
+                info.update(queue_mono=stamp,capture_start_mono=capture_start,capture_mono=capture_end,detect_start_mono=detect_start,detected_mono=detect_end,
+                            capture_ms=(capture_end-capture_start)*1000,detect_ms=(detect_end-detect_start)*1000,total_worker_ms=(detect_end-stamp)*1000)
+                self.results.put(('scan',gen,prompts,debug,raw,rejected,info,stamp,detect_end))
             except Exception as e:self.results.put(('error',gen,str(e)))
     def drain(self,now):
         while True:
@@ -837,7 +854,9 @@ class App:
                 confidence=None if p is None else p.confidence,mono=info.get('capture_mono',stamp),
                 latency_ms=(finished-info.get('capture_mono',stamp))*1000,fresh_ms=(now-info.get('capture_mono',stamp))*1000,
                 details={'raw':raw[:240],'rejected':[(a,k,t) for a,k,t,_ in rejected[:4]],'queue_mono':info.get('queue_mono'),
-                         'capture_mono':info.get('capture_mono'),'detected_mono':finished,'consumed_mono':now,'rect':info.get('rect'),'backend':info.get('backend')},
+                         'capture_start_mono':info.get('capture_start_mono'),'capture_mono':info.get('capture_mono'),'detect_start_mono':info.get('detect_start_mono'),
+                         'detected_mono':finished,'consumed_mono':now,'capture_ms':info.get('capture_ms'),'detect_ms':info.get('detect_ms'),
+                         'total_worker_ms':info.get('total_worker_ms'),'rect':info.get('rect'),'backend':info.get('backend')},
                 stream='vision')
             self.observe_geo(info,info['rect'])
             self.meter.scan(p.identity if p else None,stamp)
@@ -916,6 +935,7 @@ class App:
                 self.previous_reacquire=reacquire
                 if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
                 self.drain(now)
+                if self.mode=='Scout' and getattr(self,'scout_lab',None):self.scout_lab.tick()
                 if self.ctrl.running:
                     if self.armed:
                         if fg==self.target:self.armed=False;self.status.set('TEST RUNNING — hands off mouse and keyboard; F8 aborts' if getattr(self,'bench',None) else 'SCOUTING — PREVIEW, no keys sent' if self.mode=='Auto' and self.run=='Preview' else 'LIVE — '+self.mode)

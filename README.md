@@ -260,6 +260,8 @@ The project separates perception, control, and UI so work on one feature can be 
 | `src/orcpresser/fishing.py` | Fishing state machine and cast calibration. |
 | `src/orcpresser/fishing_capture.py` | Fishing color detection, OCR workers, and local recording. |
 | `src/orcpresser/fishing_ui.py` / `fishing_overlay.py` | Fishing controls and overlay. |
+| `src/orcpresser/scout.py` / `scout_lab.py` | Immutable Scout recording plus supervised visual/process/read-only-memory research probes. |
+| `src/orcpresser/scout_analysis.py` | Per-session and cross-session Scout analysis. |
 | `tests/` | Regression and synthetic evidence tests. |
 | `.github/` | CI workflow and issue/PR templates. |
 | `docs/` | Fishing instructions, architecture, history, and review notes. |
@@ -298,8 +300,10 @@ Analyze the newest session with:
 
     python src/orcpresser/scout_analysis.py --latest
 
-Analyze every Auto Picker and Fishing Scout session and build a combined summary with:
+Analyze every Auto Picker, Fishing, and Scout Lab session and build a combined summary with:
 
     python src/orcpresser/scout_analysis.py --all
 
 `--all` refreshes the individual per-session reports and additionally writes `data/scout_reports/ALL_SESSIONS.json` and `ALL_SESSIONS.md`, with cross-session timing and per-domain summaries. The analyzer never edits, truncates, moves, or deletes the original Scout session files; every per-session report includes SHA-256 hashes of the raw files used.
+
+The **SCOUT LAB** tab is an observational research workspace. After binding the game, it can record cursor and screen-center/crosshair visual probes, OS process telemetry, optional 96×64 cursor crops, manual labels (`TARGET`, `HEAD`, `INVENTORY`, `HIT`, `MISS`), and explicitly configured **read-only** memory watches. A watch uses `MODULE+0xOFFSET:type` (preferred across ASLR) or an absolute `0xADDRESS:type`, where type is `u8`, `u16`, `u32`, `i32`, `f32`, or `f64`. The Lab does not write game memory or move/aim the mouse; it exists to collect aligned evidence before any target/distance/trajectory model is attempted.
