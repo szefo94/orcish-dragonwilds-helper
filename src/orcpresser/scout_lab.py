@@ -49,6 +49,10 @@ class ReadOnlyMemory:
         if sys.platform!="win32":raise OSError("ReadOnlyMemory requires Windows")
         from ctypes import wintypes as w
         self.w=w;self.k=ctypes.windll.kernel32;self.pid=int(pid)
+        self.k.OpenProcess.argtypes=[w.DWORD,w.BOOL,w.DWORD];self.k.OpenProcess.restype=w.HANDLE
+        self.k.CloseHandle.argtypes=[w.HANDLE];self.k.CloseHandle.restype=w.BOOL
+        self.k.ReadProcessMemory.argtypes=[w.HANDLE,w.LPCVOID,w.LPVOID,w.SIZE_T,ctypes.POINTER(w.SIZE_T)];self.k.ReadProcessMemory.restype=w.BOOL
+        self.k.CreateToolhelp32Snapshot.argtypes=[w.DWORD,w.DWORD];self.k.CreateToolhelp32Snapshot.restype=w.HANDLE
         self.handle=self.k.OpenProcess(self.PROCESS_VM_READ|self.PROCESS_QUERY_INFORMATION,False,self.pid)
         if not self.handle:raise OSError(ctypes.get_last_error(),"OpenProcess failed")
         self.modules=self._modules()
@@ -202,8 +206,9 @@ class ScoutLabPanel:
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
         tk.Button(row,text="START RECORDING",command=self.start).pack(side="left")
         tk.Button(row,text="STOP",command=self.stop).pack(side="left",padx=6)
-        tk.Button(row,text="MARK TARGET",command=lambda:self.mark("target")).pack(side="left",padx=3)
-        tk.Button(row,text="MARK HEAD",command=lambda:self.mark("head")).pack(side="left",padx=3)
+        row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
+        for label,title in (("target","MARK TARGET"),("head","MARK HEAD"),("inventory","MARK INVENTORY"),("hit","MARK HIT"),("miss","MARK MISS")):
+            tk.Button(row,text=title,command=lambda x=label:self.mark(x)).pack(side="left",padx=(0,4))
         tk.Checkbutton(p,text="Save 96×64 cursor crop once/second",variable=self.save_crops,
                        command=lambda:self.app.persist("scout_save_cursor_crops",self.save_crops.get()),
                        bg=c["PANEL"],fg=c["BONE"],selectcolor="#15200e",activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
@@ -238,7 +243,8 @@ class ScoutLabPanel:
         if not self.app.target:self.status.set("Bind the game first.");return
         self.app.scout_start("scout_lab","Research")
         try:
-            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.folder,self.watches,self.save_crops.get())
+            folder=self.app.scout.folder if getattr(self.app,"scout",None) else self.app.folder
+            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get())
             self.status.set("RECORDING — move the cursor/crosshair over useful objects; use MARK TARGET / MARK HEAD for labels.")
         except Exception as e:
             self.app.scout_stop("Scout Lab start failed");self.session=None;self.status.set("Start failed: "+str(e))
