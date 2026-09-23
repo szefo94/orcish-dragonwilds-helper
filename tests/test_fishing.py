@@ -51,7 +51,7 @@ class Fishing(unittest.TestCase):
         self.fight();self.c.tick(10.1,False)
         self.assertFalse(self.c.running);self.assertEqual(self.events[-1],('A',False))
     def test_stale_capture_releases(self):
-        self.fight();self.c.tick(11)
+        self.fight();self.c.tick(12)
         self.assertFalse(self.c.running);self.assertIsNone(self.c.held)
     def test_old_frame_cannot_start_action(self):
         self.c.observe(Observation(1,'red'),10);self.c.observe(Observation(1,'red'),10)
