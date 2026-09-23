@@ -14,6 +14,13 @@ function Write-Ok([string]$Text) { Write-Host ("[OK]   " + $Text) -ForegroundCol
 function Write-Warn([string]$Text) { Write-Host ("[WARN] " + $Text) -ForegroundColor Yellow }
 function Write-Bad([string]$Text) { Write-Host ("[MISS] " + $Text) -ForegroundColor Red }
 
+function Exit-WithPause([int]$Code) {
+    Write-Host ""
+    Write-Host "Press Enter to close this recovery window."
+    [void](Read-Host)
+    exit $Code
+}
+
 function Test-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($id)
@@ -26,7 +33,6 @@ function Ensure-Elevated {
     Write-Host "Requesting elevation..."
     $args = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$PSCommandPath)
     if ($GameExe) { $args += @("-GameExe",$GameExe) }
-    $args += "-NoExit"
     $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList $args
     exit $p.ExitCode
 }
@@ -250,14 +256,14 @@ Write-Host ""
 $running = Get-Process -Name "RSDragonwilds-WinGDK-Shipping" -ErrorAction SilentlyContinue
 if ($running) {
     Write-Bad "Dragonwilds is running. Close the game completely, then run Setup option 9 again."
-    exit 2
+    Exit-WithPause 2
 }
 
 $exe = Resolve-DragonwildsExe
 if (-not $exe) {
     Write-Bad "RSDragonwilds-WinGDK-Shipping.exe was not found."
     Write-Host "Start Dragonwilds once, close it, and rerun this option."
-    exit 3
+    Exit-WithPause 3
 }
 
 $gameDir = Split-Path -Parent $exe
@@ -275,7 +281,7 @@ try {
     Write-Bad "Experimental UE4SS installation failed: $($_.Exception.Message)"
     try { Restore-Ue4ssBackup $gameDir $backup }
     catch { Write-Bad "Automatic rollback also failed: $($_.Exception.Message)" }
-    exit 4
+    Exit-WithPause 4
 }
 
 Write-Section "Ready for runtime test"
@@ -291,7 +297,4 @@ Write-Host "  3. Close Dragonwilds."
 Write-Host "  4. Run Setup.cmd option 8 (Telemetry toolkit status)."
 Write-Host ""
 Write-Host "Success means UE4SS no longer ends with 'PS scan timed out' and OrcishScout writes bridge_start/bridge_ready."
-Write-Host ""
-Write-Host "Press Enter to close this elevated recovery window."
-[void](Read-Host)
-exit 0
+Exit-WithPause 0
