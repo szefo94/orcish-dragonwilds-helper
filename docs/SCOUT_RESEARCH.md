@@ -1,6 +1,6 @@
 # Scout research: visual + process telemetry for Auto Picker and Fishing
 
-Status: research/design proposal. No process-memory implementation is included in this document.
+Status: Phase A parallel logger implemented; process-memory/reflection backends remain research/design only.
 
 ## Goal
 
@@ -477,17 +477,23 @@ Existing Auto Picker and Fishing modules publish their visual observations into 
 
 ### Phase A — parallel logger
 
-Implement now:
+Implemented foundation:
 
-- common Scout event schema;
-- session manifest;
-- visual Auto Picker event logging;
-- visual Fishing event logging;
-- controller/input event logging;
-- Tier 0 process/module snapshot;
-- offline correlation report.
+- common Scout event envelope and bounded JSONL session recorder;
+- per-run session manifest and summary;
+- visual Auto Picker observations with queue/capture/detection/consume timing;
+- visual Fishing observations with frame/OCR timing and STOP/PULL/BAR/text evidence;
+- controller decision/state logging for both domains;
+- Tier 0 PID/process/module snapshot at session start;
+- local session storage under `data/scout_sessions/` with a 20 MiB per-session event cap.
 
-No game-memory reads are required for Phase A.
+Still pending in Phase A:
+
+- offline correlation/report generator;
+- optional screenshot sampling tied to event IDs;
+- calibration-health statistics derived from recorded sessions.
+
+No game-memory reads are required for the implemented Phase A logger.
 
 ### Phase B — manual discovery support
 
