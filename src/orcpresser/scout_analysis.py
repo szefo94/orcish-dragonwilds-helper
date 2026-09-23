@@ -149,6 +149,43 @@ def _candidate_correlations(domain,memory,vision,controller,lead_ms=500,lag_ms=1
     summary.sort(key=lambda x:(-x["matches"],abs(x.get("median_delta_ms") or 0)))
     return {"window_ms":{"lead":lead_ms,"lag":lag_ms},"matches":rows,"summary":summary[:50]}
 
+def _internal_summary(process,domain,vision,controller,lead_ms=500,lag_ms=150):
+    events=[e for e in process if e.get("source")=="game_internal"]
+    by={}
+    for e in events:
+        d=e.get("details") or {};provider=d.get("provider") or "unknown";signal=e.get("signal") or "event"
+        key=(provider,signal)
+        item=by.setdefault(key,{"provider":provider,"signal":signal,"count":0,"values":[]})
+        item["count"]+=1
+        v=e.get("value")
+        if v is not None and len(item["values"])<20 and v not in item["values"]:item["values"].append(v)
+    landmarks=_landmarks(domain,vision,controller)
+    matches=[]
+    for e in events:
+        tm=e.get("mono")
+        if not isinstance(tm,(int,float)) or e.get("signal") not in ("function_call","property_change","state_change","event"):continue
+        candidates=[]
+        for lm in landmarks:
+            delta=(tm-lm["mono"])*1000.0
+            if -lead_ms<=delta<=lag_ms:candidates.append((abs(delta),delta,lm["signal"]))
+        if candidates:
+            _,delta,lm=min(candidates,key=lambda x:x[0]);d=e.get("details") or {}
+            matches.append({"provider":d.get("provider") or "unknown","signal":e.get("signal"),"value":e.get("value"),
+                            "function":d.get("function"),"property":d.get("property"),"landmark":lm,"delta_ms":delta})
+    grouped={}
+    for r in matches:
+        identity=r.get("function") or r.get("property") or str(r.get("value"))
+        key=(r["provider"],r["signal"],identity,r["landmark"])
+        g=grouped.setdefault(key,{"provider":r["provider"],"signal":r["signal"],"identity":identity,
+                                  "landmark":r["landmark"],"matches":0,"deltas":[]})
+        g["matches"]+=1;g["deltas"].append(r["delta_ms"])
+    corr=[]
+    for g in grouped.values():
+        ds=g.pop("deltas");s=stats(ds);g["median_delta_ms"]=s.get("median");g["p95_abs_delta_ms"]=percentile([abs(x) for x in ds],95);corr.append(g)
+    corr.sort(key=lambda x:(-x["matches"],abs(x.get("median_delta_ms") or 0)))
+    return {"events":len(events),"by_provider_signal":sorted(by.values(),key=lambda x:(x["provider"],x["signal"])),
+            "window_ms":{"lead":lead_ms,"lag":lag_ms},"matches":matches,"correlation":corr[:50]}
+
 def analyze_session(session):
     session=Path(session)
     manifest=load_json(session/"manifest.json",{}) or {};summary=load_json(session/"summary.json",{}) or {}
@@ -173,6 +210,8 @@ def analyze_session(session):
                                               for e in vision if isinstance((e.get("details") or {}).get("consumed_mono"),(int,float)) and isinstance((e.get("details") or {}).get("detected_mono"),(int,float))])
             },
             "manifest":manifest,"session_summary":summary}
+    internal=_internal_summary(process,manifest.get("domain"),vision,controller)
+    if internal.get("events"):report["game_internal"]=internal
     if labels:
         labeled=[r for r in labels if (r.get("label") or "").strip()]
         counts={}
@@ -276,6 +315,16 @@ def markdown(report):
         if a.get("marks"):
             lines+=["","### Aim annotations",""]
             for m in a["marks"]:lines.append(f"- {m.get('mono')}: {m.get('value')}")
+    if "game_internal" in report:
+        gi=report["game_internal"];lines+=["","## Game-internal telemetry","",f"- Events: {gi.get('events',0)}"]
+        for x in gi.get("by_provider_signal",[]):
+            lines.append(f"- {x.get('provider')} / {x.get('signal')}: {x.get('count')} · values={x.get('values')}")
+        corr=gi.get("correlation",[])
+        if corr:
+            lines+=["","### Internal event ↔ visual/controller landmark matches","",
+                    f"Window: internal event may lead landmark by up to {gi.get('window_ms',{}).get('lead')} ms or lag by {gi.get('window_ms',{}).get('lag')} ms."]
+            for x in corr[:30]:
+                lines.append(f"- {x.get('provider')} {x.get('identity')} ↔ {x.get('landmark')} · matches={x.get('matches')} · median Δ={_fmt(x.get('median_delta_ms'))} ms · p95 |Δ|={_fmt(x.get('p95_abs_delta_ms'))} ms")
     if "memory_candidates" in report:
         mc=report["memory_candidates"];lines+=["","## Semantic memory candidates",""]
         for x in mc.get("candidates",[]):
