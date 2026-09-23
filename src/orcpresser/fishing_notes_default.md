@@ -51,16 +51,18 @@ Net automation is not the current Fishing Bot 101 focus.
 - [IMPLEMENTED] When STOP disappears after being confirmed, the controller enters a bounded `BITE_PENDING` state.
 - [IMPLEMENTED] STOP disappearance alone does not send input; BAR or PULL evidence is still required.
 
-### Pull direction
-- [IMPLEMENTED] Calibrated **PULL L** / **PULL R** regions provide the preferred fast direction evidence when one side is clearly stronger.
-- [IMPLEMENTED] Ambiguous PULL evidence is ignored rather than guessed.
-- [IMPLEMENTED] BAR red/blue state remains a fallback. The controller holds one A/D direction continuously, keeps it held through blue, and swaps once on a stable blue→red transition.
-- [IMPLEMENTED] Short unknown-detector gaps preserve the held direction; sustained uncertainty beyond the safety grace releases it.
+### Fight direction and BAR feedback
+- [WIKI/GUIDE + PLAYER REPORTS] Counter the fish's movement: **fish right -> hold A (left)**, **fish left -> hold D (right)**.
+- [OBSERVED/TO VERIFY] A single fight/escape can contain several reversals; direction must therefore be tracked continuously, not chosen once per escape phase.
+- [TARGET LOGIC] Fresh, confident movement/PULL direction is authoritative. Repeated movement in the same direction keeps the same key held.
+- [TARGET LOGIC] BAR colour is validation/fallback, not the primary direction source: **blue** means the current counter-pull appears effective; **red** means the current choice is likely stale/wrong and direction should be reacquired quickly. A red transition may be used as a fallback swap only when reliable movement direction is unavailable.
+- [IMPLEMENTED] Ambiguous PULL evidence is ignored rather than guessed. Short detector gaps preserve the held direction; sustained uncertainty releases it.
 
 ### Reel
-- [IMPLEMENTED] **REEL has highest priority** during the fight.
-- [IMPLEMENTED] Two consistent fast REEL samples or two distinct OCR confirmations of `Reel (Hold)` immediately release A/D and hold LMB.
-- [IMPLEMENTED] When the fight returns to red after REEL, LMB is released and A/D control resumes.
+- [WIKI/GUIDE + PLAYER REPORTS] **REEL has highest priority** while the prompt is valid: release A/D and hold LMB.
+- [TARGET LOGIC] If the fish resumes fighting or the REEL signal disappears, release LMB immediately and resume continuous direction tracking; do not assume a fixed direction after REEL.
+- [IMPLEMENTED] Fast REEL detection is preferred over slower OCR when available.
+- [TO VERIFY / TUNING] Current rough manual estimates for red/blue stamina burn, reel duration, and total catch time are useful for simulation only. Measure them with a timer before treating them as controller constants.
 
 ### End of round
 - [IMPLEMENTED] Catch/recoverable-failure messages can return to the recurring-round wait state.
