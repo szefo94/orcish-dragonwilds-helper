@@ -27,23 +27,32 @@ function Test-Admin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Ensure-Elevated {
+function Ensure-Elevated([string]$ResolvedGameExe) {
     if (Test-Admin) { return }
     Write-Host "Administrator access is required to update the WindowsApps Dragonwilds folder."
     Write-Host "Requesting elevation..."
     $args = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$PSCommandPath)
-    if ($GameExe) { $args += @("-GameExe",$GameExe) }
+    if ($ResolvedGameExe) { $args += @("-GameExe",$ResolvedGameExe) }
+    elseif ($GameExe) { $args += @("-GameExe",$GameExe) }
     $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList $args
     exit $p.ExitCode
 }
 
 function Resolve-DragonwildsExe {
     if ($GameExe) {
-        if (-not (Test-Path $GameExe)) { throw "-GameExe does not exist: $GameExe" }
         if ([IO.Path]::GetFileName($GameExe) -ine "RSDragonwilds-WinGDK-Shipping.exe") {
             throw "This recovery installer is only for RSDragonwilds-WinGDK-Shipping.exe."
         }
-        return (Resolve-Path $GameExe).Path
+        if (Test-Path $GameExe) {
+            return (Resolve-Path $GameExe).Path
+        }
+        # WindowsApps ACLs can make Test-Path/Resolve-Path inconsistent across the UAC boundary.
+        # Preserve the exact path resolved by the parent process and let the first real file operation
+        # provide the authoritative access check.
+        if ($GameExe -like (Join-Path $env:ProgramFiles "WindowsApps\*")) {
+            return $GameExe
+        }
+        throw "-GameExe does not exist: $GameExe"
     }
 
     $proc = Get-Process -Name "RSDragonwilds-WinGDK-Shipping" -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -246,7 +255,11 @@ function Write-InstallManifest([string]$GameExe,[string]$Backup,[object]$Archive
     $manifest | ConvertTo-Json | Set-Content (Join-Path $TelemetryDir "ue4ss_experimental_install.json") -Encoding UTF8
 }
 
-Ensure-Elevated
+$preResolvedExe = $null
+if (-not (Test-Admin)) {
+    try { $preResolvedExe = Resolve-DragonwildsExe } catch {}
+}
+Ensure-Elevated $preResolvedExe
 
 Write-Host ""
 Write-Host "Orcish experimental UE4SS recovery" -ForegroundColor Cyan
@@ -262,7 +275,8 @@ if ($running) {
 $exe = Resolve-DragonwildsExe
 if (-not $exe) {
     Write-Bad "RSDragonwilds-WinGDK-Shipping.exe was not found."
-    Write-Host "Start Dragonwilds once, close it, and rerun this option."
+    Write-Host "The installer could not rediscover the WindowsApps path after elevation."
+    Write-Host "Run Setup option 8 first so Orcish can resolve the exact Dragonwilds executable, then retry option 9."
     Exit-WithPause 3
 }
 
