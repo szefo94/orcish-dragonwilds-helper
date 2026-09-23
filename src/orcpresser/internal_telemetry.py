@@ -29,12 +29,14 @@ class JsonlBridgeProvider:
 
     def __init__(self,path,event_cb,provider="external_bridge",from_end=True):
         self.path=Path(path);self.event_cb=event_cb;self.provider=provider
-        self.from_end=bool(from_end);self.closed=threading.Event();self.thread=None
+        self.from_end=bool(from_end);self.closed=threading.Event();self.ready=threading.Event();self.thread=None
         self.error=None;self.events=0
 
     def start(self):
         if self.thread:return
+        existed=self.path.exists()
         self.thread=threading.Thread(target=self._run,daemon=True,name="scout-jsonl-bridge");self.thread.start()
+        if existed:self.ready.wait(.5)
 
     def close(self,wait=True):
         self.closed.set()
@@ -60,6 +62,7 @@ class JsonlBridgeProvider:
             if self.closed.is_set():return
             with self.path.open("r",encoding="utf-8",errors="replace") as f:
                 if self.from_end:f.seek(0,2)
+                self.ready.set()
                 while not self.closed.is_set():
                     line=f.readline()
                     if not line:
@@ -69,6 +72,7 @@ class JsonlBridgeProvider:
                         self.event_cb("game_internal","bridge_parse_error",str(e),mono=time.monotonic(),
                                       details={"provider":self.provider,"line":line[:500]},stream="process")
         except Exception as e:
+            self.ready.set()
             self.error=type(e).__name__+": "+str(e)
             self.event_cb("game_internal","bridge_error",self.error,mono=time.monotonic(),
                           details={"provider":self.provider,"bridge_path":str(self.path)},stream="process")
