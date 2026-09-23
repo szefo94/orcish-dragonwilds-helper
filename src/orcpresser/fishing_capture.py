@@ -3,7 +3,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 log=logging.getLogger('orcpresser')
-import json, queue, threading, time
+import json, queue, threading, time, logging
 import cv2
 import numpy as np
 from fishing import Observation
