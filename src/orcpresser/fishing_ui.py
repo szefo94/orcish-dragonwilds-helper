@@ -24,22 +24,21 @@ class FishingPanel:
         self.message=tk.StringVar(value='Fishing Bot 101: set BAR and PROMPT first. RESULT is recommended for No fish/depleted detection.')
         bg=parent['bg']
         def button(text,fn):tk.Button(parent,text=text,command=fn,bg='#384829',fg='#e6d8b0',activebackground='#526737',relief='flat').pack(fill='x',pady=2)
-        button('BIND GAME · switch to it within 3 seconds',app.bind_game)
         modes=tk.Frame(parent,bg=bg);modes.pack(fill='x',pady=(2,4))
         for value,title in [('101','FISHING BOT 101'),('advanced','ADVANCED · EXP')]:
             tk.Radiobutton(modes,text=title,value=value,variable=self.mode,command=self.mode_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg).pack(side='left',expand=True,fill='x')
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
         for key,label in [('bar','BAR'),('prompt','REEL'),('active','STOP'),('left','PULL L'),('right','PULL R'),('result','RESULT'),('spot','SPOT')]:tk.Button(row,text=label,command=lambda n=key:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
-        tk.Label(parent,text='BOT 101 requires BAR + REEL. STOP should frame Stop Fishing (waiting-for-bite). PULL L / PULL R should frame the fight prompts.\nRESULT improves catch/no-fish detection. SPOT and automatic casting belong to Advanced.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
+        tk.Label(parent,text='CALIBRATION · BAR and REEL are required. Optional: STOP (waiting), PULL L/R (fight prompts), RESULT (catch/depleted), SPOT (Advanced).',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
         self.overlay_box=tk.Checkbutton(parent,text='Show calibration overlay (BAR / REEL / STOP / PULL L / PULL R / RESULT / SPOT)',variable=self.show_overlay,command=self.overlay_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.overlay_box.pack(fill='x')
         self.recurring_box=tk.Checkbutton(parent,text='Recurring rounds · after catch/failure, wait for your next cast',variable=self.recurring,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_recurring',self.recurring.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.recurring_box.pack(fill='x')
         self.record_box=tk.Checkbutton(parent,text='Record manual test (cropped images + A/D/LMB states)',variable=self.record,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_record',self.record.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.record_box.pack(fill='x')
         self.auto_box=tk.Checkbutton(parent,text='Advanced: automatic cast from current position',variable=self.auto,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_auto_cast',self.auto.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.auto_box.pack(fill='x')
         self.trial_box=tk.Checkbutton(parent,text='Advanced: trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.trial_box.pack(fill='x')
-        tk.Label(parent,text='Bot 101: hold A/D through blue; swap direction only when blue returns to red. Reel (Hold) overrides A/D.',bg=bg,fg='#9ba087',justify='left').pack(fill='x')
+        tk.Label(parent,text='CONTROL LOGIC · blue steers with A/D; Reel (Hold) releases A/D and overrides with LMB.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
         self.cast_row=row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Advanced cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');self.cast_entry=tk.Entry(row,textvariable=self.duration,width=9);self.cast_entry.pack(side='right')
         self.duration.trace_add('write',self.duration_changed)
-        tk.Label(parent,text='USE SHORT/MID/LONG selects a trial. Then label landing WAS SHORT, WAS LONG, or WAS HIT (correct).',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
+        tk.Label(parent,text='CAST CALIBRATION · choose SHORT/MID/LONG for the next trial, then report SHORT/LONG/HIT so the bracket can converge.',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
         self.trial_buttons=[]
         row=tk.Frame(parent,bg=bg);row.pack(fill='x',pady=3)
         for kind in ('short','mid','long'):
