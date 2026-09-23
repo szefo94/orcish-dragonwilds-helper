@@ -9,7 +9,27 @@ from pathlib import Path
 import ctypes, csv, json, math, os, queue, struct, sys, threading, time
 import numpy as np
 
-WATCH_TYPES={"u8":("B",1),"u16":("H",2),"u32":("I",4),"i32":("i",4),"f32":("f",4),"f64":("d",8)}
+WATCH_TYPES={"u8":("B",1),"u16":("H",2),"u32":("I",4),"i32":("i",4),"u64":("Q",8),"i64":("q",8),"ptr":("Q",8),"f32":("f",4),"f64":("d",8)}
+CANDIDATE_ROLES={
+    "fishing":["phase","hooked","reel_allowed","pull_direction","tension","progress","spot_state",
+               "widget_stop","widget_pull_left","widget_pull_right","widget_reel","result"],
+    "auto_picker":["focused_actor","actor_class_id","interaction_action","can_interact","distance","required_range",
+                   "prompt_state","item_id","item_quantity","inventory_free","interaction_cooldown"],
+    "general":["state","bool","enum","counter","distance","progress","pointer","unknown"]
+}
+
+def parse_candidate(value):
+    """Normalize persisted candidate dict into {name,domain,role,spec,...watch fields}."""
+    if not isinstance(value,dict):raise ValueError("Candidate must be an object")
+    name=str(value.get("name") or "").strip()
+    domain=str(value.get("domain") or "general").strip()
+    role=str(value.get("role") or "unknown").strip()
+    spec=str(value.get("spec") or "").strip()
+    if not name:raise ValueError("Candidate name is required")
+    if domain not in CANDIDATE_ROLES:raise ValueError("Candidate domain must be fishing, auto_picker or general")
+    watch=parse_watch(spec)
+    return {"name":name,"domain":domain,"role":role,"spec":spec,**watch}
+
 
 def parse_watch(spec):
     """Parse MODULE+0xOFFSET:TYPE or 0xABSOLUTE:TYPE into a normalized watch."""
@@ -101,9 +121,11 @@ class ReadOnlyMemory:
 class ScoutLabSession:
     SAMPLE_DELAYS=(0,.25,.60,1.00,1.50)
 
-    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10,focus_mode="auto"):
+    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10,focus_mode="auto",candidates=()):
         self.io=io;self.target=target;self.event_cb=event_cb;self.folder=Path(folder)
         self.watches=[parse_watch(x) if isinstance(x,str) else x for x in watches]
+        self.candidates=[parse_candidate(x) for x in (candidates or [])]
+        self.last_candidate_values={}
         self.save_crops=bool(save_crops);self.capture_lmb=bool(capture_lmb);self.interval=max(.05,float(interval));self.closed=threading.Event()
         self.focus_mode=focus_mode if focus_mode in ("auto","crosshair","cursor") else "auto"
         self.last_cursor=None;self.last_cursor_move=0.
@@ -246,7 +268,7 @@ class ScoutLabSession:
             return {"error":str(e)}
 
     def _memory(self,now):
-        if not self.watches:return []
+        if not self.watches and not self.candidates:return []
         if self.memory is None:
             try:self.memory=ReadOnlyMemory(self.io.pid(self.target))
             except Exception as e:
@@ -257,6 +279,20 @@ class ScoutLabSession:
             except Exception as e:r={"ok":False,"error":type(e).__name__+": "+str(e)}
             row={"spec":watch["spec"],**r};out.append(row)
             self.event_cb("memory","watch",row,mono=now,stream="memory")
+        for cand in self.candidates:
+            try:r=self.memory.read(cand)
+            except Exception as e:r={"ok":False,"error":type(e).__name__+": "+str(e)}
+            row={"name":cand["name"],"domain":cand["domain"],"role":cand["role"],"spec":cand["spec"],**r};out.append(row)
+            self.event_cb("memory","candidate",row,mono=now,stream="memory")
+            key=(cand["domain"],cand["name"])
+            current=r.get("value") if r.get("ok") else None
+            seen=key in self.last_candidate_values;previous=self.last_candidate_values.get(key)
+            if seen and previous!=current:
+                self.event_cb("memory","candidate_transition",
+                              {"name":cand["name"],"domain":cand["domain"],"role":cand["role"],"spec":cand["spec"],
+                               "from":previous,"to":current,"ok":bool(r.get("ok"))},
+                              mono=now,stream="memory")
+            self.last_candidate_values[key]=current
         return out
 
     def _run(self):
@@ -308,6 +344,9 @@ class ScoutLabPanel:
         self.live=tk.StringVar(value="No samples yet.")
         self.watch_var=tk.StringVar(value="")
         self.watches=list(app.settings.get("scout_memory_watches",[]) or [])
+        self.candidates=list(app.settings.get("scout_memory_candidates",[]) or [])
+        self.candidate_name=tk.StringVar(value="");self.candidate_domain=tk.StringVar(value="fishing")
+        self.candidate_role=tk.StringVar(value="phase");self.candidate_spec=tk.StringVar(value="")
         self.save_crops=tk.BooleanVar(value=bool(app.settings.get("scout_save_cursor_crops",False)))
         self.capture_lmb=tk.BooleanVar(value=bool(app.settings.get("scout_capture_lmb_samples",True)))
         self.background=tk.BooleanVar(value=bool(app.settings.get("scout_background_probes",True)))
@@ -340,11 +379,49 @@ class ScoutLabPanel:
         tk.Button(row,text="CLEAR WATCHES",command=self.clear_watches).pack(side="left",padx=6)
         self.watch_text=tk.StringVar();tk.Label(p,textvariable=self.watch_text,bg=c["PANEL"],fg=c["MUTED"],justify="left",anchor="w",wraplength=410,font=("Consolas",8)).pack(fill="x")
         self._refresh_watches()
+        tk.Label(p,text="Semantic candidate · name / domain / role / address",bg=c["PANEL"],fg=c["GOLD"],anchor="w").pack(fill="x",pady=(10,2))
+        row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x")
+        tk.Entry(row,textvariable=self.candidate_name,width=12,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"]).pack(side="left")
+        from tkinter import ttk
+        ttk.Combobox(row,textvariable=self.candidate_domain,values=("fishing","auto_picker","general"),state="readonly",width=11).pack(side="left",padx=3)
+        ttk.Combobox(row,textvariable=self.candidate_role,values=CANDIDATE_ROLES["fishing"],width=18).pack(side="left",padx=3)
+        tk.Entry(p,textvariable=self.candidate_spec,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"]).pack(fill="x",pady=2)
+        row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
+        tk.Button(row,text="ADD CANDIDATE",command=self.add_candidate).pack(side="left")
+        tk.Button(row,text="CLEAR CANDIDATES",command=self.clear_candidates).pack(side="left",padx=6)
+        self.candidate_text=tk.StringVar();tk.Label(p,textvariable=self.candidate_text,bg=c["PANEL"],fg=c["MUTED"],justify="left",anchor="w",wraplength=410,font=("Consolas",8)).pack(fill="x")
+        self._refresh_candidates()
+        self.candidate_domain.trace_add("write",lambda *_:self._sync_roles())
         tk.Label(p,textvariable=self.status,bg=c["PANEL"],fg=c["GREEN"],justify="left",anchor="w",wraplength=410,font=("Segoe UI",9,"bold")).pack(fill="x",pady=(8,2))
         tk.Label(p,textvariable=self.live,bg="#10150e",fg=c["BONE"],justify="left",anchor="nw",wraplength=410,font=("Consolas",8),height=8).pack(fill="x")
 
     def _refresh_watches(self):
         self.watch_text.set("Memory watches: none" if not self.watches else "Memory watches:\\n"+"\\n".join("  "+x for x in self.watches[:8]))
+
+    def _sync_roles(self):
+        roles=CANDIDATE_ROLES.get(self.candidate_domain.get(),CANDIDATE_ROLES["general"])
+        if self.candidate_role.get() not in roles:self.candidate_role.set(roles[0])
+
+    def _refresh_candidates(self):
+        if not self.candidates:self.candidate_text.set("Semantic candidates: none");return
+        lines=[]
+        for x in self.candidates[:10]:
+            lines.append(f"  [{x.get('domain','?')}] {x.get('name','?')} → {x.get('role','?')} · {x.get('spec','?')}")
+        self.candidate_text.set("Semantic candidates:\n"+"\n".join(lines))
+
+    def add_candidate(self):
+        value={"name":self.candidate_name.get(),"domain":self.candidate_domain.get(),
+               "role":self.candidate_role.get(),"spec":self.candidate_spec.get()}
+        try:parse_candidate(value)
+        except Exception as e:self.status.set(str(e));return
+        self.candidates=[x for x in self.candidates if not (x.get("domain")==value["domain"] and x.get("name")==value["name"])]
+        self.candidates.append(value);self.app.persist("scout_memory_candidates",self.candidates)
+        self.candidate_name.set("");self.candidate_spec.set("");self._refresh_candidates()
+        self.status.set("Candidate saved. Restart recording/feature to apply it.")
+
+    def clear_candidates(self):
+        self.candidates=[];self.app.persist("scout_memory_candidates",[]);self._refresh_candidates()
+        self.status.set("Semantic candidates cleared.")
 
     def add_watch(self):
         try:w=parse_watch(self.watch_var.get())
@@ -364,7 +441,7 @@ class ScoutLabPanel:
         self.app.scout_start("scout_lab","Research")
         try:
             folder=self.app.scout.folder if getattr(self.app,"scout",None) else self.app.folder
-            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode="auto")
+            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode="auto",candidates=self.candidates)
             self.status.set("RECORDING — LMB creates screenshot bursts; label them later in this session's labels.csv.")
         except Exception as e:
             self.app.scout_stop("Scout Lab start failed");self.session=None;self.status.set("Start failed: "+str(e))
@@ -379,9 +456,9 @@ class ScoutLabPanel:
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
         try:
             focus_mode="crosshair" if domain=="aim" else "auto"
-            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode)
+            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode,candidates=self.candidates)
             self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get(),
-                                 "lmb_samples":self.capture_lmb.get(),"focus_mode":focus_mode},stream="system")
+                                 "lmb_samples":self.capture_lmb.get(),"focus_mode":focus_mode,"semantic_candidates":len(self.candidates)},stream="system")
         except Exception as e:
             self.sidecar=None
             self.app.scout_event("system","sidecar_error",type(e).__name__+": "+str(e),stream="system")
@@ -412,7 +489,7 @@ class ScoutLabPanel:
         lines=[f"cursor screen={cur}  client={None if not rel else rel[:2]}",
                f"cursor center BGR={feat.get('center_bgr')}  patch σ={feat.get('std')}",
                f"crosshair BGR={(latest.get('crosshair_features') or {}).get('center_bgr')}",
-               f"memory watches={len(mem)}",
+               f"memory reads={len(mem)} · candidates={len(self.candidates)}",
                f"LMB sample frames={latest.get('sample_frames',0)}  pending={latest.get('pending_sample_frames',0)}"]
         for m in mem[:4]:
             lines.append(f"  {m.get('spec')}: {m.get('value') if m.get('ok') else m.get('error')}")
