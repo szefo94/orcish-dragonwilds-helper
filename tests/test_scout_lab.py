@@ -1,6 +1,7 @@
-import unittest
+import csv, tempfile, unittest
+from pathlib import Path
 import numpy as np
-from scout_lab import parse_watch, visual_features
+from scout_lab import ScoutLabSession, parse_watch, visual_features
 
 class ScoutLabTests(unittest.TestCase):
     def test_parse_module_relative_watch(self):
@@ -26,5 +27,22 @@ class ScoutLabTests(unittest.TestCase):
         self.assertEqual(f["size"],[9,9])
         self.assertEqual(f["center_bgr"],[40.0,50.0,60.0])
         self.assertGreater(f["std"],0)
+
+    def test_sample_focus_prefers_crosshair_for_centered_cursor(self):
+        s=ScoutLabSession.__new__(ScoutLabSession)
+        self.assertEqual(s._sample_focus((100,200,800,600),(505,498)),("crosshair",500,500))
+        self.assertEqual(s._sample_focus((100,200,800,600),(200,300)),("cursor",200,300))
+
+    def test_prepare_labels_creates_editable_csv_and_guide(self):
+        with tempfile.TemporaryDirectory() as td:
+            s=ScoutLabSession.__new__(ScoutLabSession);s.folder=Path(td)
+            s.sample_dir=s.folder/"samples";s.labels_path=s.folder/"labels.csv"
+            s._prepare_labels()
+            self.assertTrue(s.sample_dir.is_dir())
+            self.assertTrue((s.folder/"LABELING_README.txt").is_file())
+            with s.labels_path.open("r",encoding="utf-8",newline="") as f:
+                header=next(csv.reader(f))
+            self.assertEqual(header[-2:],["label","notes"])
+            self.assertIn("delay_ms",header)
 
 if __name__=="__main__":unittest.main()
