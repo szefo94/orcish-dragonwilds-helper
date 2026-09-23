@@ -279,7 +279,7 @@ Installation downloads dependencies. Gameplay recognition and recording remain l
 | A key seems held | Press F8; physically press/release the affected key if needed. |
 | Inputs fail with an elevated game | A privilege mismatch may prevent input delivery. |
 | Fishing does not progress | Recheck BAR/PROMPT regions, inspect Preview, and record a manual session. The controller is experimental. |
-| More detail is needed | Inspect `data/orcpresser.log` and run Setup.cmd option 5. Share only reviewed diagnostics. |
+| Helper disappeared / process exited | Inspect `data/orcpresser.log`, `data/orcpresser.log.1`, and `data/orcpresser-crash.log`. On the next start, `unclean_previous_exit=True` in the log confirms the previous process did not close normally. If all logs end abruptly, also check the Windows Application event log for a native crash. |
 
 ## Development and contributions
 

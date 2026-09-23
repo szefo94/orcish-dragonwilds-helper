@@ -1,7 +1,10 @@
 """Fishing capture: fast color observations and a separate, bounded OCR worker."""
 from dataclasses import asdict
 from pathlib import Path
-import json, queue, threading, time
+
+import json, queue, threading, time, logging
+
+log=logging.getLogger('orcpresser')
 import cv2
 import numpy as np
 from fishing import Observation
@@ -176,6 +179,7 @@ class FishingCapture:
                     self.text=' | '.join(lines);self.text_stamp=stamp;self.pull_left=pull_left;self.pull_right=pull_right;self.pull_stamp=stamp
                     self.ocr_regions=regions_text;self.ocr_ms=(time.monotonic()-start)*1000
         except Exception as e:
+            log.exception('Fishing OCR worker crashed')
             with self.lock:self.error='Fishing OCR: '+str(e)
     def capture(self):
         try:
@@ -184,7 +188,7 @@ class FishingCapture:
             last_text=last_save=last_spot=last_active=last_fast=0.;candidate=None;active=False;active_score=0.;active_stamp=0.
             pull_direction=None;pull_confidence=0.;pull_visual_stamp=0.;left_score=right_score=0.
             reel_visible=False;reel_score=0.;reel_stamp=0.;fast_frames={}
-            log=(self.folder/'observations.jsonl').open('w',encoding='utf-8') if self.folder else None
+            session_log=(self.folder/'observations.jsonl').open('w',encoding='utf-8') if self.folder else None
             try:
                 while not self.closed.is_set():
                     now=time.monotonic()
@@ -234,10 +238,12 @@ class FishingCapture:
                             extra=[('active',active_frame)] if 'active' in self.regions and 'active_frame' in locals() else []
                             for name,im in [('bar',bar)]+[(f'text-{name}',im) for name,im in images]+extra:
                                 p=self.folder/f'{now-self.started:08.3f}-{name}.png';cv2.imwrite(str(p),im);self.bytes+=p.stat().st_size
-                            log.flush();last_save=now
+                            session_log.flush();last_save=now
                     self.offer((o,info,None))
                     self.closed.wait(max(0,.05-(time.monotonic()-now)))
             finally:
-                if log:log.close()
+                if session_log:session_log.close()
                 grab.mss.close()
-        except Exception as e:self.offer((None,{},str(e)))
+        except Exception as e:
+            log.exception('Fishing capture worker crashed')
+            self.offer((None,{},'Fishing capture: '+str(e)))

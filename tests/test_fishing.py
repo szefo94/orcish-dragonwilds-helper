@@ -83,6 +83,26 @@ class Fishing(unittest.TestCase):
         self.see(11.3,text='You caught a fish');self.see(11.7,text='You caught a fish')
         self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST');self.assertIsNone(self.c.held)
 
+    def test_persistent_101_junk_catch_rearms_for_next_round(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.see(10.4,active=False);self.see(10.5,'red',pull_left=True);self.see(10.9,'red',pull_left=True)
+        self.see(11.3,text='You caught some junk');self.see(11.7,text='You caught some junk')
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST');self.assertIsNone(self.c.held)
+
+    def test_persistent_101_interrupted_fight_rearms_after_signals_disappear(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.see(10.4,active=False);self.see(10.5,'red',pull_left=True);self.see(10.9,'red',pull_left=True)
+        self.assertEqual(self.c.state,'FIGHT')
+        self.see(11.0,'unknown',active=False,pull_left=False,pull_right=False)
+        self.see(12.6,'unknown',active=False,pull_left=False,pull_right=False)
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST');self.assertIsNone(self.c.held)
+
     def test_focus_loss_releases(self):
         self.fight();self.c.tick(10.1,False)
         self.assertFalse(self.c.running);self.assertEqual(self.events[-1],('A',False))
