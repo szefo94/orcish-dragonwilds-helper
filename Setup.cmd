@@ -17,6 +17,8 @@ echo   3  Back to CPU runtime           undo 2
 echo   4  Start once in SAFE mode       defaults, learned data not loaded
 echo   5  Run self-tests
 echo   6  Clean up old files            backups, old zips, caches - shows what first
+echo   7  Install telemetry extras       optional Frida integration for Scout
+echo   8  Telemetry status / help        show optional under-the-hood prerequisites
 echo   Q  Quit
 echo.
 set "ACTION="
@@ -27,6 +29,8 @@ if "%ACTION%"=="3" set "ACTION=cpu"
 if "%ACTION%"=="4" set "ACTION=safe"
 if "%ACTION%"=="5" set "ACTION=test"
 if "%ACTION%"=="6" set "ACTION=clean"
+if "%ACTION%"=="7" set "ACTION=telemetry"
+if "%ACTION%"=="8" set "ACTION=telemetry-check"
 if /i "%ACTION%"=="q" exit /b 0
 
 :dispatch
@@ -36,7 +40,9 @@ if /i "%ACTION%"=="cpu" goto cpu
 if /i "%ACTION%"=="safe" goto safe
 if /i "%ACTION%"=="test" goto test
 if /i "%ACTION%"=="clean" goto clean
-echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean]
+if /i "%ACTION%"=="telemetry" goto telemetry
+if /i "%ACTION%"=="telemetry-check" goto telemetry_check
+echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean^|telemetry^|telemetry-check]
 goto end_fail
 
 :install
@@ -100,6 +106,27 @@ goto end_ok
 :clean
 if not exist "%PY%" goto noinstall
 "%PY%" src\orcpresser\maintenance.py clean
+goto end_ok
+
+:telemetry
+if not exist "%PY%" goto noinstall
+echo.
+echo   Installing optional Scout telemetry Python dependencies...
+"%PY%" -m pip install -r src\requirements-telemetry.txt
+if errorlevel 1 goto failed
+goto telemetry_check
+
+:telemetry_check
+if not exist "%PY%" goto noinstall
+echo.
+echo   Scout telemetry status
+echo   ----------------------
+"%PY%" -c "import importlib.util; print('Frida Python package: ' + ('INSTALLED' if importlib.util.find_spec('frida') else 'NOT INSTALLED'))"
+echo   ReadProcessMemory watches: BUILT IN (Windows API, no extra package)
+echo   UE4SS bridge: EXTERNAL / MANUAL install into the game directory
+echo      Template: tools\ue4ss\OrcishScout\scripts\main.lua
+echo      Guide:    docs\INTERNAL_TELEMETRY.md
+echo   Cheat Engine / ReClass.NET / x64dbg / WPR: EXTERNAL research tools, not Orcish runtime dependencies
 goto end_ok
 
 :nopython
