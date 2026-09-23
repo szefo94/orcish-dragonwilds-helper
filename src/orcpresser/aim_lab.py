@@ -188,7 +188,7 @@ class AimTrackerSession:
 class AimLabPanel:
     def __init__(self,app,parent,colors):
         self.app=app;self.tk=tk;self.c=colors;self.session=None;self.overlay=AimOverlay(app.root)
-        self.status=tk.StringVar(value="Idle — bind the game, START TRACKING, then acquire a target under the cursor.")
+        self.status=tk.StringVar(value="Idle — bind game, START TRACKING, then press F6 while aiming at a target.")
         self.live=tk.StringVar(value="No target tracks yet.")
         self.box_w=tk.IntVar(value=int(app.settings.get("aim_seed_width",90)))
         self.box_h=tk.IntVar(value=int(app.settings.get("aim_seed_height",140)))
@@ -202,7 +202,7 @@ class AimLabPanel:
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
         tk.Button(row,text="START TRACKING",command=self.start).pack(side="left")
         tk.Button(row,text="STOP",command=self.stop).pack(side="left",padx=6)
-        tk.Button(row,text="ACQUIRE AT CURSOR",command=self.acquire).pack(side="left",padx=3)
+        tk.Button(row,text="ACQUIRE (F6)",command=self.acquire).pack(side="left",padx=3)
         tk.Button(row,text="CLEAR TARGETS",command=self.clear).pack(side="left",padx=3)
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
         tk.Label(row,text="Seed box W×H",bg=c["PANEL"],fg=c["BONE"]).pack(side="left")
@@ -223,7 +223,7 @@ class AimLabPanel:
         self.app.scout_start("aim","Research")
         try:
             self.session=AimTrackerSession(self.app.io,self.app.target,self.app.scout_event,self.overlay)
-            self.status.set("TRACKING — hover a visible target and click ACQUIRE AT CURSOR.")
+            self.status.set("TRACKING — stay in game; press F6 to acquire. LMB sample bursts can be labeled later in labels.csv.")
         except Exception as e:
             self.app.scout_stop("Aim Lab start failed");self.session=None;self.status.set("Start failed: "+str(e))
 
