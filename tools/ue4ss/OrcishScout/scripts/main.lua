@@ -51,6 +51,7 @@ local function object_name(Context)
 end
 
 print("[OrcishScout] UE4SS bridge loading\n")
+emit("bridge_start", "OrcishScout", "", "")
 for _, h in ipairs(HOOKS) do
     local ok, pre, post = pcall(function()
         return RegisterHook(h.fn, function(Context, ...)
@@ -64,4 +65,5 @@ for _, h in ipairs(HOOKS) do
         emit("hook_error", h.label, h.fn, tostring(pre))
     end
 end
+emit("bridge_ready", "OrcishScout", "", "")
 print("[OrcishScout] UE4SS bridge ready\n")
