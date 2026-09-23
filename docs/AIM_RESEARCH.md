@@ -55,6 +55,30 @@ References:
 
 A custom model is preferable to assuming a generic person detector will understand Dragonwilds enemies. Training data can be collected by Scout crops plus manual target/head labels.
 
+## Offline labeling workflow
+
+The first manual-mark workflow had an important usability flaw: clicking a helper button means leaving the game at the exact moment the user is trying to keep the crosshair on a target. The preferred workflow is now **capture first, label later**.
+
+With Scout's **LMB sample burst** enabled, every left-click while the bound game is foreground creates a burst of screenshots centered on the active cursor/crosshair focus at approximately:
+
+- t+0 ms;
+- t+250 ms;
+- t+600 ms;
+- t+1000 ms;
+- t+1500 ms.
+
+The delayed frames exist specifically because a projectile can land noticeably after the click. The same session continues recording process metadata and configured read-only memory watches while those frames are captured.
+
+Each session receives:
+
+- `samples/*.png`;
+- `labels.csv`;
+- `LABELING_README.txt`.
+
+The user reviews the images after play and fills only the `label` and `notes` columns in `labels.csv`. Suggested labels include `target`, `head`, `item_pickup`, `inventory`, `hit`, `crit`, `miss`, and `other`. The analyzer reads this file without modifying it.
+
+For live target acquisition, **F6** seeds the Aim tracker while the game remains focused, avoiding the same focus-loss problem.
+
 ## Hit / damage / critical-hit evidence
 
 The game displays transient visual feedback when a shot damages a target. Rather than hard-code an unknown colour/font before enough samples exist, the current Aim Lab records a broad center-region **impact candidate** descriptor:

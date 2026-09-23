@@ -5,9 +5,9 @@ data/scout_reports and include SHA-256 hashes of every source file used.
 """
 from __future__ import annotations
 from pathlib import Path
-import argparse, hashlib, json, math, statistics, time
+import argparse, csv, hashlib, json, math, statistics, time
 
-RAW_FILES=("manifest.json","summary.json","vision.jsonl","controller.jsonl","process.jsonl","memory.jsonl","annotations.jsonl","system.jsonl")
+RAW_FILES=("manifest.json","summary.json","vision.jsonl","controller.jsonl","process.jsonl","memory.jsonl","annotations.jsonl","system.jsonl","labels.csv")
 
 def sha256_file(path):
     h=hashlib.sha256()
@@ -30,6 +30,15 @@ def load_jsonl(path):
                 except ValueError:out.append({"_parse_error":n,"_raw":line[:500]})
     except OSError:pass
     return out
+
+def load_labels(path):
+    rows=[]
+    try:
+        with Path(path).open("r",encoding="utf-8",newline="") as f:
+            for row in csv.DictReader(f):
+                if row:rows.append(dict(row))
+    except (OSError,csv.Error):pass
+    return rows
 
 def percentile(values,p):
     xs=sorted(float(x) for x in values if isinstance(x,(int,float)) and math.isfinite(float(x)))
@@ -78,6 +87,7 @@ def analyze_session(session):
     manifest=load_json(session/"manifest.json",{}) or {};summary=load_json(session/"summary.json",{}) or {}
     vision=load_jsonl(session/"vision.jsonl");controller=load_jsonl(session/"controller.jsonl");process=load_jsonl(session/"process.jsonl")
     memory=load_jsonl(session/"memory.jsonl");annotations=load_jsonl(session/"annotations.jsonl");system=load_jsonl(session/"system.jsonl")
+    labels=load_labels(session/"labels.csv")
     all_events=vision+controller+process+memory+annotations+system
     valid=[e for e in all_events if isinstance(e,dict) and isinstance(e.get("mono"),(int,float))]
     monos=[e["mono"] for e in valid]
@@ -96,6 +106,13 @@ def analyze_session(session):
                                               for e in vision if isinstance((e.get("details") or {}).get("consumed_mono"),(int,float)) and isinstance((e.get("details") or {}).get("detected_mono"),(int,float))])
             },
             "manifest":manifest,"session_summary":summary}
+    if labels:
+        labeled=[r for r in labels if (r.get("label") or "").strip()]
+        counts={}
+        for row in labeled:
+            key=(row.get("label") or "").strip().lower();counts[key]=counts.get(key,0)+1
+        report["lmb_samples"]={"frames":len(labels),"sample_ids":len({r.get("sample_id") for r in labels if r.get("sample_id")}),
+                               "labeled_frames":len(labeled),"labels":counts}
     watches=[e for e in memory if e.get("signal")=="watch"];marks=[e for e in annotations if e.get("signal") in ("mark","aim_mark","target_seed")]
     if watches or marks or system:
         ok=sum(1 for e in watches if (e.get("value") or {}).get("ok") is True)
@@ -159,6 +176,11 @@ def markdown(report):
     for key,label in (("capture","Capture"),("detect","Detection"),("worker_total","Queue→detect complete"),("consume_after_detect","Detect→UI consume")):
         s=stages.get(key,{})
         if s.get("count"):lines.append(f"- {label}: n={s.get('count',0)}, median={_fmt(s.get('median'))} ms, p95={_fmt(s.get('p95'))} ms")
+    if "lmb_samples" in report:
+        s=report["lmb_samples"];lines+=["","## LMB screenshot samples","",
+            f"- Sample bursts: {s.get('sample_ids',0)}",f"- Screenshot frames: {s.get('frames',0)}",
+            f"- Labeled frames: {s.get('labeled_frames',0)}"]
+        if s.get("labels"):lines.append("- Labels: "+", ".join(f"{k}={v}" for k,v in sorted(s["labels"].items())))
     if "fishing" in report:
         f=report["fishing"];lines+=["","## Fishing","",f"- Observations: {f['observations']}",
             "- Positive frames: "+", ".join(f"{k}={v}" for k,v in f["positive_frames"].items()),"","### State transitions",""]

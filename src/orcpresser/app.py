@@ -16,6 +16,7 @@ from version import VERSION
 from scout import ScoutRecorder
 from scout_lab import ScoutLabPanel
 from aim_lab import AimLabPanel
+from status_overlay import StatusOverlay
 import bench as benchmod
 import keys as keymap
 from tkinter import ttk
@@ -121,7 +122,7 @@ class App:
         self.ctrl=Controller(lambda k,d:None) if visual else Controller(self.io.output)
         self.target=0;self.region=(.25,.2,.65,.6);self.mode='Auto';self.generation=0
         self.jobs=queue.Queue(maxsize=1);self.results=queue.Queue();self.busy=False;self.ready=False
-        self.previous_hot=False;self.previous_reacquire=False;self.last_scan=0;self.scan_ms=0;self.history=deque(maxlen=90)
+        self.previous_hot=False;self.previous_reacquire=False;self.previous_aim_acquire=False;self.last_scan=0;self.scan_ms=0;self.history=deque(maxlen=90)
         self.proc=psutil.Process();self.proc.cpu_percent();self.thumb=None;self.selecting=False;self.last_focused=True
         self.run='Preview';self.last_run='Preview';self.reads=deque(maxlen=5);self.last_read=None;self.scout=None
         self.meter=ReactionMeter();self.bench=None;self.benchproc=psutil.Process();self.optboxes={};self.geo=deque(maxlen=40);self.pending_clear=False;self.capture_backend='mss';self.engine='CPU'
@@ -144,7 +145,7 @@ class App:
         self.settings.set('engine_ok',False);self.settings.set('clean_exit',False);self.settings.save()
         log.info('start %s safe=%s unclean_previous_exit=%s',VERSION,self.safe,self.unclean)
         root.protocol('WM_DELETE_WINDOW',self.close)
-        self.build();self.place_window()
+        self.build();self.status_overlay=StatusOverlay(root);self.place_window()
         root.report_callback_exception=self.error
         self.thread=None
         if not visual:self.thread=threading.Thread(target=self.worker,daemon=True);self.thread.start()
@@ -369,7 +370,7 @@ class App:
             self.hint.set('SCOUT LAB uses START RECORDING in the tab · can also run as a sidecar with Auto / Fishing / Aim')
             return
         if self.mode=='Aim':
-            self.hint.set('AIM LAB uses START TRACKING in the tab · boxes/telemetry only · no mouse movement or firing')
+            self.hint.set('AIM LAB: START TRACKING, then F6 acquires under cursor/crosshair · LMB captures offline-label samples')
             return
         run='TEST' if self.mode=='Stats' else ('LIVE' if self.mode not in ('Auto','Fishing') else self.last_run.upper())
         self.hint.set(f'\\  START / STOP {run}     •     F8  RELEASE & STOP     •     Switching windows stops output')
@@ -931,6 +932,40 @@ class App:
         if line==self.last_read and self.reads and not sent:self.reads[0]=(stamp,self.reads[0][1])
         else:self.reads.appendleft((stamp,entry));self.last_read=line
         self.readtext.set('\n'.join(f'{t} {e}' for t,e in self.reads))
+    def update_status_overlay(self,fg):
+        ov=getattr(self,"status_overlay",None)
+        if not ov:return
+        try:
+            iconic=self.root.state()=="iconic"
+            if not iconic or not self.target or fg!=self.target:
+                ov.hide();return
+            lines=[]
+            status=self.status.get().strip() if hasattr(self,"status") else ""
+            if status:lines.append(status[:90])
+            if self.mode in ("Repeat","Hold","Auto"):
+                lines.append(f"run={getattr(self,'run','Live')}  running={self.ctrl.running}  held={self.ctrl.held or 'none'}  inputs={self.ctrl.count}")
+                if self.mode=="Auto":
+                    lines.append((self.detected.get() if hasattr(self,"detected") else "")[:90])
+                    lines.append(f"scan={self.scan_ms:.0f} ms · {getattr(self,'capture_backend','?')} · {getattr(self,'engine','?')}")
+            elif self.mode=="Fishing":
+                lines.append(f"state={getattr(self.ctrl,'state','IDLE')}  held={getattr(self.ctrl,'held',None) or 'none'}")
+                reason=str(getattr(self.ctrl,"reason","") or "")
+                if reason:lines.append(reason[:90])
+            elif self.mode=="Aim" and getattr(self,"aim_lab",None):
+                lines.extend([x[:90] for x in self.aim_lab.live.get().splitlines()[:3]])
+            elif self.mode=="Scout" and getattr(self,"scout_lab",None):
+                lines.extend([x[:90] for x in self.scout_lab.live.get().splitlines()[:3]])
+            elif self.mode=="Stats":
+                lines.append("Stats / benchmark mode")
+            side=getattr(getattr(self,"scout_lab",None),"sidecar",None)
+            if side:
+                lines.append(f"Scout sidecar ON · LMB sample frames={getattr(side,'sample_count',0)} · watches={len(getattr(side,'watches',[]))}")
+            ov.show(self.io.rect(self.target),f"{self.mode.upper()} · ORCISH HELPER",lines or ["Idle"])
+        except Exception:
+            log.exception("status overlay update")
+            try:ov.hide()
+            except Exception:pass
+
     def tick(self):
         try:
             now=time.monotonic()
@@ -946,12 +981,17 @@ class App:
                     # once per focus loss; restoring it from the taskbar focuses it again.
                     self.root.iconify()
                 self.last_focused=focused
+                self.update_status_overlay(fg)
                 hot=self.io.pressed(0xDC)
                 if self.previous_hot and not hot and not self.selecting:self.toggle()
                 self.previous_hot=hot
                 reacquire=self.io.pressed(0x76)  # F7
                 if getattr(self,'previous_reacquire',False) and not reacquire and not self.selecting and self.mode=='Fishing':self.fishing_panel.reacquire()
                 self.previous_reacquire=reacquire
+                aim_acquire=self.io.pressed(0x75)  # F6
+                if getattr(self,'previous_aim_acquire',False) and not aim_acquire and not self.selecting and self.mode=='Aim':
+                    self.aim_lab.acquire()
+                self.previous_aim_acquire=aim_acquire
                 if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
                 self.drain(now)
                 if getattr(self,'scout_lab',None):self.scout_lab.tick()
@@ -1010,6 +1050,7 @@ class App:
             if not getattr(self,'ready',True) and time.monotonic()-getattr(self,'load_started',0)<45:
                 self.settings.set('engine_ok',None)   # closed early, not a stall: no safe start next time
             self.settings.set('clean_exit',True);self.settings.save()
+        if getattr(self,"status_overlay",None):self.status_overlay.close()
         if self.io:self.io.release_all()
         if self.thread:
             # Let the worker save learned data (bounded wait; a running scan finishes first).
