@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 import argparse, hashlib, json, math, statistics, time
 
-RAW_FILES=("manifest.json","summary.json","vision.jsonl","controller.jsonl","process.jsonl","memory.jsonl","annotations.jsonl")
+RAW_FILES=("manifest.json","summary.json","vision.jsonl","controller.jsonl","process.jsonl","memory.jsonl","annotations.jsonl","system.jsonl")
 
 def sha256_file(path):
     h=hashlib.sha256()
@@ -77,13 +77,15 @@ def analyze_session(session):
     session=Path(session)
     manifest=load_json(session/"manifest.json",{}) or {};summary=load_json(session/"summary.json",{}) or {}
     vision=load_jsonl(session/"vision.jsonl");controller=load_jsonl(session/"controller.jsonl");process=load_jsonl(session/"process.jsonl")
-    all_events=vision+controller+process
+    memory=load_jsonl(session/"memory.jsonl");annotations=load_jsonl(session/"annotations.jsonl");system=load_jsonl(session/"system.jsonl")
+    all_events=vision+controller+process+memory+annotations+system
     valid=[e for e in all_events if isinstance(e,dict) and isinstance(e.get("mono"),(int,float))]
     monos=[e["mono"] for e in valid]
     report={"schema":1,"session":session.name,"session_path":str(session),"generated_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
             "domain":manifest.get("domain"),"run":manifest.get("run"),"session_id":manifest.get("session_id"),
             "source_hashes":source_hashes(session),"raw_logs_preserved":True,
-            "counts":{"vision":len(vision),"controller":len(controller),"process":len(process),"parse_errors":sum(1 for e in all_events if "_parse_error" in e)},
+            "counts":{"vision":len(vision),"controller":len(controller),"process":len(process),"memory":len(memory),"annotations":len(annotations),"system":len(system),
+                      "parse_errors":sum(1 for e in all_events if "_parse_error" in e)},
             "timeline":{"start_mono":min(monos) if monos else None,"end_mono":max(monos) if monos else None,"duration_s":(max(monos)-min(monos)) if len(monos)>=2 else 0},
             "latency_ms":stats([e.get("latency_ms") for e in vision]),"fresh_ms":stats([e.get("fresh_ms") for e in vision]),
             "stage_timing_ms":{
@@ -94,6 +96,15 @@ def analyze_session(session):
                                               for e in vision if isinstance((e.get("details") or {}).get("consumed_mono"),(int,float)) and isinstance((e.get("details") or {}).get("detected_mono"),(int,float))])
             },
             "manifest":manifest,"session_summary":summary}
+    watches=[e for e in memory if e.get("signal")=="watch"];marks=[e for e in annotations if e.get("signal") in ("mark","aim_mark","target_seed")]
+    if watches or marks or system:
+        ok=sum(1 for e in watches if (e.get("value") or {}).get("ok") is True)
+        report["independent_scout"]={
+            "memory_samples":len(watches),"memory_success":ok,"memory_success_pct":(100.0*ok/len(watches)) if watches else None,
+            "watch_specs":sorted({(e.get("value") or {}).get("spec") for e in watches if (e.get("value") or {}).get("spec")}),
+            "annotations":[{"mono":e.get("mono"),"signal":e.get("signal"),"value":e.get("value")} for e in marks],
+            "system_events":[{"mono":e.get("mono"),"signal":e.get("signal"),"value":e.get("value")} for e in system]
+        }
     if manifest.get("domain")=="fishing":
         obs=[e for e in vision if e.get("signal")=="fishing_observation"]
         transitions=_state_transitions(controller)
@@ -112,14 +123,26 @@ def analyze_session(session):
         report["auto_picker"]={"observations":len(prompts),"approved":sum(1 for e in prompts if e.get("value") is not None),
             "sent_decisions":sum(1 for e in controller if e.get("signal")=="decision" and (e.get("value") or {}).get("sent")),
             "prompt_transitions":_prompt_transitions(vision)}
+    elif manifest.get("domain")=="aim":
+        tracks=[e for e in vision if e.get("signal")=="aim_track"];impacts=[e for e in vision if e.get("signal")=="impact_candidate"]
+        aim_marks=[e for e in annotations if e.get("signal")=="aim_mark"];seeds=[e for e in annotations if e.get("signal")=="target_seed"]
+        by_id={}
+        for e in tracks:
+            v=e.get("value") or {};tid=v.get("id")
+            if tid is not None:by_id.setdefault(str(tid),[]).append(e)
+        report["aim"]={
+            "track_samples":len(tracks),"target_ids":sorted(by_id),"seeded_targets":len(seeds),"impact_candidates":len(impacts),
+            "track_confidence":stats([e.get("confidence") for e in tracks]),
+            "crosshair_error_px":stats([math.hypot(*((e.get("value") or {}).get("crosshair_error") or [0,0])) for e in tracks]),
+            "marks":[{"mono":e.get("mono"),"value":e.get("value")} for e in aim_marks]
+        }
     elif manifest.get("domain")=="scout_lab":
-        memory=load_jsonl(session/"memory.jsonl");annotations=load_jsonl(session/"annotations.jsonl")
         cursor=[e for e in vision if e.get("signal")=="cursor_probe"];cross=[e for e in vision if e.get("signal")=="crosshair_probe"]
-        watches=[e for e in memory if e.get("signal")=="watch"];marks=[e for e in annotations if e.get("signal")=="mark"]
+        lab_marks=[e for e in annotations if e.get("signal")=="mark"]
         ok=sum(1 for e in watches if (e.get("value") or {}).get("ok") is True)
         report["scout_lab"]={"cursor_probes":len(cursor),"crosshair_probes":len(cross),"memory_samples":len(watches),
             "memory_success":ok,"memory_success_pct":(100.0*ok/len(watches)) if watches else None,
-            "annotations":[{"mono":e.get("mono"),"label":e.get("value")} for e in marks],
+            "annotations":[{"mono":e.get("mono"),"label":e.get("value")} for e in lab_marks],
             "watch_specs":sorted({(e.get("value") or {}).get("spec") for e in watches if (e.get("value") or {}).get("spec")})}
     return report
 
@@ -151,6 +174,20 @@ def markdown(report):
         a=report["auto_picker"];lines+=["","## Auto Picker","",f"- Prompt observations: {a['observations']}",f"- Approved observations: {a['approved']}",
             f"- Sent decisions: {a['sent_decisions']}","","### Prompt transitions",""]
         for t in a["prompt_transitions"][:100]:lines.append(f"- {t.get('mono')}: {t.get('prompt')}")
+    if "aim" in report:
+        a=report["aim"];lines+=["","## Aim Lab","",f"- Track samples: {a['track_samples']}",f"- Seeded targets: {a['seeded_targets']}",
+            f"- Impact candidates: {a['impact_candidates']}",f"- Target IDs: {', '.join(a['target_ids']) if a['target_ids'] else 'none'}"]
+        tc=a.get("track_confidence",{});ce=a.get("crosshair_error_px",{})
+        lines.append(f"- Track confidence: n={tc.get('count',0)}, median={_fmt(tc.get('median'))}, p95={_fmt(tc.get('p95'))}")
+        lines.append(f"- Crosshair→head-candidate error: n={ce.get('count',0)}, median={_fmt(ce.get('median'))} px, p95={_fmt(ce.get('p95'))} px")
+        if a.get("marks"):
+            lines+=["","### Aim annotations",""]
+            for m in a["marks"]:lines.append(f"- {m.get('mono')}: {m.get('value')}")
+    if "independent_scout" in report:
+        s=report["independent_scout"];lines+=["","## Independent Scout sidecar","",
+            f"- Memory samples: {s.get('memory_samples',0)}",
+            f"- Memory read success: {_fmt(s.get('memory_success_pct'))}%" if s.get("memory_success_pct") is not None else "- Memory read success: no watches configured",
+            f"- Annotations: {len(s.get('annotations',[]))}",f"- System events: {len(s.get('system_events',[]))}"]
     if "scout_lab" in report:
         s=report["scout_lab"];lines+=["","## Scout Lab","",f"- Cursor probes: {s['cursor_probes']}",f"- Crosshair probes: {s['crosshair_probes']}",
             f"- Memory samples: {s['memory_samples']}",f"- Memory read success: {_fmt(s.get('memory_success_pct'))}%"
@@ -190,9 +227,9 @@ def _merge_stats(reports,key):
 def combined_report(reports):
     fishing=[r for r in reports if r.get("domain")=="fishing"]
     auto=[r for r in reports if r.get("domain")=="auto_picker"]
-    lab=[r for r in reports if r.get("domain")=="scout_lab"]
+    lab=[r for r in reports if r.get("domain")=="scout_lab"];aim=[r for r in reports if r.get("domain")=="aim"]
     out={"schema":1,"generated_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
-         "sessions":len(reports),"domains":{"fishing":len(fishing),"auto_picker":len(auto),"scout_lab":len(lab)},
+         "sessions":len(reports),"domains":{"fishing":len(fishing),"auto_picker":len(auto),"aim":len(aim),"scout_lab":len(lab)},
          "raw_logs_preserved":True,
          "vision_latency_session_medians_ms":_merge_stats(reports,"latency_ms"),
          "vision_freshness_session_medians_ms":_merge_stats(reports,"fresh_ms"),
@@ -209,17 +246,21 @@ def combined_report(reports):
         if "auto_picker" in r:
             item["auto_picker_approved"]=r["auto_picker"].get("approved",0)
             item["auto_picker_sent"]=r["auto_picker"].get("sent_decisions",0)
+        if "aim" in r:
+            item["aim_track_samples"]=r["aim"].get("track_samples",0);item["aim_impacts"]=r["aim"].get("impact_candidates",0)
+            item["aim_marks"]=len(r["aim"].get("marks",[]))
         if "scout_lab" in r:
             item["scout_lab_cursor_probes"]=r["scout_lab"].get("cursor_probes",0)
             item["scout_lab_memory_samples"]=r["scout_lab"].get("memory_samples",0)
             item["scout_lab_annotations"]=len(r["scout_lab"].get("annotations",[]))
+        if "independent_scout" in r:item["sidecar_memory_samples"]=r["independent_scout"].get("memory_samples",0)
         out["session_summaries"].append(item)
     return out
 
 def combined_markdown(report):
     lines=["# Scout combined analysis","",f"- Sessions: **{report['sessions']}**",
            f"- Fishing: **{report['domains']['fishing']}**",f"- Auto Picker: **{report['domains']['auto_picker']}**",
-           f"- Scout Lab: **{report['domains'].get('scout_lab',0)}**",
+           f"- Aim Lab: **{report['domains'].get('aim',0)}**",f"- Scout Lab: **{report['domains'].get('scout_lab',0)}**",
            "- Raw logs preserved: **yes**","","## Cross-session timing",""]
     lat=report.get("vision_latency_session_medians_ms",{});fresh=report.get("vision_freshness_session_medians_ms",{})
     lines.append(f"- Session median vision latency: n={lat.get('count',0)}, median={_fmt(lat.get('median'))} ms, p95={_fmt(lat.get('p95'))} ms")
@@ -229,7 +270,9 @@ def combined_markdown(report):
         extra=""
         if s.get("domain")=="fishing":extra=" · states="+"→".join(s.get("fishing_states") or [])
         elif s.get("domain")=="auto_picker":extra=f" · approved={s.get('auto_picker_approved',0)} · sent={s.get('auto_picker_sent',0)}"
+        elif s.get("domain")=="aim":extra=f" · tracks={s.get('aim_track_samples',0)} · impacts={s.get('aim_impacts',0)} · marks={s.get('aim_marks',0)}"
         elif s.get("domain")=="scout_lab":extra=f" · cursor={s.get('scout_lab_cursor_probes',0)} · memory={s.get('scout_lab_memory_samples',0)} · marks={s.get('scout_lab_annotations',0)}"
+        if s.get("sidecar_memory_samples"):extra+=f" · sidecar-memory={s.get('sidecar_memory_samples')}"
         lines.append(f"- {s.get('session')} · {s.get('domain')} · {s.get('run')} · {s.get('duration_s',0):.2f}s · latency median={_fmt(s.get('vision_latency_median_ms'))} ms{extra}")
     lines+=["","Per-session reports remain available beside this combined report in data/scout_reports/. The analyzer never modifies data/scout_sessions/."]
     return "\n".join(lines)+"\n"
