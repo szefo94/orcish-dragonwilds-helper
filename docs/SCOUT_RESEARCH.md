@@ -296,6 +296,35 @@ Process/Unreal candidate stream:
 - candidate result/catch state;
 - object/property identity and resolution method.
 
+## Scout Lab: exploratory visual + memory acquisition
+
+The application now includes a **SCOUT LAB** tab intended for supervised research sessions beyond Auto Picker and Fishing. Its purpose is to collect raw, time-aligned observations first and decide later which signals are useful.
+
+Current Lab sources:
+
+- cursor position in screen pixels, game-client pixels and normalized client coordinates;
+- a small visual patch under the cursor, summarized as center colour plus patch mean/variation;
+- a matching screen-center/crosshair patch, useful when researching aiming or target alignment;
+- periodic process metadata such as PID, RSS, CPU and thread count;
+- optional cursor crops saved once per second for later inspection;
+- manual event labels: `target`, `head`, `inventory`, `hit`, and `miss`;
+- optional **read-only** memory watches entered explicitly as `MODULE+0xOFFSET:type` or `0xADDRESS:type`.
+
+Supported primitive watch types are `u8`, `u16`, `u32`, `i32`, `f32`, and `f64`. Module-relative watches are preferred because absolute virtual addresses normally change between launches.
+
+The Lab deliberately does **not** yet attempt to infer object identity, world distance, target bones/head position, projectile trajectory, inventory structure or valid Unreal object layouts. Those require candidate discovery and validation against collected sessions. It also does not move the mouse, automate aiming, write memory or patch the game.
+
+Possible research directions using these datasets include:
+
+- correlate what is under the cursor with prompt/object state;
+- identify inventory/UI candidates by manually marking when inventory elements are under the pointer;
+- compare crosshair/cursor location with candidate target/head positions;
+- test whether a candidate process value correlates with target distance or target identity;
+- record hit/miss labels and later fit projectile-drop/lead models from observed shot geometry;
+- identify stable memory/reflection properties that can replace fragile visual guesses.
+
+For aiming research, separate the problem into measurements rather than jumping directly to control: target/head screen position, player/camera pose if available, target distance, projectile speed/drop, shot result, then prediction error. Only after those signals are repeatable across sessions should any assistive snapping/controller experiment be considered.
+
 ## Temporal alignment: OCR is reactive and delayed
 
 Visual/OCR evidence is not instantaneous. A game-state transition happens first, then the frame is rendered, captured, queued for OCR, processed, and only afterwards reaches the controller. Scout correlation must therefore use **causal time windows**, not exact timestamp equality.
