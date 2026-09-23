@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 import argparse, hashlib, json, math, statistics, time
 
-RAW_FILES=("manifest.json","summary.json","vision.jsonl","controller.jsonl","process.jsonl")
+RAW_FILES=("manifest.json","summary.json","vision.jsonl","controller.jsonl","process.jsonl","memory.jsonl","annotations.jsonl")
 
 def sha256_file(path):
     h=hashlib.sha256()
