@@ -120,4 +120,21 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertEqual(r["independent_scout"]["memory_success_pct"],100.0)
             self.assertIn("system.jsonl",r["source_hashes"])
 
+    def test_lmb_sample_labels_are_summarized_without_modification(self):
+        with tempfile.TemporaryDirectory() as td:
+            s=self._session(td,"auto_picker")
+            labels=s/"labels.csv"
+            labels.write_text(
+                "sample_id,delay_ms,mono,image,focus_source,focus_x,focus_y,label,notes\n"
+                "00001,0,1.0,samples/a.png,crosshair,400,300,target,body\n"
+                "00001,250,1.25,samples/b.png,crosshair,400,300,crit,damage marker\n"
+                "00002,0,2.0,samples/c.png,cursor,120,220,,\n",encoding="utf-8")
+            before=sha256_file(labels);r=analyze_session(s);after=sha256_file(labels)
+            self.assertEqual(before,after)
+            self.assertEqual(r["lmb_samples"]["sample_ids"],2)
+            self.assertEqual(r["lmb_samples"]["frames"],3)
+            self.assertEqual(r["lmb_samples"]["labeled_frames"],2)
+            self.assertEqual(r["lmb_samples"]["labels"],{"target":1,"crit":1})
+            self.assertIn("labels.csv",r["source_hashes"])
+
 if __name__=="__main__":unittest.main()
