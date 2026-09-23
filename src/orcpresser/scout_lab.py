@@ -121,10 +121,12 @@ class ReadOnlyMemory:
 class ScoutLabSession:
     SAMPLE_DELAYS=(0,.25,.60,1.00,1.50)
 
-    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10,focus_mode="auto",candidates=()):
+    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10,focus_mode="auto",candidates=(),active_domain=None):
         self.io=io;self.target=target;self.event_cb=event_cb;self.folder=Path(folder)
         self.watches=[parse_watch(x) if isinstance(x,str) else x for x in watches]
-        self.candidates=[parse_candidate(x) for x in (candidates or [])]
+        self.active_domain=active_domain
+        parsed=[parse_candidate(x) for x in (candidates or [])]
+        self.candidates=[x for x in parsed if not active_domain or x["domain"] in (active_domain,"general")]
         self.last_candidate_values={}
         self.save_crops=bool(save_crops);self.capture_lmb=bool(capture_lmb);self.interval=max(.05,float(interval));self.closed=threading.Event()
         self.focus_mode=focus_mode if focus_mode in ("auto","crosshair","cursor") else "auto"
@@ -384,7 +386,8 @@ class ScoutLabPanel:
         tk.Entry(row,textvariable=self.candidate_name,width=12,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"]).pack(side="left")
         from tkinter import ttk
         ttk.Combobox(row,textvariable=self.candidate_domain,values=("fishing","auto_picker","general"),state="readonly",width=11).pack(side="left",padx=3)
-        ttk.Combobox(row,textvariable=self.candidate_role,values=CANDIDATE_ROLES["fishing"],width=18).pack(side="left",padx=3)
+        self.role_box=ttk.Combobox(row,textvariable=self.candidate_role,values=CANDIDATE_ROLES["fishing"],width=18)
+        self.role_box.pack(side="left",padx=3)
         tk.Entry(p,textvariable=self.candidate_spec,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"]).pack(fill="x",pady=2)
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
         tk.Button(row,text="ADD CANDIDATE",command=self.add_candidate).pack(side="left")
@@ -400,6 +403,7 @@ class ScoutLabPanel:
 
     def _sync_roles(self):
         roles=CANDIDATE_ROLES.get(self.candidate_domain.get(),CANDIDATE_ROLES["general"])
+        if hasattr(self,"role_box"):self.role_box.configure(values=roles)
         if self.candidate_role.get() not in roles:self.candidate_role.set(roles[0])
 
     def _refresh_candidates(self):
@@ -441,7 +445,7 @@ class ScoutLabPanel:
         self.app.scout_start("scout_lab","Research")
         try:
             folder=self.app.scout.folder if getattr(self.app,"scout",None) else self.app.folder
-            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode="auto",candidates=self.candidates)
+            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode="auto",candidates=self.candidates,active_domain=None)
             self.status.set("RECORDING — LMB creates screenshot bursts; label them later in this session's labels.csv.")
         except Exception as e:
             self.app.scout_stop("Scout Lab start failed");self.session=None;self.status.set("Start failed: "+str(e))
@@ -456,7 +460,7 @@ class ScoutLabPanel:
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
         try:
             focus_mode="crosshair" if domain=="aim" else "auto"
-            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode,candidates=self.candidates)
+            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode,candidates=self.candidates,active_domain=domain)
             self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get(),
                                  "lmb_samples":self.capture_lmb.get(),"focus_mode":focus_mode,"semantic_candidates":len(self.candidates)},stream="system")
         except Exception as e:
