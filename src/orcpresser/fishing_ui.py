@@ -35,7 +35,7 @@ class FishingPanel:
         self.record_box=tk.Checkbutton(parent,text='Record manual test (cropped images + A/D/LMB states)',variable=self.record,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_record',self.record.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.record_box.pack(fill='x')
         self.auto_box=tk.Checkbutton(parent,text='Advanced: automatic cast from current position',variable=self.auto,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_auto_cast',self.auto.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.auto_box.pack(fill='x')
         self.trial_box=tk.Checkbutton(parent,text='Advanced: trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.trial_box.pack(fill='x')
-        tk.Label(parent,text='CONTROL LOGIC · blue steers with A/D; Reel (Hold) releases A/D and overrides with LMB.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
+        tk.Label(parent,text='CONTROL LOGIC · PULL L/R drives A/D; BAR validates/falls back; Reel (Hold) releases A/D and overrides with LMB.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
         self.cast_row=row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Advanced cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');self.cast_entry=tk.Entry(row,textvariable=self.duration,width=9);self.cast_entry.pack(side='right')
         self.duration.trace_add('write',self.duration_changed)
         tk.Label(parent,text='CAST CALIBRATION · choose SHORT/MID/LONG for the next trial, then report SHORT/LONG/HIT so the bracket can converge.',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
@@ -163,7 +163,8 @@ class FishingPanel:
         a.scout_event('vision','fishing_observation',{'color':o.color,'text':o.text[:240],'stop':info.get('active'),
             'pull_left':info.get('pull_left'),'pull_right':info.get('pull_right'),'pull_direction':info.get('pull_direction'),
             'pull_confidence':info.get('pull_confidence'),'pull_left_score':info.get('pull_left_score'),'pull_right_score':info.get('pull_right_score'),
-            'reel_visible':info.get('reel_visible'),'reel_score':info.get('reel_score'),'red':info.get('red'),'blue':info.get('blue')},
+            'reel_visible':info.get('reel_visible'),'reel_score':info.get('reel_score'),'red':info.get('red'),'blue':info.get('blue'),
+            'bar_fill':info.get('bar_fill')},
             mono=o.stamp,latency_ms=info.get('ocr_ms'),fresh_ms=(now-o.stamp)*1000,
             details={'text_stamp':o.text_stamp,'active_stamp':o.active_stamp,'pull_stamp':o.pull_stamp,
                      'pull_visual_stamp':info.get('pull_visual_stamp'),'reel_stamp':info.get('reel_stamp'),
@@ -178,7 +179,8 @@ class FishingPanel:
         pd=info.get('pull_direction') or '—';pc=float(info.get('pull_confidence') or 0);rv='YES' if info.get('reel_visible') else 'NO'
         caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}'
         caption+=f'\nSTOP {stop_text}{score_text} | PULL visual {pd} {pc:.0%} (L {float(info.get("pull_left_score") or 0):.0%}/R {float(info.get("pull_right_score") or 0):.0%}) | REEL visual {rv} {float(info.get("reel_score") or 0):.0%}'
-        caption+=f'\nOCR PULL L {left_text} / R {right_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
+        bf=info.get('bar_fill');bf_text='N/A' if bf is None else f'{bf:.0%}'
+        caption+=f'\nOCR PULL L {left_text} / R {right_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | bar {bf_text} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
         if a.ctrl.state in ('FAILED','DEPLETED'):caption+='\nNO FISH / DEPLETED — move manually, then NEW SPOT / REACQUIRE.'
         elif a.ctrl.state=='WAIT_CAST':caption+='\nROUND ENDED — cast again manually; waiting for STOP Fishing.'
         elif a.ctrl.state=='WAIT_BITE':caption+='\nSTOP Fishing visible — waiting for bite / PULL L-R.'
