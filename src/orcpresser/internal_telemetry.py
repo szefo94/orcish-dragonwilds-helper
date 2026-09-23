@@ -102,9 +102,9 @@ class FridaFunctionProvider:
 const hooks = {js_hooks};
 for (const h of hooks) {{
   try {{
-    const base = Module.findBaseAddress(h.module);
-    if (base === null) {{ send({{kind:'hook_error', label:h.label, error:'module_not_found', module:h.module}}); continue; }}
-    const address = base.add(ptr(h.offset));
+    const mod = Process.findModuleByName(h.module);
+    if (mod === null) {{ send({{kind:'hook_error', label:h.label, error:'module_not_found', module:h.module}}); continue; }}
+    const address = mod.base.add(h.offset);
     Interceptor.attach(address, {{
       onEnter(args) {{
         const a=[]; for (let i=0;i<4;i++) {{ try {{ a.push(args[i].toString()); }} catch(e) {{ a.push(null); }} }}
