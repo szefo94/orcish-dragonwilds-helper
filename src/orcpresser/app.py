@@ -932,35 +932,116 @@ class App:
         if line==self.last_read and self.reads and not sent:self.reads[0]=(stamp,self.reads[0][1])
         else:self.reads.appendleft((stamp,entry));self.last_read=line
         self.readtext.set('\n'.join(f'{t} {e}' for t,e in self.reads))
+    def overlay_attention(self,*messages):
+        """Return a compact app-attention hint only when configuration/intervention is actually needed."""
+        text=" · ".join(str(x) for x in messages if x).strip()
+        low=text.lower()
+        danger=any(k in low for k in ("error","failed","depleted","fatal","stuck"))
+        needs=any(k in low for k in (
+            "bind the game","bind a dragonwilds","select bar","select reel","select region","requires",
+            "not ready","move the panel","move manually","reacquire","recalibrat","restore the game",
+            "start failed","safe start","no fish","bait required","configuration"
+        ))
+        if not needs and not danger:return None,False
+        # Keep the HUD prompt subtle and useful rather than mirroring a long status paragraph.
+        for token,label in (
+            ("bind","bind/configure target"),("select","set capture/calibration region"),
+            ("reacquire","reacquire/calibrate"),("depleted","fishing spot needs attention"),
+            ("no fish","fishing spot needs attention"),("move manually","manual reposition needed"),
+            ("not ready","recognition not ready"),("error","check error/status"),("failed","check failure/status"),
+            ("safe start","review safe-start status"),("restore","restore game window")
+        ):
+            if token in low:return label,danger
+        return "configuration/action needed",danger
+
     def update_status_overlay(self,fg):
         ov=getattr(self,"status_overlay",None)
         if not ov:return
         try:
             iconic=self.root.state()=="iconic"
-            if not iconic or not self.target or fg!=self.target:
+            level=self.opacity.get() if hasattr(self,"opacity") else 100
+            # Opacity 0 means game-first operation: the main window iconifies on focus loss and this HUD replaces it.
+            if not (iconic or level==0) or not self.target or fg!=self.target:
                 ov.hide();return
-            lines=[]
             status=self.status.get().strip() if hasattr(self,"status") else ""
-            if status:lines.append(status[:90])
-            if self.mode in ("Repeat","Hold","Auto"):
-                lines.append(f"run={getattr(self,'run','Live')}  running={self.ctrl.running}  held={self.ctrl.held or 'none'}  inputs={self.ctrl.count}")
-                if self.mode=="Auto":
-                    lines.append((self.detected.get() if hasattr(self,"detected") else "")[:90])
-                    lines.append(f"scan={self.scan_ms:.0f} ms · {getattr(self,'capture_backend','?')} · {getattr(self,'engine','?')}")
-            elif self.mode=="Fishing":
-                lines.append(f"state={getattr(self.ctrl,'state','IDLE')}  held={getattr(self.ctrl,'held',None) or 'none'}")
-                reason=str(getattr(self.ctrl,"reason","") or "")
-                if reason:lines.append(reason[:90])
-            elif self.mode=="Aim" and getattr(self,"aim_lab",None):
-                lines.extend([x[:90] for x in self.aim_lab.live.get().splitlines()[:3]])
-            elif self.mode=="Scout" and getattr(self,"scout_lab",None):
-                lines.extend([x[:90] for x in self.scout_lab.live.get().splitlines()[:3]])
-            elif self.mode=="Stats":
-                lines.append("Stats / benchmark mode")
+            panels={}
+            run=getattr(self,"run","Live")
+            running=bool(getattr(self.ctrl,"running",False))
+            armed=bool(getattr(self,"armed",False))
+            held=getattr(self.ctrl,"held",None) or "none"
+            common=[f"{'ARMED' if armed else 'RUNNING' if running else 'IDLE'} · {run.upper()}",
+                    f"held={held} · inputs={getattr(self.ctrl,'count',0)}"]
+            system=[x for x in (self.metrictext.get().splitlines() if hasattr(self,"metrictext") else []) if x]
             side=getattr(getattr(self,"scout_lab",None),"sidecar",None)
             if side:
-                lines.append(f"Scout sidecar ON · LMB sample frames={getattr(side,'sample_count',0)} · watches={len(getattr(side,'watches',[]))}")
-            ov.show(self.io.rect(self.target),f"{self.mode.upper()} · ORCISH HELPER",lines or ["Idle"])
+                system.append(f"Scout sidecar ON · samples={getattr(side,'sample_count',0)} · watches={len(getattr(side,'watches',[]))}")
+            elif getattr(self,"scout",None):
+                system.append(f"Scout session ON · {getattr(self.scout,'domain','?')}")
+            else:system.append("Scout sidecar OFF")
+
+            if self.mode in ("Repeat","Hold"):
+                panels["tl"]=(f"{self.mode.upper()} · CONTROL",common)
+                out=[x for x in self.outtext.get().splitlines() if x] if hasattr(self,"outtext") else []
+                panels["tr"]=("OUTPUT",out+[f"key={self.key.get()}"] if hasattr(self,"key") else out)
+                panels["bl"]=("SYSTEM / SCOUT",system)
+                panels["br"]=("HOTKEYS",["\\ start/stop","F8 panic release",
+                    f"interval={self.interval.get()} ms" if self.mode=="Repeat" else
+                    ("timed hold="+self.duration.get()+" ms" if self.timed.get() else "hold until stopped")])
+            elif self.mode=="Auto":
+                panels["tl"]=("AUTO PRESSER",common+[status[:110]])
+                vision=[self.detected.get()[:120] if hasattr(self,"detected") else "—"]
+                raw=self.raw.get().strip() if hasattr(self,"raw") else ""
+                if raw:vision.append("OCR: "+raw[:105])
+                recent=[x for x in self.readtext.get().splitlines()[:2] if x] if hasattr(self,"readtext") else []
+                panels["tr"]=("VISION / DECISION",vision+recent)
+                panels["bl"]=("PERFORMANCE / SCOUT",system+[f"scan={self.scan_ms:.0f} ms · {getattr(self,'capture_backend','?')} · {getattr(self,'engine','?')}"])
+                enabled=[k for k,v in getattr(self,"opt",{}).items() if v.get()]
+                allowed=sum(1 for v in getattr(self,"allowed",{}).values() if v.get())
+                panels["br"]=("CONFIG / HOTKEYS",[f"allowed actions={allowed}",f"speed opts={','.join(enabled) or 'none'}",
+                    "\\ start/stop · F8 panic"])
+            elif self.mode=="Fishing":
+                state=getattr(self.ctrl,"state","IDLE");reason=str(getattr(self.ctrl,"reason","") or "")
+                panels["tl"]=("FISHING · STATE",[f"{run.upper()} · {state} · held={held}",reason[:115] or status[:115]])
+                msg=self.fishing_panel.message.get().splitlines() if getattr(self,"fishing_panel",None) else []
+                panels["tr"]=("FISHING · DETECTORS",msg[:4] or ["No observation yet"])
+                regs=sorted(getattr(self.fishing_panel,"regions",{}).keys()) if getattr(self,"fishing_panel",None) else []
+                panels["bl"]=("CALIBRATION / SCOUT",[f"regions={','.join(regs) or 'none'}",
+                    f"mode={self.fishing_panel.mode.get()} · recurring={self.fishing_panel.recurring.get()}"]+system[:3])
+                panels["br"]=("HOTKEYS / NEXT",["F7 new spot / reacquire","F8 panic release",
+                    "\\ start/stop", "Return to app only if calibration/settings are requested"])
+            elif self.mode=="Aim":
+                live=self.aim_lab.live.get().splitlines() if getattr(self,"aim_lab",None) else []
+                astat=self.aim_lab.status.get() if getattr(self,"aim_lab",None) else status
+                panels["tl"]=("AIM LAB · TRACKING",[astat[:115]]+live[:2])
+                panels["tr"]=("TARGET GEOMETRY",live[1:5] or ["F6 acquires target under cursor/crosshair"])
+                panels["bl"]=("SCOUT / SAMPLES",system+[f"LMB burst={'ON' if self.scout_lab.capture_lmb.get() else 'OFF'}"] if getattr(self,"scout_lab",None) else system)
+                panels["br"]=("IN-GAME WORKFLOW",["F6 acquire target","LMB shoot + sample burst","F8 panic release","label screenshots later in labels.csv"])
+            elif self.mode=="Scout":
+                live=self.scout_lab.live.get().splitlines() if getattr(self,"scout_lab",None) else []
+                sstat=self.scout_lab.status.get() if getattr(self,"scout_lab",None) else status
+                active=getattr(self.scout_lab,"session",None) or getattr(self.scout_lab,"sidecar",None)
+                panels["tl"]=("SCOUT LAB",[sstat[:115],f"recording={'YES' if active else 'NO'}"])
+                panels["tr"]=("LIVE PROBES",live[:5] or ["No samples yet"])
+                panels["bl"]=("MEMORY / DATA",[f"watches={len(getattr(self.scout_lab,'watches',[]))}",
+                    f"LMB sample burst={'ON' if self.scout_lab.capture_lmb.get() else 'OFF'}",
+                    f"cursor crops={'ON' if self.scout_lab.save_crops.get() else 'OFF'}"]+system[:2])
+                panels["br"]=("DATA WORKFLOW",["LMB → 0/250/600/1000/1500 ms","labels.csv after session",
+                    "suggested: target/head/item/hit/crit/miss"])
+            elif self.mode=="Stats":
+                panels["tl"]=("STATS / BENCHMARK",[status[:115]])
+                panels["tr"]=("OUTPUT",[self.detected.get()[:115] if hasattr(self,"detected") else "No recognition data"])
+                panels["bl"]=("RESOURCE CONSUMPTION",system)
+                panels["br"]=("SAFETY",["F8 abort","Keep game foreground","Do not touch mouse during camera sweep"])
+            else:
+                panels["tl"]=(self.mode.upper(),common+[status[:115]])
+                panels["bl"]=("SYSTEM / SCOUT",system)
+
+            attention_msgs=[status]
+            if self.mode=="Fishing" and getattr(self,"fishing_panel",None):attention_msgs.append(self.fishing_panel.message.get())
+            if self.mode=="Aim" and getattr(self,"aim_lab",None):attention_msgs.append(self.aim_lab.status.get())
+            if self.mode=="Scout" and getattr(self,"scout_lab",None):attention_msgs.append(self.scout_lab.status.get())
+            attention,danger=self.overlay_attention(*attention_msgs)
+            ov.show(self.io.rect(self.target),panels,attention,danger)
         except Exception:
             log.exception("status overlay update")
             try:ov.hide()
