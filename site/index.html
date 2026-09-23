@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orcish Dragonwilds Helper — UI Preview</title>
+<style>
+:root{--bg:#11150e;--panel:#24281d;--gold:#b49758;--bone:#e6d8b0;--green:#98c657;--muted:#9ba087;--ink:#10150e}
+*{box-sizing:border-box}body{margin:0;background:#090b08;color:var(--bone);font-family:Segoe UI,system-ui,sans-serif}
+.shell{max-width:1420px;margin:28px auto;padding:24px;background:linear-gradient(135deg,#11150e,#202719);border:1px solid var(--gold);border-radius:18px}
+h1{margin:0;font-family:Georgia,serif;letter-spacing:.02em} .sub{color:var(--green);font-weight:700;font-size:.85rem;margin:.25rem 0 1.25rem}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;border-top:2px solid var(--gold);padding-top:18px}.tab{border:1px solid #4d533f;background:#303727;color:var(--bone);padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer}.tab.active{background:#405831;border-color:var(--green)}
+.layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);gap:18px;margin-top:18px}.panel{background:var(--panel);border:1px solid #3d4430;border-radius:12px;padding:18px}
+.section{color:var(--gold);font-weight:800;letter-spacing:.03em;margin:0 0 12px}.card{background:var(--ink);border-radius:8px;padding:13px 15px;margin:8px 0;font-family:Consolas,monospace}.game{color:var(--green);font-weight:700}.next{color:var(--gold);font-weight:700}.muted{color:var(--muted)}.checks{line-height:2}
+.slider{height:8px;background:#11150e;border-radius:4px;position:relative;margin:14px 0 28px}.slider:before{content:"";position:absolute;width:60%;height:100%;background:var(--green);border-radius:4px}.slider:after{content:"";position:absolute;left:60%;top:50%;width:18px;height:18px;border-radius:50%;background:var(--bone);transform:translate(-50%,-50%)}
+.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}.label{color:var(--gold);font-weight:800;font-size:.85rem}.btn{background:#303727;border:1px solid #4d533f;color:var(--bone);padding:11px 15px;border-radius:8px;font-weight:700}.btn.primary{background:#405831;border-color:var(--green)}.btn.stop{background:#3b241d}
+.overlay-demo{position:relative;margin-top:18px;min-height:360px;background:radial-gradient(circle at 60% 45%,#3a4a2b,#1b2418 42%,#0d120c 78%);border-radius:12px;overflow:hidden;border:1px solid #343d2c}
+.hud{position:absolute;left:18px;top:18px;width:min(430px,calc(100% - 36px));display:flex;flex-direction:column;gap:8px}.hud-card{padding:12px 14px;border:1px solid;border-radius:8px;background:rgba(12,18,13,.9);font-family:Consolas,monospace}.hud-card b{display:block;margin-bottom:7px}.hud-card:nth-child(1){border-color:#39ff88}.hud-card:nth-child(1)b{color:#39ff88}.hud-card:nth-child(2){border-color:#8f7cff}.hud-card:nth-child(2)b{color:#8f7cff}.hud-card:nth-child(3){border-color:#ff9e3d}.hud-card:nth-child(3)b{color:#ff9e3d}.hud-card:nth-child(4){border-color:#35d9ff}.hud-card:nth-child(4)b{color:#35d9ff}
+.note{margin-top:14px;color:var(--muted);font-size:.9rem} code{color:#f0d698}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="shell">
+<h1>ORCISH HELPER</h1><div class="sub">DRAGONWILDS / ASHENFALL COMMAND POST · INTERACTIVE UI REPRESENTATION</div>
+<div class="tabs" id="tabs"></div>
+<div class="layout">
+<section class="panel">
+<div class="section" id="toolTitle">AUTO PRESSER SETTINGS</div>
+<div id="toolBody"></div>
+</section>
+<aside class="panel">
+<div class="section">COMMAND CENTER</div>
+<div class="card game">GAME · RuneScape: Dragonwilds</div>
+<div class="card" id="requires">REQUIRES · game + capture region + recognition ready</div>
+<div class="card next" id="next">NEXT · verify PREVIEW, then switch to LIVE</div>
+<div class="section" style="margin-top:22px">TOOL OUTPUT</div>
+<div class="card" id="output"><span class="game">Collect → TAP E (97%)</span><br><span class="muted">OCR: Collect · keycap E<br>scan 41 ms · DXGI · CPU</span></div>
+</aside>
+</div>
+<div class="controls"><span class="label">GAME &amp; CAPTURE</span><span class="btn primary">BIND DRAGONWILDS · 3s</span><span class="btn">SELECT REGION</span><span class="muted">Bound to RuneScape: Dragonwilds</span></div>
+<div class="controls"><span class="label">CONTROL</span><span class="btn">PREVIEW</span><span class="btn primary">LIVE</span><span class="btn stop">STOP</span><span class="game">STATE · READY</span></div>
+<div class="section" style="margin-top:28px">IN-GAME OVERLAY · SINGLE TOP-LEFT RAIL</div>
+<div class="overlay-demo"><div class="hud" id="hud"></div></div>
+<div class="note">This is a static/interactive representation of the Tkinter UI structure in <code>src/orcpresser</code>. It does not control the game and intentionally contains no automation logic.</div>
+</main>
+<script>
+const modes={
+Repeat:{title:"REPEAT SETTINGS",req:"game bound",next:"Choose LIVE, switch to the game, and use \\ to start/stop.",body:"<div class='checks'>Key · LMB<br>Repeat interval · 100 ms<br>Press length · 50 ms</div>",out:"Repeating selected input while live.",hud:[["REPEAT · CONTROL","RUNNING · LIVE","held=none · inputs=42"],["OUTPUT","key=LMB","interval=100 ms"],["SYSTEM / SCOUT","CPU 1.8% · RAM 186 MiB"],["HOTKEYS","\\ start/stop","F8 panic release"]]},
+Hold:{title:"HOLD SETTINGS",req:"game bound",next:"Choose LIVE, switch to the game, and use \\ to start/stop.",body:"<div class='checks'>Key · LMB<br>Timed hold · optional<br>Hold duration · 500 ms</div>",out:"Holding selected input while live.",hud:[["HOLD · CONTROL","RUNNING · LIVE","held=LMB"],["OUTPUT","key=LMB"],["SYSTEM / SCOUT","CPU 1.8% · RAM 186 MiB"],["HOTKEYS","\\ start/stop","F8 panic release"]]},
+Auto:{title:"AUTO PRESSER SETTINGS",req:"game bound + prompt capture region + recognition ready",next:"Verify capture region in PREVIEW, then switch to LIVE.",body:"<div>Allowed actions · priority from top to bottom</div><div class='checks'>☑ Collect<br>☑ Harvest<br>☐ Talk / Interact (opt in)</div><div class='section' style='margin-top:22px'>UI BEHAVIOUR</div><div>Unfocused opacity · 0 = minimize on focus loss</div><div class='slider'></div><div class='section'>SPEED &amp; LEARNING</div><div class='checks'>☑ Fast detection<br>☑ Learned memory<br>☐ Single-scan confirm<br>☑ DXGI capture</div>",out:"<span class='game'>Collect → TAP E (97%)</span><br><span class='muted'>OCR: Collect · keycap E<br>scan 41 ms · DXGI · CPU</span>",hud:[["AUTO PRESSER","RUNNING · LIVE","held=none · inputs=42"],["VISION / DECISION","Collect → TAP E (97%)","scan=41 ms · DXGI"],["PERFORMANCE / SCOUT","CPU 1.8% · RAM 186 MiB"],["CONFIG / HOTKEYS","allowed actions=2","\\ start/stop · F8 panic"]]},
+Fishing:{title:"FISHING · EXPERIMENTAL",req:"game bound + BAR + REEL regions",next:"Use PREVIEW to verify detection, then LIVE.",body:"<div class='checks'>Calibration · BAR · REEL · STOP · PULL L · PULL R · RESULT · SPOT<br>☑ Show calibration overlay<br>☑ Recurring rounds<br>☐ Record manual test<br>☐ Advanced automatic cast</div><div class='card'>CONTROL LOGIC · blue steers with A/D; Reel (Hold) releases A/D and overrides with LMB.</div>",out:"Fishing detector state and runtime guidance appear here.",hud:[["FISHING · STATE","LIVE · WAIT_BITE · held=none"],["FISHING · DETECTORS","STOP visible","REEL visual 91%"],["CALIBRATION / SCOUT","regions=BAR,REEL,STOP","mode=101"],["HOTKEYS / NEXT","F7 new spot / reacquire","F8 panic release"]]},
+Aim:{title:"AIM LAB · EXPERIMENTAL",req:"game bound; F6 acquires a target",next:"Start tracking, switch to the game, then press F6 to acquire.",body:"<div class='checks'>Aim tracking and target acquisition controls live here.<br>Feature-specific controls only; game state stays in Command Center.</div>",out:"Target geometry / tracking telemetry.",hud:[["AIM LAB · TRACKING","tracking active"],["TARGET GEOMETRY","F6 acquires target"],["SCOUT / SAMPLES","LMB burst=ON"],["IN-GAME WORKFLOW","F6 acquire target","F8 panic release"]]},
+Scout:{title:"SCOUT LAB",req:"game bound for live capture",next:"Start recording, then perform the gameplay you want sampled.",body:"<div class='checks'>Recorder / sidecar / probe settings live here.<br>Feature-specific controls only; game state stays in Command Center.</div>",out:"Live probes, watches and sample counts.",hud:[["SCOUT LAB","recording=YES"],["LIVE PROBES","samples=184"],["MEMORY / DATA","watches=4","cursor crops=ON"],["DATA WORKFLOW","LMB sample burst","labels.csv after session"]]},
+Stats:{title:"STATS / BENCHMARK",req:"game bound + AUTO capture region + recognition ready",next:"Use RUN TEST; benchmark stays preview-only.",body:"<div class='checks'>Benchmark plans, option sets, timing and charts live here.<br>No duplicate game controls.</div>",out:"Recognition benchmark output.",hud:[["STATS / BENCHMARK","TEST RUNNING"],["OUTPUT","Collect E detected"],["RESOURCE CONSUMPTION","CPU 2.1% · RAM 191 MiB"],["SAFETY","F8 abort","Keep game foreground"]]}
+};
+const order=["Repeat","Hold","Auto","Fishing","Aim","Scout","Stats"];let current="Auto";
+function render(){
+ const m=modes[current];
+ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===current));
+ toolTitle.textContent=m.title;toolBody.innerHTML=m.body;requires.textContent="REQUIRES · "+m.req;next.textContent="NEXT · "+m.next;output.innerHTML=m.out;
+ hud.innerHTML=m.hud.map((c,i)=>"<div class='hud-card'><b>"+c[0]+"</b>"+c.slice(1).join("<br>")+"</div>").join("");
+}
+tabs.innerHTML=order.map(x=>"<button class='tab' data-mode='"+x+"'>"+(x==="Fishing"?"FISHING · EXP":x.toUpperCase())+"</button>").join("");
+tabs.addEventListener("click",e=>{if(e.target.dataset.mode){current=e.target.dataset.mode;render()}});render();
+</script>
+</body></html>

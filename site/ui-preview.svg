@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+<defs>
+  <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity=".35"/></filter>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#11150e"/><stop offset="1" stop-color="#202719"/></linearGradient>
+</defs>
+<rect width="1440" height="900" fill="#0b0e09"/>
+<rect x="30" y="30" width="1380" height="840" rx="18" fill="url(#bg)" stroke="#b49758" stroke-width="2" filter="url(#shadow)"/>
+
+<!-- Header -->
+<text x="78" y="88" fill="#e6d8b0" font-family="Georgia,serif" font-size="34" font-weight="700">ORCISH HELPER</text>
+<text x="80" y="116" fill="#98c657" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700">DRAGONWILDS / ASHENFALL COMMAND POST</text>
+<line x1="60" y1="134" x2="1380" y2="134" stroke="#b49758" stroke-width="2"/>
+
+<!-- Tabs -->
+<g font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">
+  <rect x="60" y="156" width="130" height="42" rx="8" fill="#303727"/><text x="125" y="182" text-anchor="middle" fill="#e6d8b0">REPEAT</text>
+  <rect x="198" y="156" width="130" height="42" rx="8" fill="#303727"/><text x="263" y="182" text-anchor="middle" fill="#e6d8b0">HOLD</text>
+  <rect x="336" y="156" width="150" height="42" rx="8" fill="#405831" stroke="#98c657"/><text x="411" y="182" text-anchor="middle" fill="#f0e8cb">AUTO PRESSER</text>
+  <rect x="494" y="156" width="150" height="42" rx="8" fill="#303727"/><text x="569" y="182" text-anchor="middle" fill="#e6d8b0">FISHING · EXP</text>
+  <rect x="652" y="156" width="150" height="42" rx="8" fill="#303727"/><text x="727" y="182" text-anchor="middle" fill="#e6d8b0">AIM LAB · EXP</text>
+  <rect x="810" y="156" width="150" height="42" rx="8" fill="#303727"/><text x="885" y="182" text-anchor="middle" fill="#e6d8b0">SCOUT LAB</text>
+  <rect x="968" y="156" width="130" height="42" rx="8" fill="#303727"/><text x="1033" y="182" text-anchor="middle" fill="#e6d8b0">STATS</text>
+</g>
+
+<!-- Main columns -->
+<rect x="60" y="220" width="790" height="510" rx="12" fill="#24281d" stroke="#3d4430"/>
+<rect x="870" y="220" width="510" height="510" rx="12" fill="#24281d" stroke="#3d4430"/>
+
+<!-- Left -->
+<text x="84" y="256" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="18" font-weight="700">AUTO PRESSER SETTINGS</text>
+<text x="84" y="294" fill="#e6d8b0" font-family="Segoe UI,sans-serif" font-size="14">Allowed actions · priority from top to bottom</text>
+<g font-family="Segoe UI,sans-serif" font-size="14" fill="#e6d8b0">
+  <rect x="84" y="314" width="18" height="18" rx="3" fill="#405831" stroke="#98c657"/><path d="M88 323l4 4 7-9" stroke="#e6d8b0" fill="none" stroke-width="2"/><text x="114" y="328">Collect</text>
+  <rect x="84" y="346" width="18" height="18" rx="3" fill="#405831" stroke="#98c657"/><path d="M88 355l4 4 7-9" stroke="#e6d8b0" fill="none" stroke-width="2"/><text x="114" y="360">Harvest</text>
+  <rect x="84" y="378" width="18" height="18" rx="3" fill="#1a1e16" stroke="#6e735f"/><text x="114" y="392">Talk / Interact (opt in)</text>
+</g>
+<text x="84" y="438" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="15" font-weight="700">UI BEHAVIOUR</text>
+<text x="84" y="468" fill="#e6d8b0" font-family="Segoe UI,sans-serif" font-size="13">Unfocused opacity · 0 = minimize on focus loss</text>
+<rect x="84" y="486" width="320" height="8" rx="4" fill="#11150e"/><rect x="84" y="486" width="190" height="8" rx="4" fill="#98c657"/><circle cx="274" cy="490" r="9" fill="#e6d8b0"/>
+<text x="84" y="536" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="15" font-weight="700">SPEED &amp; LEARNING</text>
+<g font-family="Segoe UI,sans-serif" font-size="13" fill="#e6d8b0">
+<text x="84" y="568">☑ Fast detection · native-size text finding</text>
+<text x="84" y="596">☑ Learned memory · skip OCR for known prompts</text>
+<text x="84" y="624">☐ Single-scan confirm · faster, less safe</text>
+<text x="84" y="652">☑ DXGI capture</text>
+</g>
+
+<!-- Command center -->
+<text x="896" y="256" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="18" font-weight="700">COMMAND CENTER</text>
+<rect x="896" y="274" width="458" height="48" rx="7" fill="#10150e"/>
+<text x="912" y="303" fill="#98c657" font-family="Consolas,monospace" font-size="15" font-weight="700">GAME  · RuneScape: Dragonwilds</text>
+<rect x="896" y="330" width="458" height="58" rx="7" fill="#10150e"/>
+<text x="912" y="354" fill="#e6d8b0" font-family="Consolas,monospace" font-size="13">REQUIRES  · game + capture region + recognition</text>
+<text x="912" y="376" fill="#b49758" font-family="Consolas,monospace" font-size="13" font-weight="700">NEXT  · verify PREVIEW, then switch to LIVE</text>
+
+<text x="896" y="428" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="16" font-weight="700">TOOL OUTPUT</text>
+<rect x="896" y="446" width="458" height="112" rx="7" fill="#10150e"/>
+<text x="912" y="474" fill="#98c657" font-family="Consolas,monospace" font-size="14" font-weight="700">Collect → TAP E  (97%)</text>
+<text x="912" y="500" fill="#9ba087" font-family="Consolas,monospace" font-size="12">OCR: Collect   keycap: E</text>
+<text x="912" y="524" fill="#e6d8b0" font-family="Consolas,monospace" font-size="12">18:43:08.2  ▶ Collect → TAP E</text>
+<text x="912" y="548" fill="#e6d8b0" font-family="Consolas,monospace" font-size="12">scan 41 ms · DXGI · CPU</text>
+
+<text x="896" y="594" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="16" font-weight="700">RESOURCE CONSUMPTION</text>
+<rect x="896" y="612" width="458" height="86" rx="7" fill="#10150e"/>
+<text x="912" y="638" fill="#e6d8b0" font-family="Consolas,monospace" font-size="13">CPU  1.8%   RAM  186 MiB</text>
+<polyline points="912,680 950,666 988,673 1026,654 1064,661 1102,646 1140,655 1178,642 1216,650 1254,636 1292,644 1330,638" fill="none" stroke="#98c657" stroke-width="2"/>
+
+<!-- Global controls -->
+<text x="60" y="766" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">GAME &amp; CAPTURE</text>
+<rect x="190" y="744" width="200" height="42" rx="8" fill="#405831" stroke="#98c657"/><text x="290" y="770" text-anchor="middle" fill="#e6d8b0" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">BIND DRAGONWILDS · 3s</text>
+<rect x="402" y="744" width="150" height="42" rx="8" fill="#303727"/><text x="477" y="770" text-anchor="middle" fill="#e6d8b0" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">SELECT REGION</text>
+<text x="570" y="770" fill="#9ba087" font-family="Segoe UI,sans-serif" font-size="12">Bound to RuneScape: Dragonwilds</text>
+
+<text x="60" y="824" fill="#b49758" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">CONTROL</text>
+<rect x="136" y="802" width="130" height="44" rx="8" fill="#303727"/><text x="201" y="829" text-anchor="middle" fill="#e6d8b0" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">PREVIEW</text>
+<rect x="278" y="802" width="130" height="44" rx="8" fill="#405831" stroke="#98c657"/><text x="343" y="829" text-anchor="middle" fill="#e6d8b0" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">LIVE</text>
+<rect x="420" y="802" width="110" height="44" rx="8" fill="#3b241d"/><text x="475" y="829" text-anchor="middle" fill="#f1c6b7" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">STOP</text>
+<text x="568" y="824" fill="#98c657" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700">STATE · READY — game bound, region configured</text>
+
+<!-- Mini overlay example -->
+<g transform="translate(1115,54)">
+  <rect width="250" height="118" rx="9" fill="#14251b" fill-opacity=".94" stroke="#39ff88"/>
+  <text x="12" y="24" fill="#39ff88" font-family="Consolas,monospace" font-size="12" font-weight="700">AUTO PRESSER</text>
+  <text x="12" y="47" fill="#e9fff1" font-family="Consolas,monospace" font-size="11">RUNNING · LIVE</text>
+  <text x="12" y="67" fill="#e9fff1" font-family="Consolas,monospace" font-size="11">held=none · inputs=42</text>
+  <rect x="0" y="126" width="250" height="82" rx="9" fill="#17172a" fill-opacity=".94" stroke="#8f7cff"/>
+  <text x="12" y="150" fill="#8f7cff" font-family="Consolas,monospace" font-size="12" font-weight="700">VISION / DECISION</text>
+  <text x="12" y="174" fill="#f2efff" font-family="Consolas,monospace" font-size="11">Collect → TAP E (97%)</text>
+  <text x="12" y="194" fill="#f2efff" font-family="Consolas,monospace" font-size="11">scan=41 ms · DXGI</text>
+</g>
+</svg>

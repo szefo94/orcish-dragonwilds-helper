@@ -1,4 +1,8 @@
-"""Shared non-activating four-corner HUD for minimized / opacity-0 operation."""
+"""Shared non-activating HUD for minimized / opacity-0 operation.
+
+All cards are stacked from the top-left so the helper has one predictable
+in-game information rail instead of occupying all four corners.
+"""
 import ctypes, sys, tkinter as tk
 
 PALETTES={
@@ -33,24 +37,20 @@ class StatusOverlay:
                 self.hwnd=hwnd;self.available=bool(u.SetWindowDisplayAffinity(hwnd,0x11))
             except Exception:self.available=False
 
-    def _panel(self,pos,w,h,title,lines):
+    def _card(self,y,w,h,palette,title,lines):
         margin=max(12,min(28,int(min(w,h)*.018)))
-        max_w=max(300,min(620,int(w*.31)))
+        max_w=max(320,min(640,int(w*.34)))
         clean=[str(x).replace("\n"," · ").strip() for x in lines if str(x).strip()][:6]
         panel_h=36+20*max(1,len(clean))
-        if pos=="tl":x1,y1=margin,margin
-        elif pos=="tr":x1,y1=max(margin,w-margin-max_w),margin
-        elif pos=="bl":x1,y1=margin,max(margin,h-margin-panel_h)
-        else:x1,y1=max(margin,w-margin-max_w),max(margin,h-margin-panel_h)
-        # Clamp after sizing so ultra-wide, tiny, or partially restored clients never draw off-screen.
-        x1=max(0,min(x1,max(0,w-max_w)));y1=max(0,min(y1,max(0,h-panel_h)))
-        x2=min(w,x1+max_w);y2=min(h,y1+panel_h)
-        bg,edge,fg=PALETTES[pos]
+        x1=margin;y1=max(margin,y);x2=min(w,x1+max_w);y2=min(h,y1+panel_h)
+        if y2<=y1:return y
+        bg,edge,fg=PALETTES.get(palette,PALETTES["tl"])
         c=self.canvas
         c.create_rectangle(x1,y1,x2,y2,fill=bg,outline=edge,width=2)
         c.create_text(x1+10,y1+8,text=title,anchor="nw",fill=edge,font=("Consolas",10,"bold"))
         for i,line in enumerate(clean):
             c.create_text(x1+10,y1+31+i*20,text=line,anchor="nw",fill=fg,font=("Consolas",9),width=max(50,x2-x1-20))
+        return y2+8
 
     def _revive(self):
         if not self.available:return False
@@ -66,18 +66,19 @@ class StatusOverlay:
         self.window.geometry(f"{w}x{h}{x:+d}{y:+d}");self.window.update_idletasks()
         ctypes.windll.user32.ShowWindow(self.hwnd,4)
         self.canvas.delete("all")
+
+        cursor=max(12,min(28,int(min(w,h)*.018)))
+        # Preserve the caller's logical order while rendering every section in one rail.
         for pos in ("tl","tr","bl","br"):
             data=panels.get(pos) if isinstance(panels,dict) else None
             if data:
                 title,lines=data
-                self._panel(pos,w,h,title,lines)
-        if attention:
+                cursor=self._card(cursor,w,h,pos,title,lines)
+                if cursor>=h-44:break
+
+        if attention and cursor<h-42:
             msg=str(attention).replace("\n"," · ")[:150]
-            bw=min(max(260,8*len(msg)+34),max(260,int(w*.46)))
-            bh=34;x1=max(8,min((w-bw)//2,max(8,w-bw-8)));y1=10
-            bg,edge,fg=PALETTES["danger" if danger else "attention"]
-            self.canvas.create_rectangle(x1,y1,x1+bw,y1+bh,fill=bg,outline=edge,width=2)
-            self.canvas.create_text(x1+bw/2,y1+17,text="↩ APP · "+msg,fill=fg,font=("Consolas",9,"bold"))
+            cursor=self._card(cursor,w,h,"danger" if danger else "attention","ACTION NEEDED",[msg])
 
     def hide(self):
         try:self.window.withdraw()
