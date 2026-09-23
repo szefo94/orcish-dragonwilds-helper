@@ -82,29 +82,44 @@ class AimOverlay:
 
 
 def target_hud_candidates(frame,max_results=3):
-    """Detect the green HP-bar part of the close/aimed enemy HUD.
+    """Detect close/aimed target HP HUD from its horizontal green health segment.
 
-    This is confirmation evidence that the crosshair is on a close target, not a body detector.
+    Strong evidence only: this confirms the crosshair has selected a nearby target.
+    It does not imply a body/head bounding box.
     """
     if frame is None or getattr(frame,"size",0)==0:return []
     h,w=frame.shape[:2]
     hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-    mask=cv2.inRange(hsv,np.array([35,95,85],dtype=np.uint8),np.array([95,255,255],dtype=np.uint8))
-    valid=np.zeros_like(mask);valid[int(h*.05):int(h*.68),int(w*.05):int(w*.95)]=255
-    mask=cv2.bitwise_and(mask,valid)
-    kernel=cv2.getStructuringElement(cv2.MORPH_RECT,(11,3))
-    mask=cv2.morphologyEx(mask,cv2.MORPH_CLOSE,kernel,iterations=1)
-    contours,_=cv2.findContours(mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    green=cv2.inRange(hsv,np.array([35,95,80],dtype=np.uint8),np.array([110,255,255],dtype=np.uint8))
+    valid=np.zeros_like(green);valid[int(h*.05):int(h*.68),int(w*.05):int(w*.95)]=255
+    green=cv2.bitwise_and(green,valid)
+    # Horizontal opening rejects grass/foliage while preserving UI bars.
+    green=cv2.morphologyEx(green,cv2.MORPH_OPEN,cv2.getStructuringElement(cv2.MORPH_RECT,(31,2)),iterations=1)
+    contours,_=cv2.findContours(green,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
     out=[]
+    value=hsv[:,:,2];sat=hsv[:,:,1]
     for cnt in contours:
         x,y,bw,bh=cv2.boundingRect(cnt)
         area=float(cv2.contourArea(cnt));aspect=bw/max(1,bh)
-        if bw<38 or bh<3 or bh>28 or aspect<3.2 or area<90:continue
-        ex=max(6,int(bw*.08));ey=max(10,int(bh*2.0))
-        bx=max(0,x-ex);by=max(0,y-ey);x2=min(w,x+bw+ex);y2=min(h,y+bh+ey)
-        score=min(1.0,.45+(min(bw,220)/220.0)*.35+(min(aspect,12)/12.0)*.20)
+        if bw<35 or bh<2 or bh>24 or aspect<4.0 or area<80:continue
+        # Full/healthy targets expose a long green segment. Damaged targets may expose only
+        # a short green part followed by a long dark rectangular remainder.
+        cy=min(h-1,y+bh//2);scan_end=min(w-1,x+260)
+        row_v=value[cy,x:scan_end];row_s=sat[cy,x:scan_end]
+        dark=((row_v<70)&(row_s<100)).astype(np.uint8)
+        dark_run=0;best_dark=0
+        for v in dark:
+            dark_run=dark_run+1 if v else 0;best_dark=max(best_dark,dark_run)
+        strong_full=bw>=120 and aspect>=6
+        strong_partial=bw>=55 and best_dark>=80
+        if not (strong_full or strong_partial):continue
+        ex=max(8,int(max(bw,120)*.08));ey=max(16,int(bh*2.2))
+        bx=max(0,x-ex);by=max(0,y-ey);x2=min(w,x+max(bw,120)+best_dark+ex);y2=min(h,y+bh+ey)
+        score=.92 if strong_full else .78
+        reason=(f"aimed-target HUD · green HP bar {bw}×{bh}"
+                if strong_full else f"aimed-target HUD · partial HP {bw}px + dark remainder {best_dark}px")
         out.append({"bbox":[bx,by,x2-bx,y2-by],"bar_bbox":[x,y,bw,bh],"score":score,
-                    "source":"target_hud","reason":f"aimed-target HUD · green HP bar {bw}×{bh}"})
+                    "source":"target_hud","reason":reason})
     out.sort(key=lambda z:z["score"],reverse=True)
     return out[:max_results]
 
