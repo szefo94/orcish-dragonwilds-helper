@@ -97,6 +97,29 @@ class Fishing(unittest.TestCase):
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
 
+    def test_fast_visual_reel_ending_on_blue_resumes_previous_direction(self):
+        self.fight();self.assertEqual(self.c.held,'A')
+        self.see(10.1,'blue',reel_visible=True,reel_score=.8)
+        self.see(10.2,'blue',reel_visible=True,reel_score=.82)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.see(10.3,'blue',reel_visible=False,reel_score=.1)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.see(10.4,'blue',reel_visible=False,reel_score=.1)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
+
+    def test_fast_reel_absence_beats_cached_reel_ocr(self):
+        self.fight();self.assertEqual(self.c.held,'A')
+        self.see(10.1,'blue','Reel (Hold)',reel_visible=True,reel_score=.8)
+        self.see(10.2,'blue','Reel (Hold)',reel_visible=True,reel_score=.82)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        # OCR stamp/text is still cached, but two fresh fast-negative samples must
+        # end REEL instead of suppressing A/D for the OCR freshness window.
+        self.see(10.3,'blue','Reel (Hold)',stamp=10.2,reel_visible=False,reel_score=.1)
+        self.see(10.4,'blue','Reel (Hold)',stamp=10.2,reel_visible=False,reel_score=.1)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
+
     def test_no_fish_was_caught_is_recoverable_failure(self):
         self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True));self.c.start(False);self.c.tick(10);self.fight()
         self.see(10.4,text='No fish was caught.');self.see(10.8,text='No fish was caught.')
