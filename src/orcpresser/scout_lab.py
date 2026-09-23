@@ -144,7 +144,7 @@ class ScoutLabSession:
                 "Scout LMB sample labeling\n\n"
                 "Every left-click while the bound game is foreground creates a short screenshot burst.\n"
                 "Aim mode always centers on the game crosshair. Auto mode uses the free cursor only after recent cursor movement; otherwise it uses the crosshair.\n"
-                "sample_context contains review composites with top-right/bottom-left game context and capture metadata; samples contains clean raw crops.\n"
+                "samples contains clean raw crops. sample_context contains a full-game review image at t+0 with the sampled rectangle drawn on the original screen.\n"
                 "Open labels.csv and fill only the label / notes columns; keep IDs/timestamps/image paths unchanged.\n"
                 "Suggested labels: target, head, item_pickup, hit, crit, miss, inventory, other.\n"
                 "A click can produce several delayed frames so projectile impact can appear after the shot.\n",
@@ -202,28 +202,31 @@ class ScoutLabSession:
                 name=f"{s['sample_id']}_t+{s['delay_ms']:04d}.png";path=self.sample_dir/name
                 cv2.imwrite(str(path),frame)
                 rel=str(Path("samples")/name)
-                # Review composite: clean crop + top-right and bottom-left context + metadata.
-                # It is separate from the raw crop so training material remains unmodified.
-                trw=min(320,w);trh=min(180,h);blw=min(320,w);blh=min(180,h)
-                top_right=grab.grab({"left":x+w-trw,"top":y,"width":trw,"height":trh})
-                bottom_left=grab.grab({"left":x,"top":y+h-blh,"width":blw,"height":blh})
-                review=np.zeros((max(ch,180)+46,cw+320,3),dtype=np.uint8)
-                review[46:46+ch,0:cw]=frame
-                review[46:46+trh,cw:cw+trw]=top_right
-                review[46+max(0,ch-blh):46+max(0,ch-blh)+blh,cw:cw+blw]=bottom_left
-                cv2.putText(review,f"{name} | {s['focus_source']} | +{s['delay_ms']} ms",(10,29),
-                            cv2.FONT_HERSHEY_SIMPLEX,.62,(0,255,255),1,cv2.LINE_AA)
-                cv2.putText(review,"TOP-RIGHT",(cw+8,64),cv2.FONT_HERSHEY_SIMPLEX,.48,(0,255,255),1,cv2.LINE_AA)
-                cv2.putText(review,"BOTTOM-LEFT",(cw+8,46+max(18,ch-blh)+18),cv2.FONT_HERSHEY_SIMPLEX,.48,(0,255,255),1,cv2.LINE_AA)
-                review_name=f"{s['sample_id']}_t+{s['delay_ms']:04d}_context.jpg"
-                cv2.imwrite(str(self.context_dir/review_name),review,[int(cv2.IMWRITE_JPEG_QUALITY),86])
+                review_name=None
+                # One review image per click: the original game screen with the actual probe rectangle marked.
+                # Raw training crops stay untouched in samples/.
+                if s["delay_ms"]==0:
+                    full=grab.grab({"left":x,"top":y,"width":w,"height":h})
+                    scale=min(1.0,1280.0/max(1,w))
+                    rw=max(1,int(w*scale));rh=max(1,int(h*scale))
+                    review=cv2.resize(full,(rw,rh),interpolation=cv2.INTER_AREA) if scale<1.0 else full.copy()
+                    rx1=int((left-x)*scale);ry1=int((top-y)*scale)
+                    rx2=int((left-x+cw)*scale);ry2=int((top-y+ch)*scale)
+                    cv2.rectangle(review,(rx1,ry1),(rx2,ry2),(0,255,255),2)
+                    cv2.drawMarker(review,(int((fx-x)*scale),int((fy-y)*scale)),(0,255,255),
+                                   cv2.MARKER_CROSS,18,2)
+                    banner=f"{name} | probe={s['focus_source']} | yellow box = saved 640x360 sample"
+                    cv2.rectangle(review,(0,0),(rw,min(34,rh)),(0,0,0),-1)
+                    cv2.putText(review,banner,(8,min(24,rh-5)),cv2.FONT_HERSHEY_SIMPLEX,.52,(0,255,255),1,cv2.LINE_AA)
+                    review_name=f"{s['sample_id']}_probe_area.jpg"
+                    cv2.imwrite(str(self.context_dir/review_name),review,[int(cv2.IMWRITE_JPEG_QUALITY),84])
                 with self.labels_path.open("a",newline="",encoding="utf-8") as f:
                     csv.writer(f).writerow([s["sample_id"],s["delay_ms"],f"{now:.6f}",rel,s["focus_source"],
                                             fx-x,fy-y,"",""])
                 self.sample_count+=1
                 self.event_cb("vision","lmb_sample_frame",
                               {"sample_id":s["sample_id"],"delay_ms":s["delay_ms"],"image":rel,
-                               "context_image":str(Path("sample_context")/review_name),
+                               "context_image":str(Path("sample_context")/review_name) if review_name else None,
                                "focus_source":s["focus_source"],"focus_client":[fx-x,fy-y],
                                "capture_rect":[left-x,top-y,cw,ch]},mono=now,stream="vision")
             except Exception as e:
