@@ -1,5 +1,59 @@
 # Scout game-internal telemetry
 
+## Guided Windows toolkit installer
+
+The repository includes:
+
+```text
+scripts\Install-TelemetryToolkit.ps1
+```
+
+It can check or install the research-side prerequisites without changing normal Orcish runtime requirements.
+
+Check only:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-TelemetryToolkit.ps1 -CheckOnly
+```
+
+Install the supported toolkit:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-TelemetryToolkit.ps1 -Install -All
+```
+
+The same operations are available through `Setup.cmd`:
+
+- **7 · Install telemetry toolkit**
+- **8 · Telemetry toolkit status**
+
+The installer currently:
+
+- installs/repairs the optional Frida Python package in Orcish's `.venv`;
+- auto-detects a running Dragonwilds process or searches Steam libraries for `Dragonwilds-Win64-Shipping.exe`;
+- checks a local `RE-UE4SS-main.zip` placed in the repository root;
+- rejects that ZIP as an install source when it contains source code rather than runtime DLLs, then downloads the latest stable **zDEV** UE4SS binary release from the official `UE4SS-RE/RE-UE4SS` GitHub releases;
+- backs up existing UE4SS files before extraction;
+- copies the OrcishScout Lua bridge into the detected UE4SS `Mods` directory and configures its JSONL output under `data\ue4ss`;
+- installs x64dbg through WinGet;
+- downloads the latest ReClass.NET release from its official GitHub repository as a portable tool under `tools\external`;
+- downloads the latest public Cheat Engine installer from the official GitHub repository and launches its installer interactively;
+- installs the Windows ADK request for the Windows Performance Toolkit through WinGet.
+
+For a non-standard Steam/game location, pass the executable explicitly:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-TelemetryToolkit.ps1 -Install -All -GameExe "D:\Games\Dragonwilds\...\Dragonwilds-Win64-Shipping.exe"
+```
+
+For an actual UE4SS binary archive you downloaded yourself:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-TelemetryToolkit.ps1 -Install -All -UE4SSZip "C:\Downloads\zDEV-UE4SS_v3.0.1.zip"
+```
+
+A GitHub **Code → Download ZIP** named `RE-UE4SS-main.zip` is source code, not a ready-to-run UE4SS installation. The script detects this by inspecting the archive for the UE4SS runtime DLLs and falls back to the official release asset.
+
 Scout now has two optional adapters for events that are not derived from pixels:
 
 1. **External JSONL bridge** — consumes newline-delimited events produced by UE4SS or another local research tool.
