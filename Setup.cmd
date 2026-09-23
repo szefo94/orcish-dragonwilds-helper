@@ -19,6 +19,7 @@ echo   5  Run self-tests
 echo   6  Clean up old files            backups, old zips, caches - shows what first
 echo   7  Install telemetry toolkit      Frida + UE4SS + research tools
 echo   8  Telemetry toolkit status       check everything without installing
+echo   9  Recover UE4SS for WinGDK        install current experimental UE4SS safely
 echo   Q  Quit
 echo.
 set "ACTION="
@@ -31,6 +32,7 @@ if "%ACTION%"=="5" set "ACTION=test"
 if "%ACTION%"=="6" set "ACTION=clean"
 if "%ACTION%"=="7" set "ACTION=telemetry"
 if "%ACTION%"=="8" set "ACTION=telemetry-check"
+if "%ACTION%"=="9" set "ACTION=ue4ss-experimental"
 if /i "%ACTION%"=="q" exit /b 0
 
 :dispatch
@@ -42,7 +44,8 @@ if /i "%ACTION%"=="test" goto test
 if /i "%ACTION%"=="clean" goto clean
 if /i "%ACTION%"=="telemetry" goto telemetry
 if /i "%ACTION%"=="telemetry-check" goto telemetry_check
-echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean^|telemetry^|telemetry-check]
+if /i "%ACTION%"=="ue4ss-experimental" goto ue4ss_experimental
+echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean^|telemetry^|telemetry-check^|ue4ss-experimental]
 goto end_fail
 
 :install
