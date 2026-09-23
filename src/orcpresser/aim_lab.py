@@ -343,10 +343,9 @@ class AimLabPanel:
         tk.Label(p,text="Visual target tracking + Scout telemetry. Draws boxes and a head-candidate band; never moves the mouse or fires.",
                  bg=c["PANEL"],fg=c["MUTED"],wraplength=410,justify="left",anchor="w",font=("Segoe UI",9)).pack(fill="x",pady=(2,8))
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
-        tk.Button(row,text="START TRACKING",command=self.start).pack(side="left")
-        tk.Button(row,text="STOP",command=self.stop).pack(side="left",padx=6)
-        tk.Button(row,text="ACQUIRE (F6)",command=self.acquire).pack(side="left",padx=3)
+        tk.Button(row,text="ACQUIRE (F6)",command=self.acquire).pack(side="left",padx=(0,3))
         tk.Button(row,text="CLEAR TARGETS",command=self.clear).pack(side="left",padx=3)
+        tk.Label(row,text="Start/stop tracking from the global control bar below.",bg=c["PANEL"],fg=c["MUTED"],font=("Segoe UI",8)).pack(side="left",padx=8)
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
         tk.Label(row,text="Seed box W×H",bg=c["PANEL"],fg=c["BONE"]).pack(side="left")
         tk.Spinbox(row,from_=24,to=400,textvariable=self.box_w,width=5,command=self._persist_size).pack(side="left",padx=(8,3))
