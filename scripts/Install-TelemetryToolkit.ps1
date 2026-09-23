@@ -386,6 +386,6 @@ Show-Status
 Write-Host ""
 if ($script:HadWarnings) {
     Write-Warn "Toolkit pass completed with one or more warnings; successful tools were kept installed."
-    exit 2
+    exit 0
 }
 Write-Ok "Toolkit pass complete."
