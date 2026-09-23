@@ -1,8 +1,10 @@
 """Optional game-internal telemetry providers for Scout.
 
-Providers are observational only. They never write game memory. Frida hooks observe
-native function entry points; the JSONL bridge consumes events produced by external
-tools such as UE4SS Lua mods.
+Providers are observational at the Scout data-model level: they do not intentionally
+change gameplay state, function arguments or return values. Frida's Interceptor is an
+invasive instrumentation mechanism inside the target process, so it is opt-in and is
+not equivalent to the project's ordinary read-only ReadProcessMemory watches. The
+JSONL bridge consumes events produced by external tools such as UE4SS Lua mods.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -76,7 +78,8 @@ class FridaFunctionProvider:
     """Optional native function entry telemetry using Frida.
 
     Hook specifications are module-relative and are resolved inside the target process.
-    This provider observes onEnter only and never alters arguments, return values or memory.
+    This provider observes onEnter only and does not alter arguments or return values.
+    Attaching/intercepting is still invasive instrumentation and should remain opt-in.
     """
 
     def __init__(self,pid,hooks,event_cb):
