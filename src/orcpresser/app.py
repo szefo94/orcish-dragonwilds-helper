@@ -675,7 +675,7 @@ class App:
             if back and self.io:self.io.move(back)
             self.finish_bench()
         self.ctrl.stop();self.generation+=1;self.armed=False
-        if self.io:self.io.release_all()
+        if getattr(self,'io',None):self.io.release_all()
         if getattr(self,'fishing_panel',None):self.fishing_panel.stop()
         if getattr(self,'aim_lab',None):self.aim_lab.stop()
         if getattr(self,'scout_lab',None):self.scout_lab.stop()
