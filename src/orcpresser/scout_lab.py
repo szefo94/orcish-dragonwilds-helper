@@ -132,7 +132,9 @@ class ScoutLabSession:
         return int(p.x),int(p.y)
 
     def _prepare_labels(self):
-        self.sample_dir.mkdir(parents=True,exist_ok=True);self.context_dir.mkdir(parents=True,exist_ok=True)
+        self.sample_dir.mkdir(parents=True,exist_ok=True)
+        self.context_dir=getattr(self,"context_dir",self.folder/"sample_context")
+        self.context_dir.mkdir(parents=True,exist_ok=True)
         if not self.labels_path.exists():
             with self.labels_path.open("w",newline="",encoding="utf-8") as f:
                 csv.writer(f).writerow(["sample_id","delay_ms","mono","image","focus_source","focus_x","focus_y","label","notes"])
