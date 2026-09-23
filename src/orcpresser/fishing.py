@@ -161,7 +161,8 @@ class FishingController:
         reel_visual_available=o.reel_visible is not None
         pull_any=bool(pull_command or pull_confirmed)
         # Text confirmations count distinct OCR images, not fast ticks reusing cached text.
-        kind=('caught' if re.search(r'\b(?:fish caught|you caught|caught a)\b',text) else
+        kind=('caught' if (re.search(r'\b(?:fish caught|you caught|caught a|caught an|caught some|junk caught)\b',text)
+                           and 'no fish was caught' not in text) else
               'bait' if 'consider bait' in text else
               'depleted' if any(t in text for t in ('no fish here','depleted')) else
               'failed' if any(t in text for t in ('escaped','startled','too close','no fish was caught')) else
@@ -236,6 +237,13 @@ class FishingController:
                 elif o.color=='red':
                     self.set_key(self.direction);self.reason+=' — red tension, holding '+self.direction
             else:return
+        if self.state in ('FIGHT','REEL') and self.config.persistent_session:
+            no_fight_evidence=(not stop_fishing_confirmed and not pull_any and not reel_visual_confirmed and o.color=='unknown')
+            if no_fight_evidence:
+                if self.unknown_since is None:self.unknown_since=now
+                if now-self.unknown_since>=1.5:
+                    self._rearm('Fight signal disappeared/interrupted — still armed; waiting for Stop Fishing');self.changed=now;return
+            else:self.unknown_since=None
         if self.state not in ('FIGHT','REEL'):return
         # If the fast REEL region is calibrated, it is authoritative for both prompt
         # appearance and disappearance. Cached OCR must not keep LMB held after the
