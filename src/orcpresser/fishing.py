@@ -104,6 +104,8 @@ class FishingController:
             if self.trial_only:self.state='TRIAL_DONE';self.stop('Trial cast released; record short / long / hit')
         if self.state in ('READY','WAIT_CAST','WAIT_BITE') and not self.config.recurring and now-(self.changed or self.started)>self.config.bite_timeout:
             self.stop('No bite / cast evidence before timeout')
+        if self.state=='BITE_PENDING' and now-self.changed>1.5:
+            self.state='WAIT_BITE';self.reason='Bite candidate expired — waiting for STOP/PULL/BAR';self.changed=now
         if self.state in ('FIGHT','REEL') and now-self.fight_started>self.config.fight_timeout:
             self.stop('Fight timeout')
     def observe(self,o,now):
