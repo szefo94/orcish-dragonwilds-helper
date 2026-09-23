@@ -46,19 +46,11 @@ class FishingOverlay:
             c.create_text(x1,max(10,y1-12),text=label,anchor='w',fill='#f0d698',font=('Segoe UI',10,'bold'))
             if name=='spot' and info.get('spot'):
                 sx,sy,sw,sh=info['spot'];c.create_oval(x1+sx,y1+sy,x1+sx+sw,y1+sy+sh,outline='#f0d698',width=2)
-        # Keep fishing diagnostics away from the shared status HUD, which is stacked
-        # from the top-left. Right-align the yellow fishing caption instead.
-        caption_w=min(760,max(320,int(w*.44)))
-        c.create_text(w-20,25,text=caption,anchor='ne',fill='#f0d698',font=('Consolas',12,'bold'),width=caption_w,justify='right')
-        if info.get('app_minimized'):
-            running=bool(info.get('running'));preview=bool(info.get('preview'))
-            mode='PREVIEW' if preview else 'LIVE'
-            state=str(info.get('state') or 'IDLE');held=str(info.get('held') or 'none')
-            status=('● '+mode+' ACTIVE' if running else '○ FISHING IDLE')+'  |  '+state+'  |  input: '+held
-            # High-contrast compact badge remains visible while the main window is minimized.
-            tw=min(max(360,int(w*.36)),max(360,w-40))
-            x1=max(20,w-tw-20);x2=w-20
-            c.create_rectangle(x1,18,x2,56,fill='#172012',outline='#98c657' if running else '#9ba087',width=2)
-            c.create_text(x1+12,37,text=status,anchor='w',fill='#98c657' if running else '#e6d8b0',font=('Consolas',11,'bold'),width=max(100,tw-24))
+        # The shared four-card HUD already shows fishing state and detector details
+        # while the app is minimized/opacity-0. In that mode this overlay only draws
+        # calibrated regions so duplicate status surfaces cannot overlap the HUD.
+        if not info.get('shared_hud_visible'):
+            caption_w=min(760,max(320,int(w*.44)))
+            c.create_text(w-20,25,text=caption,anchor='ne',fill='#f0d698',font=('Consolas',12,'bold'),width=caption_w,justify='right')
     def hide(self):self.window.withdraw()
     def close(self):self.window.destroy()
