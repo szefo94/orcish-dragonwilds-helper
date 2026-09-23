@@ -50,7 +50,7 @@ C:\Program Files\WindowsApps\JagexLimited.Dominion_*\RSDragonwilds\Binaries\WinG
 
 The toolkit now auto-detects this executable as a valid Dragonwilds target. This is distinct from the Steam-style `RSDragonwilds-Win64-Shipping.exe`.
 
-Because `WindowsApps` is package-managed and ACL-protected, the installer does **not** automatically copy UE4SS into that directory by default. Status checks and process telemetry work normally. To explicitly attempt a UE4SS install into the package directory, run PowerShell as Administrator and pass:
+Because `WindowsApps` is package-managed and ACL-protected, the general telemetry installer (Setup option 7 / `Install-TelemetryToolkit.ps1`) does **not** write UE4SS into that directory unless the user explicitly opts in. The dedicated **Setup option 9** recovery path is different: it is specifically for the WinGDK build, requests elevation, installs the current experimental UE4SS layout beside the detected WinGDK executable, and creates a backup/rollback record. For a manual general-installer attempt, run PowerShell as Administrator and pass:
 
 ```powershell
 -AllowWindowsAppsInstall
@@ -66,13 +66,14 @@ If Windows denies writes or the package is restored by an update/repair, do not 
 
 ## Installer repair notes
 
-The toolkit installer now identifies the Dragonwilds target strictly as:
+The toolkit installer now accepts only the two explicit Dragonwilds executable names:
 
 ```text
 RSDragonwilds-Win64-Shipping.exe
+RSDragonwilds-WinGDK-Shipping.exe
 ```
 
-It no longer accepts arbitrary `*-Win64-Shipping.exe` processes. This prevents Epic Online Services' `EOSOverlayRenderer-Win64-Shipping.exe` from being mistaken for Dragonwilds.
+It no longer accepts arbitrary `*-Win64-Shipping.exe` processes. This prevents Epic Online Services' `EOSOverlayRenderer-Win64-Shipping.exe` from being mistaken for Dragonwilds while still supporting both Steam-style Win64 and Microsoft Store/Xbox WinGDK builds.
 
 If an older installer run placed `OrcishScout` / UE4SS under an Epic Online Services `managedArtifacts` directory, option **8 · Telemetry toolkit status** reports the mistaken path explicitly. Treat that installation as invalid and inspect the adjacent `orcish_ue4ss_backup_*` folder before removing/restoring those files.
 
@@ -116,14 +117,14 @@ The same operations are available through `Setup.cmd`:
 The installer currently:
 
 - installs/repairs the optional Frida Python package in Orcish's `.venv`;
-- auto-detects a running Dragonwilds process or searches Steam libraries for `Dragonwilds-Win64-Shipping.exe`;
+- auto-detects a running `RSDragonwilds-Win64-Shipping.exe` or `RSDragonwilds-WinGDK-Shipping.exe`, searches Steam libraries, and checks the Microsoft Store/Xbox `WindowsApps` package location;
 - checks a local `RE-UE4SS-main.zip` placed in the repository root;
 - rejects that ZIP as an install source when it contains source code rather than runtime DLLs, then downloads the latest stable **zDEV** UE4SS binary release from the official `UE4SS-RE/RE-UE4SS` GitHub releases;
 - backs up existing UE4SS files before extraction;
 - copies the OrcishScout Lua bridge into the detected UE4SS `Mods` directory and configures its JSONL output under `data\ue4ss`;
 - installs x64dbg through WinGet;
 - downloads the latest ReClass.NET release from its official GitHub repository as a portable tool under `tools\external`;
-- downloads the latest public Cheat Engine installer from the official GitHub repository and launches its installer interactively;
+- detects an existing Cheat Engine installation from uninstall metadata/common folders; if it is absent, the toolkit directs the user to the official download path rather than assuming a GitHub binary asset exists;
 - installs the Windows ADK request for the Windows Performance Toolkit through WinGet.
 
 For a non-standard Steam/game location, pass the executable explicitly:
