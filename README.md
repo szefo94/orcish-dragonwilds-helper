@@ -67,6 +67,8 @@ Keep the entire project folder together. You do not need to copy individual Pyth
 | **4** | Safe start with default window settings and without loading learned recognition data. |
 | **5** | Run automated self-tests. |
 | **6** | Review and clean old backups, archives, and caches. |
+| **7** | Install/check the optional telemetry research toolkit: Frida, UE4SS bridge, x64dbg, ReClass.NET, Cheat Engine installer, and Windows Performance Toolkit. |
+| **8** | Check telemetry-tool status without installing anything. |
 
 ## Controls and window behavior
 
@@ -333,7 +335,7 @@ The **SCOUT LAB** tab is an observational research workspace. After binding the 
 
 Scout can now ingest **named Unreal/native function events** on the same timeline as vision and controller decisions. Two optional adapters are included: a local JSONL bridge intended for UE4SS or another external producer, and an opt-in Frida function-entry provider for already-discovered module-relative native function addresses. Neither is required for normal operation; Frida is deliberately kept out of the default requirements.
 
-See `docs/INTERNAL_TELEMETRY.md` for installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry extras** for the optional Frida Python dependency and **8 · Telemetry status / help**. UE4SS, Cheat Engine, ReClass.NET, x64dbg and WPR remain external/manual tools rather than bundled dependencies.
+See `docs/INTERNAL_TELEMETRY.md` for installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry toolkit** and **8 · Telemetry toolkit status**, backed by `scripts/Install-TelemetryToolkit.ps1`. Normal Orcish operation still has no dependency on these research tools; the installer fetches/places them only when explicitly requested.
 
 ### Semantic memory candidates for Fishing / Auto Picker
 
