@@ -13,6 +13,7 @@ from game_profile import PROFILE
 from settings import Settings
 from paths import CODE, DATA, migrate_data, ensure_data
 from version import VERSION
+from scout import ScoutRecorder
 import bench as benchmod
 import keys as keymap
 from tkinter import ttk
@@ -42,10 +43,11 @@ class WinIO:
     def own(self,h):
         from ctypes import wintypes as w
         pid=w.DWORD();self.u.GetWindowThreadProcessId(h,ctypes.byref(pid));return pid.value==os.getpid()
-    def game(self,h):
+    def pid(self,h):
         from ctypes import wintypes as w
-        pid=w.DWORD();self.u.GetWindowThreadProcessId(h,ctypes.byref(pid))
-        try: name=psutil.Process(pid.value).name()
+        pid=w.DWORD();self.u.GetWindowThreadProcessId(h,ctypes.byref(pid));return pid.value
+    def game(self,h):
+        try:name=psutil.Process(self.pid(h)).name()
         except psutil.Error:name=''
         return PROFILE.matches_window(self.title(h),name)
     def rect(self,h):
@@ -119,7 +121,7 @@ class App:
         self.jobs=queue.Queue(maxsize=1);self.results=queue.Queue();self.busy=False;self.ready=False
         self.previous_hot=False;self.previous_reacquire=False;self.last_scan=0;self.scan_ms=0;self.history=deque(maxlen=90)
         self.proc=psutil.Process();self.proc.cpu_percent();self.thumb=None;self.selecting=False;self.last_focused=True
-        self.run='Preview';self.last_run='Preview';self.reads=deque(maxlen=5);self.last_read=None
+        self.run='Preview';self.last_run='Preview';self.reads=deque(maxlen=5);self.last_read=None;self.scout=None
         self.meter=ReactionMeter();self.bench=None;self.benchproc=psutil.Process();self.optboxes={};self.geo=deque(maxlen=40);self.pending_clear=False;self.capture_backend='mss';self.engine='CPU'
         # No heavy imports in the UI thread: GPU support is reported by the worker once loaded.
         self.gpu_ok=False   # the worker reports DirectML availability after loading onnxruntime
@@ -642,8 +644,28 @@ class App:
             self.finish_bench()
         self.ctrl.stop();self.generation+=1
         if getattr(self,'fishing_panel',None):self.fishing_panel.stop()
+        self.scout_stop(reason)
         if hasattr(self,'status'):self.status.set(reason)
         if hasattr(self,'hint'):self.draw_run()
+    def scout_start(self,domain,run):
+        self.scout_stop('new session')
+        try:
+            pid=self.io.pid(self.target) if self.io and self.target else None
+            meta={'helper_version':VERSION,'game_title':self.io.title(self.target)[:120] if self.io and self.target else '',
+                  'capture_region':list(self.region),'mode':self.mode}
+            self.scout=ScoutRecorder(self.folder,domain,run,pid,meta)
+            self.scout.event('controller','session_start',run,details={'mode':self.mode},stream='controller')
+        except Exception:
+            self.scout=None;log.exception('Scout session start failed')
+    def scout_event(self,*args,**kwargs):
+        if self.scout:
+            try:self.scout.event(*args,**kwargs)
+            except Exception:log.exception('Scout event failed')
+    def scout_stop(self,reason='stopped'):
+        s=getattr(self,'scout',None);self.scout=None
+        if s:
+            try:s.close(reason)
+            except Exception:log.exception('Scout session close failed')
     def bind_game(self):
         self.stop(f'Switch to {PROFILE.name} now… binding in 3 seconds')
         self.root.after(3000,self.finish_bind)
@@ -741,6 +763,7 @@ class App:
         self.run=run
         cmode=('Timed' if self.timed.get() else 'Hold') if self.mode=='Hold' else self.mode
         self.ctrl.start(cmode,key,interval,hold,run=='Preview',self.repeat.get(),1 if self.opt['single'].get() else 2)
+        if self.mode=='Auto':self.scout_start('auto_picker',run)
         self.armed=True;self.draw_run()
         self.status.set('ARMED — switch to the bound game')
     def capture_rect(self):
@@ -781,10 +804,10 @@ class App:
             try:
                 if opts['gpu']!=detector.gpu:detector=Detector(gpu=opts['gpu'])
                 learner.set_limit(opts['limit']);grab.set_dxgi(opts['dxgi'])
-                frame=grab.grab(rect)
+                capture_mono=time.monotonic();frame=grab.grab(rect)
                 use=learner if opts['memory'] or opts['templates'] else None
                 prompts,debug,raw,rejected,info=detector.detect(frame,allowed,exclude,opts,use)
-                info['backend']=grab.last_backend;info['stats']=learner.stats();info['rect']=rect;info['gpu']=detector.gpu
+                info['backend']=grab.last_backend;info['stats']=learner.stats();info['rect']=rect;info['gpu']=detector.gpu;info['queue_mono']=stamp;info['capture_mono']=capture_mono
                 self.results.put(('scan',gen,prompts,debug,raw,rejected,info,stamp,time.monotonic()))
             except Exception as e:self.results.put(('error',gen,str(e)))
     def drain(self,now):
@@ -805,13 +828,22 @@ class App:
             if r[0]=='error':self.stop('Recognition error: '+r[2]);continue
             _,gen,prompts,debug,raw,rejected,info,stamp,finished=r
             self.scan_ms=(finished-stamp)*1000;self.capture_backend=info['backend'];self.engine='GPU' if info['gpu'] else 'CPU'
+            info['detected_mono']=finished;info['consumed_mono']=now
             self.show_stats(info['stats'])
             if not self.ctrl.running or self.io.foreground()!=self.target or now-stamp>1.2:
                 self.ctrl.release();self.detected.set('Scan discarded: focus changed or image too old.');continue
             p=prompts[0] if prompts else None
+            self.scout_event('vision','prompt',None if p is None else {'action':p.action,'key':p.key,'hold':p.hold,'source':p.source},
+                confidence=None if p is None else p.confidence,mono=info.get('capture_mono',stamp),
+                latency_ms=(finished-info.get('capture_mono',stamp))*1000,fresh_ms=(now-info.get('capture_mono',stamp))*1000,
+                details={'raw':raw[:240],'rejected':[(a,k,t) for a,k,t,_ in rejected[:4]],'queue_mono':info.get('queue_mono'),
+                         'capture_mono':info.get('capture_mono'),'detected_mono':finished,'consumed_mono':now,'rect':info.get('rect'),'backend':info.get('backend')},
+                stream='vision')
             self.observe_geo(info,info['rect'])
             self.meter.scan(p.identity if p else None,stamp)
             sent=self.ctrl.count;self.ctrl.observation(p,now);sent=self.ctrl.count>sent
+            self.scout_event('controller','decision',{'sent':sent,'held':self.ctrl.held,'running':self.ctrl.running},mono=now,
+                details={'prompt':None if p is None else p.identity,'preview':self.ctrl.preview,'stable':getattr(self.ctrl,'stable',None),'confirm':getattr(self.ctrl,'confirm',None)},stream='controller')
             decided=sent or (p is not None and self.ctrl.preview and self.ctrl.stable==self.ctrl.confirm)
             if getattr(self,'bench',None):self.bench.scan(self.scan_ms,p.identity if p else None,p.source if p else None,stamp,decided)
             if decided and self.meter.fired(time.monotonic(),f'{p.action} {p.key}',self.scan_ms,
