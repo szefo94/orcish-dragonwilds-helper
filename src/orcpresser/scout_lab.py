@@ -100,13 +100,15 @@ class ReadOnlyMemory:
 class ScoutLabSession:
     SAMPLE_DELAYS=(0,.25,.60,1.00,1.50)
 
-    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10):
+    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10,focus_mode="auto"):
         self.io=io;self.target=target;self.event_cb=event_cb;self.folder=Path(folder)
         self.watches=[parse_watch(x) if isinstance(x,str) else x for x in watches]
         self.save_crops=bool(save_crops);self.capture_lmb=bool(capture_lmb);self.interval=max(.05,float(interval));self.closed=threading.Event()
+        self.focus_mode=focus_mode if focus_mode in ("auto","crosshair","cursor") else "auto"
+        self.last_cursor=None;self.last_cursor_move=0.
         self.latest=queue.Queue(maxsize=1);self.started=time.monotonic();self.last_process=0.;self.last_crop=0.;self.memory=None
         self.pending_samples=[];self.sample_seq=0;self.sample_count=0
-        self.sample_dir=self.folder/"samples";self.labels_path=self.folder/"labels.csv"
+        self.sample_dir=self.folder/"samples";self.context_dir=self.folder/"sample_context";self.labels_path=self.folder/"labels.csv"
         if self.capture_lmb:self._prepare_labels()
         self.thread=threading.Thread(target=self._run,daemon=True,name="scout-lab");self.thread.start()
 
@@ -129,7 +131,7 @@ class ScoutLabSession:
         return int(p.x),int(p.y)
 
     def _prepare_labels(self):
-        self.sample_dir.mkdir(parents=True,exist_ok=True)
+        self.sample_dir.mkdir(parents=True,exist_ok=True);self.context_dir.mkdir(parents=True,exist_ok=True)
         if not self.labels_path.exists():
             with self.labels_path.open("w",newline="",encoding="utf-8") as f:
                 csv.writer(f).writerow(["sample_id","delay_ms","mono","image","focus_source","focus_x","focus_y","label","notes"])
@@ -138,6 +140,8 @@ class ScoutLabSession:
             guide.write_text(
                 "Scout LMB sample labeling\n\n"
                 "Every left-click while the bound game is foreground creates a short screenshot burst.\n"
+                "Aim mode always centers on the game crosshair. Auto mode uses the free cursor only after recent cursor movement; otherwise it uses the crosshair.\n"
+                "sample_context contains review composites with top-right/bottom-left game context and capture metadata; samples contains clean raw crops.\n"
                 "Open labels.csv and fill only the label / notes columns; keep IDs/timestamps/image paths unchanged.\n"
                 "Suggested labels: target, head, item_pickup, hit, crit, miss, inventory, other.\n"
                 "A click can produce several delayed frames so projectile impact can appear after the shot.\n",
@@ -148,18 +152,30 @@ class ScoutLabSession:
         try:return bool(ctypes.windll.user32.GetAsyncKeyState(0x01)&1)
         except Exception:return False
 
-    def _sample_focus(self,client,cursor):
+    def _sample_focus(self,client,cursor,now=None):
         x,y,w,h=client;sx=x+w//2;sy=y+h//2
+        if self.focus_mode=="crosshair":return "crosshair",sx,sy
+        if self.focus_mode=="cursor" and cursor:
+            cx,cy=cursor
+            if x<=cx<x+w and y<=cy<y+h:return "cursor",cx,cy
+        now=time.monotonic() if now is None else now
         if cursor:
             cx,cy=cursor
-            if x<=cx<x+w and y<=cy<y+h and math.hypot(cx-sx,cy-sy)>40:
+            if self.last_cursor is None or math.hypot(cx-self.last_cursor[0],cy-self.last_cursor[1])>=3:
+                self.last_cursor_move=now
+            self.last_cursor=cursor
+            recent=(now-self.last_cursor_move)<=.80
+            inside=x<=cx<x+w and y<=cy<y+h
+            # A free inventory/UI cursor is actively moving away from centre.
+            # A stale/hidden Windows cursor is ignored so aiming samples stay on the crosshair.
+            if self.focus_mode=="auto" and inside and recent and math.hypot(cx-sx,cy-sy)>45:
                 return "cursor",cx,cy
         return "crosshair",sx,sy
 
     def _queue_lmb_sample(self,client,cursor,now):
         self.sample_seq+=1
         sid=f"{self.sample_seq:05d}-{int((now-self.started)*1000):09d}"
-        source,fx,fy=self._sample_focus(client,cursor)
+        source,fx,fy=self._sample_focus(client,cursor,now)
         for delay in self.SAMPLE_DELAYS:
             self.pending_samples.append({"due":now+delay,"sample_id":sid,"delay_ms":int(delay*1000),
                                          "focus_source":source,"focus_x":fx,"focus_y":fy})
@@ -183,12 +199,28 @@ class ScoutLabSession:
                 name=f"{s['sample_id']}_t+{s['delay_ms']:04d}.png";path=self.sample_dir/name
                 cv2.imwrite(str(path),frame)
                 rel=str(Path("samples")/name)
+                # Review composite: clean crop + top-right and bottom-left context + metadata.
+                # It is separate from the raw crop so training material remains unmodified.
+                trw=min(320,w);trh=min(180,h);blw=min(320,w);blh=min(180,h)
+                top_right=grab.grab({"left":x+w-trw,"top":y,"width":trw,"height":trh})
+                bottom_left=grab.grab({"left":x,"top":y+h-blh,"width":blw,"height":blh})
+                review=np.zeros((max(ch,180)+46,cw+320,3),dtype=np.uint8)
+                review[46:46+ch,0:cw]=frame
+                review[46:46+trh,cw:cw+trw]=top_right
+                review[46+max(0,ch-blh):46+max(0,ch-blh)+blh,cw:cw+blw]=bottom_left
+                cv2.putText(review,f"{name} | {s['focus_source']} | +{s['delay_ms']} ms",(10,29),
+                            cv2.FONT_HERSHEY_SIMPLEX,.62,(0,255,255),1,cv2.LINE_AA)
+                cv2.putText(review,"TOP-RIGHT",(cw+8,64),cv2.FONT_HERSHEY_SIMPLEX,.48,(0,255,255),1,cv2.LINE_AA)
+                cv2.putText(review,"BOTTOM-LEFT",(cw+8,46+max(18,ch-blh)+18),cv2.FONT_HERSHEY_SIMPLEX,.48,(0,255,255),1,cv2.LINE_AA)
+                review_name=f"{s['sample_id']}_t+{s['delay_ms']:04d}_context.jpg"
+                cv2.imwrite(str(self.context_dir/review_name),review,[int(cv2.IMWRITE_JPEG_QUALITY),86])
                 with self.labels_path.open("a",newline="",encoding="utf-8") as f:
                     csv.writer(f).writerow([s["sample_id"],s["delay_ms"],f"{now:.6f}",rel,s["focus_source"],
                                             fx-x,fy-y,"",""])
                 self.sample_count+=1
                 self.event_cb("vision","lmb_sample_frame",
                               {"sample_id":s["sample_id"],"delay_ms":s["delay_ms"],"image":rel,
+                               "context_image":str(Path("sample_context")/review_name),
                                "focus_source":s["focus_source"],"focus_client":[fx-x,fy-y],
                                "capture_rect":[left-x,top-y,cw,ch]},mono=now,stream="vision")
             except Exception as e:
