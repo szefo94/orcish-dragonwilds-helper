@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
-from aim_lab import impact_features, moving_candidates
+import cv2
+from aim_lab import impact_features, moving_candidates, target_hud_candidates
 
 class AimLabTests(unittest.TestCase):
     def test_impact_features_detects_change_and_warm_pixels(self):
@@ -36,5 +37,18 @@ class AimLabTests(unittest.TestCase):
         a=np.zeros((300,500,3),dtype=np.uint8)
         b=np.full_like(a,255)
         self.assertEqual(moving_candidates(b,a),[])
+
+    def test_target_hud_candidates_detects_green_horizontal_hp_bar(self):
+        img=np.zeros((360,640,3),dtype=np.uint8)
+        cv2.rectangle(img,(180,95),(390,108),(0,230,0),-1)
+        found=target_hud_candidates(img)
+        self.assertTrue(found)
+        self.assertEqual(found[0]["source"],"target_hud")
+        self.assertGreaterEqual(found[0]["bar_bbox"][2],200)
+
+    def test_target_hud_candidates_ignores_bottom_hud_green(self):
+        img=np.zeros((360,640,3),dtype=np.uint8)
+        cv2.rectangle(img,(180,300),(390,313),(0,230,0),-1)
+        self.assertEqual(target_hud_candidates(img),[])
 
 if __name__=="__main__":unittest.main()
