@@ -1,6 +1,8 @@
 """Fishing capture: fast color observations and a separate, bounded OCR worker."""
 from dataclasses import asdict
 from pathlib import Path
+
+log=logging.getLogger('orcpresser')
 import json, queue, threading, time
 import cv2
 import numpy as np
@@ -176,6 +178,7 @@ class FishingCapture:
                     self.text=' | '.join(lines);self.text_stamp=stamp;self.pull_left=pull_left;self.pull_right=pull_right;self.pull_stamp=stamp
                     self.ocr_regions=regions_text;self.ocr_ms=(time.monotonic()-start)*1000
         except Exception as e:
+            log.exception('Fishing OCR worker crashed')
             with self.lock:self.error='Fishing OCR: '+str(e)
     def capture(self):
         try:
@@ -240,4 +243,6 @@ class FishingCapture:
             finally:
                 if log:log.close()
                 grab.mss.close()
-        except Exception as e:self.offer((None,{},str(e)))
+        except Exception as e:
+            log.exception('Fishing capture worker crashed')
+            self.offer((None,{},'Fishing capture: '+str(e)))
