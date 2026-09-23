@@ -241,7 +241,7 @@ data/scout_sessions/20260923-071500/
 - enabled Scout backends;
 - hashes/IDs of calibration regions, not screenshots unless recording is enabled;
 - whether the session was Preview or Live;
-- whether gameplay was offline/private/shared.
+- whether gameplay was offline/private/shared. The current project scope assumes single-player/private testing for Scout research.
 
 ## Signals to log
 
@@ -295,6 +295,117 @@ Process/Unreal candidate stream:
 - candidate bar/stamina/progress float;
 - candidate result/catch state;
 - object/property identity and resolution method.
+
+## Temporal alignment: OCR is reactive and delayed
+
+Visual/OCR evidence is not instantaneous. A game-state transition happens first, then the frame is rendered, captured, queued for OCR, processed, and only afterwards reaches the controller. Scout correlation must therefore use **causal time windows**, not exact timestamp equality.
+
+Each visual event should distinguish at least:
+
+- `frame_mono` — when the source frame was captured;
+- `queued_mono` — when it entered the OCR/detector queue;
+- `detected_mono` — when recognition completed;
+- `consumed_mono` — when the controller received the result;
+- `latency_ms = detected_mono - frame_mono`.
+
+For OCR-backed signals such as REEL/RESULT/PULL prompts, the analyzer should search a configurable window around the visual event. Initial research defaults:
+
+- process/unreal candidate may lead OCR by up to **500 ms**;
+- process/unreal candidate may lag OCR by up to **150 ms**;
+- use measured per-signal latency distributions to replace these defaults after enough sessions.
+
+Do not interpret a process event 100–300 ms before OCR as disagreement. It may be the same underlying transition observed earlier.
+
+The analyzer should compute cross-correlation and transition lead/lag for every candidate, then report median, p95 and jitter. A candidate that consistently leads REEL OCR by 80 ms is potentially valuable even if timestamps never match exactly.
+
+For controller safety, fusion should operate on freshness windows:
+
+```text
+vision_reel_fresh  = now - reel_frame_mono <= visual_ttl
+process_reel_fresh = now - process_event_mono <= process_ttl
+```
+
+The source timestamp should be the time the evidence existed, not merely the time a slower worker returned it.
+
+## Scout-assisted calibration and tighter overlays
+
+Process/Unreal data may also help reduce manual overlay calibration. There are two different possibilities.
+
+### Direct widget geometry
+
+If an Unreal-native/reflection/mod bridge exposes UMG/Slate widget information, Scout may be able to obtain:
+
+- viewport size and DPI/UI scale;
+- widget visibility;
+- absolute or viewport-local widget geometry;
+- render transform / layout transform;
+- widget class/name;
+- bounds for prompt containers, fishing HUD elements or interaction rows.
+
+This would be the strongest calibration source. Instead of asking the user to draw a large REEL/PULL/STOP box, the helper could map the widget geometry into game-client pixels and create or tighten the region automatically.
+
+This must be treated as **optional metadata** because a retail build may not expose useful widget objects or geometry externally.
+
+### Process-triggered visual tightening
+
+Even without pixel coordinates, a process signal can make the visual search much easier.
+
+Example:
+
+1. process Scout reports `fishing_phase = WAIT_BITE`;
+2. visual Scout scans a broader HUD search area for STOP only;
+3. once STOP is found, shrink and persist a tight ROI around it;
+4. when process phase changes to FIGHT, scan nearby for PULL L/R;
+5. when process candidate says REEL is possible, search only the expected prompt band;
+6. track the detected box frame-to-frame with a small margin.
+
+This changes calibration from **user draws exact box** to **user supplies rough search area, Scout tightens it**.
+
+### Visual-only auto-tightening
+
+The same machinery should work even without process access:
+
+- start from the saved user ROI;
+- find the actual text/glyph bounding box;
+- expand by a small configurable padding;
+- keep an exponentially smoothed rectangle;
+- refuse large jumps unless confirmed across several frames;
+- reset to the user's original ROI after resolution/UI-scale changes.
+
+Suggested stored structure:
+
+```json
+{
+  "signal": "reel",
+  "user_region": [0.42, 0.61, 0.18, 0.08],
+  "tight_region": [0.47, 0.625, 0.09, 0.035],
+  "source": "vision",
+  "confidence": 0.94,
+  "samples": 186,
+  "ui_scale_key": "2560x1440@100"
+}
+```
+
+### Calibration-health metrics
+
+For each region, log:
+
+- percentage of frames with a valid detection;
+- bounding-box jitter in pixels;
+- average margin between detection and ROI edge;
+- clipping incidents;
+- resolution/UI-scale changes;
+- process-vs-visual phase agreement.
+
+The UI can then show:
+
+`REEL calibration: GOOD · 96% detected · 8 px margin`
+
+or:
+
+`PULL R calibration: CLIPPING RIGHT EDGE · expand by ~12 px`
+
+This should eventually make overlay calibration evidence-driven instead of trial-and-error.
 
 ## Offline correlation and analysis
 
