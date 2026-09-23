@@ -1,9 +1,11 @@
 """Fishing tab integration; calibration and observations stay in data/."""
-import queue
+import queue, logging
 import tkinter as tk
 from fishing import FishingController, FishingConfig, CastCalibration
 from fishing_capture import FishingCapture, rect_pixels
 from fishing_overlay import FishingOverlay
+
+log=logging.getLogger('orcpresser')
 
 class FishingPanel:
     def __init__(self,app,parent):
@@ -166,7 +168,17 @@ class FishingPanel:
                     a.ctrl.release();self.message.set('Move the panel outside fishing capture regions, or minimize it.');return
         try:o,info,error=self.session.results.get_nowait()
         except queue.Empty:return
-        if error:a.stop(error);return
+        if error:
+            log.error('%s',error)
+            a.scout_event('error','fishing_capture_error',{'message':str(error)},mono=now)
+            if getattr(a.ctrl.config,'persistent_session',False):
+                try:self.session.close()
+                except Exception:log.exception('Failed closing crashed fishing capture session')
+                self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
+                a.ctrl._rearm('Fishing capture restarted after error — still armed; waiting for Stop Fishing')
+                self.message.set('Fishing capture recovered from an error. Session stayed LIVE; see data\\orcpresser.log for details.')
+                return
+            a.stop(error);return
         before_held=a.ctrl.held;before_state=a.ctrl.state;a.ctrl.observe(o,now)
         a.scout_event('vision','fishing_observation',{'color':o.color,'text':o.text[:240],'stop':info.get('active'),
             'pull_left':info.get('pull_left'),'pull_right':info.get('pull_right'),'pull_direction':info.get('pull_direction'),
