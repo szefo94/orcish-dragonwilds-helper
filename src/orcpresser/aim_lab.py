@@ -208,8 +208,11 @@ class AimTrackerSession:
         self.latest=queue.Queue(maxsize=1);self.previous_impact=None;self.previous_frame=None;self.history=deque(maxlen=12)
         self.thread=threading.Thread(target=self._run,daemon=True,name="aim-lab");self.thread.start()
 
-    def close(self):
+    def close(self,wait=True):
         self.closed.set();self.overlay.hide()
+        if wait:
+            t=getattr(self,"thread",None)
+            if t and t is not threading.current_thread() and t.is_alive():t.join(timeout=2.0)
 
     def _offer(self,v):
         try:self.latest.put_nowait(v)
@@ -370,8 +373,13 @@ class AimLabPanel:
     def stop(self):
         s=self.session;self.session=None
         if s:s.close()
+        self.overlay.hide()
         if getattr(self.app,"scout",None):self.app.scout_stop("Aim Lab stopped")
+        self.live.set("No target tracks yet.")
         if s:self.status.set("Stopped. Aim/Scout logs preserved in data/scout_sessions.")
+
+    def shutdown(self):
+        self.stop();self.overlay.close()
 
     def acquire(self):
         if not self.session:self.status.set("Start tracking first.");return
