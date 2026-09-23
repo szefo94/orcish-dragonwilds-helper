@@ -125,6 +125,8 @@ class FishingController:
             self.pull_count=self.pull_count+1 if (o.pull_left or o.pull_right) else 0
             self.pull_seen=o.pull_stamp
         pull_confirmed=bool((o.pull_left or o.pull_right) and self.pull_count>=2)
+        pull_ocr_direction=('A' if pull_confirmed and o.pull_left and not o.pull_right else
+                            'D' if pull_confirmed and o.pull_right and not o.pull_left else None)
         if o.pull_visual_stamp!=self.pull_visual_seen:
             if o.pull_direction in ('A','D') and o.pull_confidence>=.55:
                 self.pull_visual_count=self.pull_visual_count+1 if o.pull_direction==self.pull_visual_dir else 1
@@ -133,6 +135,7 @@ class FishingController:
                 self.pull_visual_count=0;self.pull_visual_dir=None
             self.pull_visual_seen=o.pull_visual_stamp
         pull_direction_confirmed=self.pull_visual_dir if self.pull_visual_count>=2 else None
+        pull_command=pull_direction_confirmed or pull_ocr_direction
         if o.reel_stamp!=self.reel_seen:
             if o.reel_visible and o.reel_score>=.55:
                 self.reel_count+=1;self.reel_absent_count=0
@@ -142,7 +145,7 @@ class FishingController:
         reel_visual_confirmed=self.reel_count>=2
         reel_visual_absent_confirmed=self.reel_absent_count>=2
         reel_visual_available=o.reel_visible is not None
-        pull_any=bool(pull_confirmed or pull_direction_confirmed)
+        pull_any=bool(pull_command or pull_confirmed)
         # Text confirmations count distinct OCR images, not fast ticks reusing cached text.
         kind=('caught' if re.search(r'\b(?:fish caught|you caught|caught a)\b',text) else
               'bait' if 'consider bait' in text else
@@ -190,8 +193,8 @@ class FishingController:
                 return
             if pull_any or (not self.config.require_active and stable and o.color in ('red','blue')):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
-                if pull_direction_confirmed:
-                    self.direction=pull_direction_confirmed;self.set_key(self.direction)
+                if pull_command:
+                    self.direction=pull_command;self.set_key(self.direction)
             elif confirmed and kind=='cast' and (self.config.auto_cast or self.trial_only):
                 self.state='CAST';self.cast_until=now+self.config.cast_seconds;self.changed=now
                 self.set_key('LMB');return
@@ -211,9 +214,9 @@ class FishingController:
             if pull_any or stable and o.color in ('red','blue'):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
                 self.reason='Bite confirmed after STOP disappeared'
-                if pull_direction_confirmed:
-                    self.direction=pull_direction_confirmed;self.set_key(self.direction)
-                    self.reason+=' — visual direction '+self.direction
+                if pull_command:
+                    self.direction=pull_command;self.set_key(self.direction)
+                    self.reason+=' — confirmed PULL '+self.direction
                 elif o.color=='red':
                     self.set_key(self.direction);self.reason+=' — red tension, holding '+self.direction
             else:return
@@ -233,9 +236,9 @@ class FishingController:
             if not reel_visual_available and kind=='reel':
                 self.reason='REEL OCR still visible — keeping LMB held';return
             self.release();self.state='FIGHT'
-            if pull_direction_confirmed:
-                self.direction=pull_direction_confirmed;self.set_key(self.direction)
-                self.reason='REEL ended — resumed confirmed '+self.direction;return
+            if pull_command:
+                self.direction=pull_command;self.set_key(self.direction)
+                self.reason='REEL ended — resumed confirmed PULL '+self.direction;return
             if stable and o.color=='blue':
                 self.set_key(self.direction)
                 self.reason='REEL ended on blue — resumed '+self.direction;return
@@ -244,9 +247,10 @@ class FishingController:
                 self.set_key(self.direction);self.changed=now
                 self.reason='REEL ended on red — swapped and holding '+self.direction;return
             self.reason='REEL ended — waiting for reliable BAR/PULL before resuming direction';return
-        if pull_direction_confirmed and self.state=='FIGHT':
-            self.direction=pull_direction_confirmed;self.set_key(self.direction)
-            self.reason='Fast PULL direction confirmed — holding '+self.direction;return
+        if pull_command and self.state=='FIGHT':
+            self.direction=pull_command;self.set_key(self.direction)
+            self.reason=('Fast PULL command confirmed — holding ' if pull_direction_confirmed else
+                         'OCR PULL command confirmed — holding ')+self.direction;return
         if not stable:return
         if o.color=='red':
             # Direction changes are driven by COLOR TRANSITIONS, never by a timer.
