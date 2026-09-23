@@ -10,6 +10,16 @@ The interface uses an Orcish-inspired theme, mode buttons, capture previews, det
 
 > **Fishing is experimental.** Version 2.3 adds recording, calibration, and a supervised single-round controller. Its Windows overlay and live-game recognition still need gameplay validation. Automated tests do not establish in-game reliability.
 
+## UI preview
+
+The repository includes a visual representation of the current UI architecture. It is deliberately separated from the runtime code: the preview demonstrates layout, shared game state, per-tool requirements, next-action guidance, and the top-left overlay rail, but it cannot send input or control the game.
+
+[**Open the interactive GitHub Pages preview**](https://szefo94.github.io/orcish-dragonwilds-helper/)
+
+![Orcish Dragonwilds Helper UI preview](site/ui-preview.svg)
+
+The interactive source is in [`site/index.html`](site/index.html). GitHub Pages deploys the `site/` directory after changes reach `main`.
+
 ## Contents
 
 - [Features and modes](#features-and-modes)
