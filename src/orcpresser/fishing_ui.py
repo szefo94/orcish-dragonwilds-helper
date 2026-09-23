@@ -79,7 +79,7 @@ class FishingPanel:
         for w in [self.auto_box,self.trial_box,self.cast_entry,*self.trial_buttons]:w.configure(state=state)
         if not advanced:self.trial.set(False)
         if not initial:self.app.stop('Fishing mode changed')
-        self.message.set('Advanced: BAR + REEL + optional RESULT/SPOT; auto-cast calibration available. Movement/pool navigation is not autonomous yet.' if advanced else 'Fishing Bot 101: set BAR and REEL. Cast, position, and move manually; F7 = New spot / Reacquire.')
+        self.message.set('Advanced: BAR + REEL + optional RESULT/SPOT; auto-cast calibration available. Movement/pool navigation is not autonomous yet.' if advanced else 'Fishing Bot 101: set BAR + REEL + STOP. LIVE stays armed; STOP Fishing appearing is the ready/set/go gate. Cast, position, and move manually.')
     def save_bracket(self):self.app.persist('fishing_cast_bracket',{'low':self.calibration.low,'high':self.calibration.high,'confirmed':self.calibration.confirmed})
     def reset(self):self.app.stop();self.calibration=CastCalibration();self.save_bracket();self.message.set('Bracket reset; maintain a fixed player position and camera.')
     def reacquire(self):self.app.stop('New spot / camera changed');self.calibration=CastCalibration();self.save_bracket();self.message.set('Travel pause complete: cast timing invalidated. BAR/REEL screen regions remain saved; verify Preview before resuming.')
@@ -127,14 +127,22 @@ class FishingPanel:
         a=self.app
         if a.visual:return
         if not a.target or not a.io.game(a.target):a.status.set('Bind a Dragonwilds game window first.');return
-        if not all(k in self.regions for k in ('bar','prompt')):a.status.set('Select BAR and REEL regions first.');return
+        required=('bar','prompt','active') if self.mode.get()=='101' else ('bar','prompt')
+        if not all(k in self.regions for k in required):
+            a.status.set('Fishing Bot 101 requires BAR, REEL and STOP regions.' if self.mode.get()=='101' else 'Select BAR and REEL regions first.');return
         if self.record.get() and run!='Preview':a.status.set('Manual recording uses PREVIEW, so only you control the game.');return
-        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,auto_cast=self.mode.get()=='advanced' and self.auto.get(),recurring=self.recurring.get(),require_active=self.recurring.get() and 'active' in self.regions).validate()
+        try:config=FishingConfig(cast_seconds=float(self.duration.get())/1000,
+            auto_cast=self.mode.get()=='advanced' and self.auto.get(),
+            recurring=self.recurring.get(),
+            require_active=(self.mode.get()=='101') or (self.recurring.get() and 'active' in self.regions),
+            persistent_session=self.mode.get()=='101').validate()
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False
         if self.show_overlay.get():self.ensure_overlay()
         a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());a.scout_start('fishing',run);self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
-        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set(('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.')
+        a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING 101 ARMED — waiting for Stop Fishing; STOP/F8 ends session' if self.mode.get()=='101' else 'FISHING ARMED — switch to the game; F8 stops')
+        self.message.set('Fishing Bot 101 armed. No aid starts until STOP Fishing is confirmed; alt-tab pauses inputs but keeps the session armed.' if self.mode.get()=='101' else
+                         (('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.'))
     def stop(self):
         if self.session:self.session.close();self.session=None
         # Runtime/calibration overlays must never survive a mode switch or stop.
