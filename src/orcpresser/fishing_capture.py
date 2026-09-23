@@ -232,8 +232,8 @@ class FishingCapture:
                               reel_visible=reel_visible if 'prompt' in self.regions else None,reel_score=reel_score,reel_stamp=reel_stamp,
                               ocr_regions=ocr_regions,ocr_ms=ocr_ms,backend=grab.last_backend,spot=candidate,physical=physical)
                     if error:raise RuntimeError(error)
-                    if log and now-self.started<300 and self.bytes<100*1024*1024:
-                        line=json.dumps(dict(observation=asdict(o),**info))+'\n';log.write(line);self.bytes+=len(line)
+                    if session_log and now-self.started<300 and self.bytes<100*1024*1024:
+                        line=json.dumps(dict(observation=asdict(o),**info))+'\n';session_log.write(line);self.bytes+=len(line)
                         if now-last_save>=1:
                             extra=[('active',active_frame)] if 'active' in self.regions and 'active_frame' in locals() else []
                             for name,im in [('bar',bar)]+[(f'text-{name}',im) for name,im in images]+extra:
