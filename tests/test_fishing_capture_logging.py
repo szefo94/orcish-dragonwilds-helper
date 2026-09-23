@@ -1,5 +1,6 @@
 import ast
 import inspect
+import textwrap
 import unittest
 
 import fishing_capture
@@ -7,7 +8,7 @@ import fishing_capture
 
 class FishingCaptureLoggingRegressionTests(unittest.TestCase):
     def test_capture_never_writes_jsonl_through_application_logger(self):
-        tree=ast.parse(inspect.getsource(fishing_capture.FishingCapture.capture))
+        tree=ast.parse(textwrap.dedent(inspect.getsource(fishing_capture.FishingCapture.capture)))
         bad=[]
         session_writes=0
         for node in ast.walk(tree):
