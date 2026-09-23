@@ -122,7 +122,7 @@ class App:
         self.ctrl=Controller(lambda k,d:None) if visual else Controller(self.io.output)
         self.target=0;self.region=(.25,.2,.65,.6);self.mode='Auto';self.generation=0
         self.jobs=queue.Queue(maxsize=1);self.results=queue.Queue();self.busy=False;self.ready=False
-        self.previous_hot=False;self.previous_reacquire=False;self.last_scan=0;self.scan_ms=0;self.history=deque(maxlen=90)
+        self.previous_hot=False;self.previous_reacquire=False;self.previous_aim_acquire=False;self.last_scan=0;self.scan_ms=0;self.history=deque(maxlen=90)
         self.proc=psutil.Process();self.proc.cpu_percent();self.thumb=None;self.selecting=False;self.last_focused=True
         self.run='Preview';self.last_run='Preview';self.reads=deque(maxlen=5);self.last_read=None;self.scout=None
         self.meter=ReactionMeter();self.bench=None;self.benchproc=psutil.Process();self.optboxes={};self.geo=deque(maxlen=40);self.pending_clear=False;self.capture_backend='mss';self.engine='CPU'
@@ -370,7 +370,7 @@ class App:
             self.hint.set('SCOUT LAB uses START RECORDING in the tab · can also run as a sidecar with Auto / Fishing / Aim')
             return
         if self.mode=='Aim':
-            self.hint.set('AIM LAB uses START TRACKING in the tab · boxes/telemetry only · no mouse movement or firing')
+            self.hint.set('AIM LAB: START TRACKING, then F6 acquires under cursor/crosshair · LMB captures offline-label samples')
             return
         run='TEST' if self.mode=='Stats' else ('LIVE' if self.mode not in ('Auto','Fishing') else self.last_run.upper())
         self.hint.set(f'\\  START / STOP {run}     •     F8  RELEASE & STOP     •     Switching windows stops output')
@@ -988,6 +988,10 @@ class App:
                 reacquire=self.io.pressed(0x76)  # F7
                 if getattr(self,'previous_reacquire',False) and not reacquire and not self.selecting and self.mode=='Fishing':self.fishing_panel.reacquire()
                 self.previous_reacquire=reacquire
+                aim_acquire=self.io.pressed(0x75)  # F6
+                if getattr(self,'previous_aim_acquire',False) and not aim_acquire and not self.selecting and self.mode=='Aim':
+                    self.aim_lab.acquire()
+                self.previous_aim_acquire=aim_acquire
                 if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
                 self.drain(now)
                 if getattr(self,'scout_lab',None):self.scout_lab.tick()
