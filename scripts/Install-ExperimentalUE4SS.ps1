@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $DownloadRoot = Join-Path $RepoRoot "tools\external\downloads"
 $TelemetryDir = Join-Path $RepoRoot "data\ue4ss"
+$TargetCache = Join-Path $TelemetryDir "dragonwilds_target.txt"
 New-Item -ItemType Directory -Force -Path $DownloadRoot,$TelemetryDir | Out-Null
 
 function Write-Section([string]$Text) { Write-Host ""; Write-Host ("=== " + $Text + " ===") -ForegroundColor Cyan }
@@ -54,6 +55,26 @@ function Resolve-DragonwildsExe {
         }
         throw "-GameExe does not exist: $GameExe"
     }
+
+    if (Test-Path $TargetCache) {
+        $cached = (Get-Content -Raw $TargetCache -ErrorAction SilentlyContinue).Trim()
+        if ($cached -and [IO.Path]::GetFileName($cached) -ieq "RSDragonwilds-WinGDK-Shipping.exe") {
+            return $cached
+        }
+    }
+
+    try {
+        $pkg = Get-AppxPackage -Name "JagexLimited.Dominion" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $pkg) {
+            $pkg = Get-AppxPackage -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like "JagexLimited.Dominion*" } |
+                Select-Object -First 1
+        }
+        if ($pkg -and $pkg.InstallLocation) {
+            $candidate = Join-Path $pkg.InstallLocation "RSDragonwilds\Binaries\WinGDK\RSDragonwilds-WinGDK-Shipping.exe"
+            if (Test-Path $candidate) { return $candidate }
+        }
+    } catch {}
 
     $proc = Get-Process -Name "RSDragonwilds-WinGDK-Shipping" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($proc) {
@@ -273,10 +294,13 @@ if ($running) {
 }
 
 $exe = Resolve-DragonwildsExe
+if ($exe) {
+    try { Set-Content -Path $TargetCache -Value $exe -Encoding UTF8 } catch {}
+}
 if (-not $exe) {
     Write-Bad "RSDragonwilds-WinGDK-Shipping.exe was not found."
-    Write-Host "The installer could not rediscover the WindowsApps path after elevation."
-    Write-Host "Run Setup option 8 first so Orcish can resolve the exact Dragonwilds executable, then retry option 9."
+    Write-Host "The installer could not resolve the WindowsApps path from the cache, Appx package metadata, running process, or filesystem search."
+    Write-Host "Run Setup option 8 once, then retry option 9."
     Exit-WithPause 3
 }
 
