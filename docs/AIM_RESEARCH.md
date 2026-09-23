@@ -19,7 +19,7 @@ Trying to jump directly to mouse movement hides which measurement is wrong. Aim 
 
 ## Current v1 visual tracker
 
-The first tracker has no model dependency. The user places the cursor over a visible target and presses **ACQUIRE AT CURSOR**. Aim Lab stores a local grayscale appearance template and searches near the previous target position with normalized template matching.
+The first tracker has no model dependency. In aiming mode the game locks aiming to screen centre, so **F6 seeds at the screen-centre crosshair**, not at the Windows cursor. Aim Lab stores a local grayscale appearance template and searches near the previous target position with normalized template matching. Weak matches and matches that enter HUD-edge zones are rejected instead of moving the box. In parallel, a motion proposal pass looks for localized moving regions inside the gameplay area; it skips broad whole-frame changes caused by camera rotation and excludes HUD-prone top/bottom/edge regions.
 
 Each Scout event records:
 
@@ -75,9 +75,9 @@ Each session receives:
 - `labels.csv`;
 - `LABELING_README.txt`.
 
-The user reviews the images after play and fills only the `label` and `notes` columns in `labels.csv`. Suggested labels include `target`, `head`, `item_pickup`, `inventory`, `hit`, `crit`, `miss`, and `other`. The analyzer reads this file without modifying it.
+The user reviews the images after play and fills only the `label` and `notes` columns in `labels.csv`. `samples/` contains clean raw crops. `sample_context/` contains review composites with the same crop plus top-right and bottom-left game context and a filename/focus/delay caption; these review images are for diagnosis/labeling and do not replace the clean training crop. Suggested labels include `target`, `head`, `item_pickup`, `inventory`, `hit`, `crit`, `miss`, and `other`. The analyzer reads this file without modifying it.
 
-For live target acquisition, **F6** seeds the Aim tracker while the game remains focused, avoiding the same focus-loss problem.
+For live target acquisition, **F6** seeds the Aim tracker at the screen-centre crosshair while the game remains focused, avoiding both focus loss and stale Windows-cursor coordinates. Rectangle captions state why a box exists: solid boxes are seeded template matches with confidence; dashed cyan boxes are localized-motion proposals.
 
 ## Hit / damage / critical-hit evidence
 
