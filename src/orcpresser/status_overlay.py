@@ -13,7 +13,7 @@ PALETTES={
 class StatusOverlay:
     def __init__(self,root):
         self.window=tk.Toplevel(root);self.window.withdraw();self.window.overrideredirect(True)
-        self.window.configure(bg="#010101");self.window.attributes("-topmost",True)
+        self.window.configure(bg="#010101");self.window.attributes("-topmost",True);self.window.attributes("-alpha",.55)
         self.canvas=tk.Canvas(self.window,bg="#010101",highlightthickness=0);self.canvas.pack(fill="both",expand=True)
         self.available=False
         if sys.platform=="win32":

@@ -676,7 +676,7 @@ class App:
                   'capture_region':list(self.region),'mode':self.mode}
             self.scout=ScoutRecorder(self.folder,domain,run,pid,meta)
             self.scout.event('controller','session_start',run,details={'mode':self.mode},stream='controller')
-            if domain!='scout_lab' and getattr(self,'scout_lab',None):self.scout_lab.start_sidecar()
+            if domain!='scout_lab' and getattr(self,'scout_lab',None):self.scout_lab.start_sidecar(domain)
         except Exception:
             self.scout=None;log.exception('Scout session start failed')
     def scout_event(self,*args,**kwargs):

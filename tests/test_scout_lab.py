@@ -28,10 +28,18 @@ class ScoutLabTests(unittest.TestCase):
         self.assertEqual(f["center_bgr"],[40.0,50.0,60.0])
         self.assertGreater(f["std"],0)
 
-    def test_sample_focus_prefers_crosshair_for_centered_cursor(self):
-        s=ScoutLabSession.__new__(ScoutLabSession)
-        self.assertEqual(s._sample_focus((100,200,800,600),(505,498)),("crosshair",500,500))
-        self.assertEqual(s._sample_focus((100,200,800,600),(200,300)),("cursor",200,300))
+    def test_sample_focus_distinguishes_locked_aim_from_recent_free_cursor(self):
+        s=ScoutLabSession.__new__(ScoutLabSession);s.focus_mode="auto";s.last_cursor=None;s.last_cursor_move=0.
+        self.assertEqual(s._sample_focus((100,200,800,600),(500,500),10.0),("crosshair",500,500))
+        # A recently moved off-centre cursor is treated as inventory/UI cursor.
+        self.assertEqual(s._sample_focus((100,200,800,600),(200,300),10.1),("cursor",200,300))
+        # A stale off-centre Windows cursor is ignored and aim returns to screen centre.
+        s.last_cursor=(200,300);s.last_cursor_move=1.0
+        self.assertEqual(s._sample_focus((100,200,800,600),(200,300),10.0),("crosshair",500,500))
+
+    def test_crosshair_mode_never_uses_windows_cursor(self):
+        s=ScoutLabSession.__new__(ScoutLabSession);s.focus_mode="crosshair";s.last_cursor=None;s.last_cursor_move=0.
+        self.assertEqual(s._sample_focus((100,200,800,600),(150,250),5.0),("crosshair",500,500))
 
     def test_prepare_labels_creates_editable_csv_and_guide(self):
         with tempfile.TemporaryDirectory() as td:
