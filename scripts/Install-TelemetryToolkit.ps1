@@ -9,14 +9,19 @@ param(
     [switch]$SkipX64dbg,
     [switch]$SkipWPT,
     [string]$GameExe,
-    [string]$UE4SSZip = "C:\Users\Marcin\OneDrive\Desktop\OrcPresser\RE-UE4SS-main.zip"
+    [string]$UE4SSZip = ""
 )
+
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Py = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 $ExternalRoot = Join-Path $RepoRoot "tools\external"
 $DownloadRoot = Join-Path $ExternalRoot "downloads"
+if (-not $UE4SSZip) {
+    $repoZip = Join-Path $RepoRoot "RE-UE4SS-main.zip"
+    if (Test-Path $repoZip) { $UE4SSZip = $repoZip }
+}
 New-Item -ItemType Directory -Force -Path $ExternalRoot,$DownloadRoot | Out-Null
 
 function Write-Section([string]$Text) { Write-Host ""; Write-Host ("=== " + $Text + " ===") -ForegroundColor Cyan }
