@@ -974,7 +974,7 @@ class App:
             system=[x for x in (self.metrictext.get().splitlines() if hasattr(self,"metrictext") else []) if x]
             side=getattr(getattr(self,"scout_lab",None),"sidecar",None)
             if side:
-                system.append(f"Scout sidecar ON · samples={getattr(side,'sample_count',0)} · watches={len(getattr(side,'watches',[]))}")
+                system.append(f"Scout sidecar ON · samples={getattr(side,'sample_count',0)} · watches={len(getattr(side,'watches',[]))} · candidates={len(getattr(side,'candidates',[]))}")
             elif getattr(self,"scout",None):
                 system.append(f"Scout session ON · {getattr(self.scout,'domain','?')}")
             else:system.append("Scout sidecar OFF")
