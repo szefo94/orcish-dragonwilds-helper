@@ -8,7 +8,7 @@ Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can re
 
 The interface uses an Orcish-inspired theme, mode buttons, capture previews, detection feedback, and CPU/RAM charts. Recognition runs locally; the application does not send gameplay frames to a cloud service or use an LLM during play.
 
-> **Fishing is experimental.** Version 2.3 adds recording, calibration, and a supervised single-round controller. Its Windows overlay and live-game recognition still need gameplay validation. Automated tests do not establish in-game reliability.
+> **Fishing is experimental.** Version 2.4 includes persistent calibration, fast BAR/PULL/REEL evidence, recurring-round handling, Scout telemetry, and a supervised controller. Automated tests cover the state machine, but real-game reliability still depends on correct calibration and the current Dragonwilds UI/build.
 
 ## UI preview
 
@@ -41,7 +41,9 @@ The interactive source is in [`site/index.html`](site/index.html). GitHub Pages 
 | **Repeat** | Repeated key or mouse-button presses | Configurable interval and press duration, in milliseconds. |
 | **Hold** | Sustained input | Hold until stopped, or enable a timed hold for automatic release. |
 | **Auto Presser** | React to recognized resource interactions | Reads action text and the displayed key; supports allowlists, exclusions, hold prompts, Preview, and Live execution. |
-| **Fishing · EXP** | Develop and test fishing assistance | Select capture regions, record a manual run, calibrate cast duration, and supervise one fight/reel cycle. |
+| **Fishing · EXP** | Develop and test fishing assistance | Persistent BAR/REEL/STOP/PULL/RESULT calibration, manual recordings, cast calibration, recurring supervised rounds, and fast visual fight cues. |
+| **Aim Lab · EXP** | Experimental target tracking and aim-assist research | Acquires a target with F6 and records/uses visual target geometry under explicit user control. |
+| **Scout Lab** | Record and correlate diagnostics | Captures vision/controller events, semantic read-only memory candidates, and optional UE4SS/Frida telemetry for research. |
 | **Stats** | Compare recognition settings on your PC | Benchmarks configurations, displays charts and a comparison table, and suggests options based on measured results. |
 
 Existing OrcPresser installation data and internal `src/orcpresser` paths are retained for compatibility.
@@ -79,6 +81,7 @@ Keep the entire project folder together. You do not need to copy individual Pyth
 | **6** | Review and clean old backups, archives, and caches. |
 | **7** | Install/check the optional telemetry research toolkit: Frida, UE4SS bridge, x64dbg, ReClass.NET, Cheat Engine installer, and Windows Performance Toolkit. |
 | **8** | Check telemetry-tool status without installing anything. |
+| **9** | Recover UE4SS for the WinGDK/Microsoft Store build using the current experimental UE4SS package, with backup/rollback handling. |
 
 ## Controls and window behavior
 
@@ -163,20 +166,20 @@ Fishing combines fast color observations with slower OCR in a separate controlle
 ### Suggested first session
 
 1. Equip a rod, stand near the fishing area, and keep the player position and camera fixed.
-2. Bind the game in the Fishing tab.
+2. Use the shared **GAME & CAPTURE** bar to bind Dragonwilds.
 3. Select **BAR** tightly around the red/blue indicator and **REEL** around the area where `Reel (Hold)` appears. Add RESULT for result/error messages if needed.
 4. Enable **Record manual test**, start **Preview**, and fish manually.
 5. Review the recording before trying **Live** assistance.
 
 ### Fishing Bot 101 controls
 
-Select **Fishing Bot 101** for the minimal supervised mode. Its minimum setup is **BAR + REEL**. You can also calibrate **ACTIVE** around the `Stop Fishing` indicator shown while a fishing round is active. The **Show calibration overlay** checkbox can display the currently saved BAR/REEL/ACTIVE/RESULT/SPOT rectangles over the game even while the bot is idle, so regions can be adjusted visually; the preference is saved. BAR is the red/blue tension indicator; REEL is the screen area where **Reel (Hold)** appears. The player still casts, positions the character, and moves between ponds manually. RESULT is recommended so the bot can stop on messages such as **No fish here** or **depleted**. SPOT is not required by Bot 101.
+Select **Fishing Bot 101** for the minimal supervised mode. Its minimum setup is **BAR + REEL**. You can also calibrate **STOP** around the `Stop Fishing` indicator shown while a fishing round is active (stored internally as the active-region signal for backward compatibility). The **Show calibration overlay** checkbox can display the currently saved BAR/REEL/ACTIVE/RESULT/SPOT rectangles over the game even while the bot is idle, so regions can be adjusted visually; the preference is saved. BAR is the red/blue tension indicator; REEL is the screen area where **Reel (Hold)** appears. The player still casts, positions the character, and moves between ponds manually. RESULT is recommended so the bot can stop on messages such as **No fish here** or **depleted**. SPOT is not required by Bot 101.
 
 For cast calibration, **USE SHORT** tries the current lower hold-time bound, **USE LONG** the upper bound, and **USE MID** the midpoint. After the bobber lands, **WAS SHORT** means it fell short of the target, **WAS LONG** means it went beyond it, and **WAS HIT** means the cast landed correctly and that duration should be saved. Moving the player or changing the camera invalidates this position-dependent timing; use **NEW SPOT / REACQUIRE** and recalibrate if automatic casting is used.
 
 During a fight, the controller holds one direction continuously. When red becomes blue it keeps that same A/D key held; it does **not** pulse or alternate on a timer. Brief `unknown` detector frames also keep the current direction held, so scanning cannot create A/D key-up pulses. Only sustained uncertainty beyond the safety grace releases the direction. When blue becomes red again it swaps A↔D once and holds the new direction. **Reel (Hold)** overrides either direction immediately: A/D is released and LMB is held. When red returns, the direction cycle resumes.
 
-With **Recurring rounds** enabled, a normal catch or recoverable failure releases all input but keeps the bot armed. If ACTIVE is calibrated, the old `Stop Fishing` signal must disappear first, then reappear twice before the next round is armed; without ACTIVE, the bot falls back to the BAR disappearing and then returning. **No fish here**, **depleted**, and bait-required messages remain hard stops requiring manual intervention. Move the character manually to the next spot, press **F7** or click **NEW SPOT / REACQUIRE**, verify BAR/REEL in Preview, then resume.
+With **Recurring rounds** enabled, a normal catch or recoverable failure releases all input but keeps the bot armed. If STOP is calibrated, the previous `Stop Fishing` signal must disappear first, then reappear twice before the next round is armed; without STOP, the bot falls back to the BAR disappearing and then returning. **No fish here**, **depleted**, and bait-required messages remain hard stops requiring manual intervention. Move the character manually to the next spot, press **F7** or click **NEW SPOT / REACQUIRE**, verify BAR/REEL in Preview, then resume.
 
 Color sampling targets **20 Hz**. Prompt OCR is queued approximately every **400 ms**, subject to processing time, and requires two distinct OCR observations for confirmed text actions.
 
@@ -194,7 +197,7 @@ See the [complete fishing guide](docs/FISHING.md) for timing, calibration limits
 
 ## Global command bar
 
-Target binding and runtime controls now stay visible across feature tabs. **BIND GAME · 3s** and **SELECT REGION** live in the global target bar instead of being repeated inside individual tabs. The bottom command bar changes by mode:
+Target binding and runtime controls now stay visible across feature tabs. **BIND DRAGONWILDS · 3s** and **SELECT REGION** live in the shared **GAME & CAPTURE** bar instead of being repeated inside individual tabs. The right-side **COMMAND CENTER** is the single source of truth for the bound game, current requirements, and the next recommended action. The bottom command bar changes by mode:
 
 - Auto / Fishing: PREVIEW, LIVE, STOP;
 - Repeat / Hold: LIVE, STOP (Preview is visibly disabled);
@@ -212,7 +215,7 @@ The **Stats** tab compares a Baseline with every speed option available on your 
 
 **Stats does not execute recognized interaction keys, but it does move the mouse for its camera-sweep test.** Keep the game foreground, leave the controls alone during the benchmark, and use F8 to abort. Recommendations are based on that test scene, not a guarantee for every resource or location.
 
-When **Unfocused opacity = 0**, the main helper minimizes on focus loss and a click-through **four-corner status HUD** becomes the primary runtime view over the bound game. Overlay windows are explicitly revived/reasserted as topmost after tab-out/tab-in and after feature stop/start, rather than relying only on the original Tk window mapping. It also appears when the helper is manually minimized. The HUD is available for Repeat, Hold, Auto Presser, Fishing, Aim Lab, Scout Lab and Stats. The corners use distinct high-contrast colours and show mode/state, live recognition or detector output, performance/Scout telemetry, and in-game controls or configuration. Bottom and right panels are clamped to the game client dimensions so they do not extend beyond the visible game area, including on ultrawide displays. If something genuinely requires returning to the full application — for example binding a target, selecting a calibration region, reacquiring a fishing spot, or handling an error — a small amber/red **↩ APP** badge appears near the top centre rather than covering the screen. The HUD is excluded from capture when Windows display-affinity exclusion is available.
+When **Unfocused opacity = 0**, the main helper minimizes on focus loss and a click-through **top-left stacked status rail** becomes the primary runtime view over the bound game. Overlay windows are explicitly revived/reasserted as topmost after tab-out/tab-in and after feature stop/start. The rail is available for Repeat, Hold, Auto Presser, Fishing, Aim Lab, Scout Lab and Stats; cards are stacked in a predictable order and show mode/state, live recognition or detector output, performance/Scout telemetry, and controls/configuration. If something genuinely requires returning to the full application — for example binding a target, selecting a calibration region, reacquiring a fishing spot, or handling an error — an **ACTION NEEDED** card is appended to the same rail. The HUD is excluded from capture when Windows display-affinity exclusion is available.
 
 ## Runtime lifecycle and tab isolation
 
