@@ -107,10 +107,12 @@ class RuneButton(tk.Canvas):
     def __init__(self,parent,text,command,width=140,height=46):
         super().__init__(parent,width=width,height=height,bg=BG,highlightthickness=0,cursor='hand2')
         self.label=text;self.command=command;self.active=False;self.hover=False;self.enabled=True;self.w=width;self.h=height
-        self.bind('<Button-1>',lambda e:command())
+        self.bind('<Button-1>',lambda e:self.invoke())
         self.bind('<Enter>',lambda e:self.set_hover(True));self.bind('<Leave>',lambda e:self.set_hover(False))
-        self.bind('<Return>',lambda e:command());self.configure(takefocus=True)
+        self.bind('<Return>',lambda e:self.invoke());self.configure(takefocus=True)
         self.draw()
+    def invoke(self):
+        if self.enabled:self.command()
     def set_hover(self,v):self.hover=v;self.draw()
     def draw(self):
         self.delete('all');w,h=self.w,self.h
@@ -196,7 +198,7 @@ class App:
         right=tk.Frame(body,bg=PANEL,padx=14,pady=12,width=370);right.pack(side='right',fill='both');right.pack_propagate(False)
         self.vis={}      # widget -> modes where it is shown (or a callable(mode)->bool); others always shown
         def show(w,modes):self.vis[w]=modes;return w
-        MAN=('Repeat','Hold','Auto');TARGET=('Repeat','Hold','Auto','Scout','Aim')
+        MAN=('Repeat','Hold','Auto');TARGET=()  # target/capture controls live in the global command bar
         show(self.text(left,'01  /  ORDERS',12,GOLD),MAN).pack(fill='x')
         self.key=tk.StringVar(value=self.settings.get('key','LMB'));self.interval=tk.StringVar(value=str(self.settings.get('interval_ms',100)));self.duration=tk.StringVar(value=str(self.settings.get('duration_ms',50)))
         self.timed=tk.BooleanVar(value=bool(self.settings.get('timed',False)))
@@ -280,14 +282,23 @@ class App:
         tk.Label(right,textvariable=self.metrictext,bg=PANEL,fg=BONE,justify='left',anchor='w',font=('Consolas',10)).pack(fill='x')
         self.chart=tk.Canvas(right,height=90,bg='#10150e',highlightthickness=1,highlightbackground='#4c5035');self.chart.pack(fill='x',pady=6)
         self.text(right,'CPU %  /  RAM MiB · separate scales · last 90 s',8,MUTED).pack(fill='x')
-        footer=tk.Frame(self.root,bg=BG);footer.pack(fill='x',padx=24,pady=12)
+        targetbar=tk.Frame(self.root,bg=BG);targetbar.pack(fill='x',padx=24,pady=(8,2))
+        tk.Label(targetbar,text='GLOBAL TARGET',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
+        self.global_bind=RuneButton(targetbar,'BIND GAME · 3s',self.bind_game,165,36);self.global_bind.pack(side='left',padx=(0,7))
+        self.global_region=RuneButton(targetbar,'SELECT REGION',self.select_region,165,36);self.global_region.pack(side='left',padx=(0,10))
+        tk.Label(targetbar,textvariable=self.targettext,bg=BG,fg=MUTED,anchor='w',justify='left',wraplength=520,font=('Segoe UI',8)).pack(side='left',fill='x',expand=True)
+
+        footer=tk.Frame(self.root,bg=BG);footer.pack(fill='x',padx=24,pady=(4,10))
+        tk.Label(footer,text='CONTROL',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
         self.runbuttons={}
-        for run in ('Preview','Live'):
-            b=RuneButton(footer,run.upper(),lambda r=run:self.launch(r),150,48);b.pack(side='left',padx=(0,9));self.runbuttons[run]=b
-        self.status=tk.StringVar(value='STOPPED — PREVIEW detects only, LIVE presses keys')
-        tk.Label(footer,textvariable=self.status,bg=BG,fg=GREEN,anchor='w',wraplength=520,font=('Segoe UI',10,'bold')).pack(side='left',padx=16)
+        for slot,label in (('Preview','PREVIEW'),('Live','LIVE'),('Stop','STOP')):
+            b=RuneButton(footer,label,lambda s=slot:self.global_action(s),150 if slot!='Stop' else 120,48)
+            b.pack(side='left',padx=(0,9));self.runbuttons[slot]=b
+        self.status=tk.StringVar(value='STOPPED — choose a mode, bind the game, then start')
+        tk.Label(footer,text='STATE',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(10,7))
+        tk.Label(footer,textvariable=self.status,bg=BG,fg=GREEN,anchor='w',wraplength=430,font=('Segoe UI',10,'bold')).pack(side='left',fill='x',expand=True)
         self.hint=tk.StringVar();self.hintlabel=tk.Label(self.root,textvariable=self.hint,bg=BG,fg=MUTED,font=('Segoe UI',9));self.hintlabel.pack(pady=(0,10))
-        self.chrome=(header,modes,footer,self.hintlabel);self.rightpanel=right;self.layout(True);self.apply_visibility()
+        self.chrome=(header,modes,targetbar,footer,self.hintlabel);self.rightpanel=right;self.layout(True);self.apply_visibility()
         self.update_mode_fields()
         # Clicking anywhere that is not a text field takes keyboard focus off the entries ("click-off").
         self.root.bind_all('<Button-1>',self.defocus,add='+')
@@ -366,18 +377,40 @@ class App:
         w=e.widget
         if isinstance(w,tk.Misc) and not isinstance(w,tk.Entry) and w.winfo_toplevel() is self.root:self.root.focus_set()
     def draw_run(self):
-        for r,b in self.runbuttons.items():
-            b.active=self.ctrl.running and self.run==r
-            b.enabled=self.mode not in ('Stats','Scout','Aim') and (r=='Live' or self.mode in ('Auto','Fishing'))
-            b.label=('■ STOP ' if b.active else '')+r.upper();b.draw()
+        if not hasattr(self,'runbuttons'):return
+        active=(bool(getattr(self.ctrl,'running',False)) or bool(getattr(getattr(self,'aim_lab',None),'session',None))
+                or bool(getattr(getattr(self,'scout_lab',None),'session',None)) or bool(getattr(self,'bench',None)))
+        specs={
+            'Repeat':(('Preview','PREVIEW',False),('Live','LIVE',True)),
+            'Hold':(('Preview','PREVIEW',False),('Live','LIVE',True)),
+            'Auto':(('Preview','PREVIEW',True),('Live','LIVE',True)),
+            'Fishing':(('Preview','PREVIEW',True),('Live','LIVE',True)),
+            'Aim':(('Preview','START TRACKING',True),('Live','ACQUIRE F6',True)),
+            'Scout':(('Preview','START RECORDING',True),('Live','—',False)),
+            'Stats':(('Preview','RUN TEST',True),('Live','—',False)),
+        }
+        for slot,label,enabled in specs.get(self.mode,specs['Auto']):
+            b=self.runbuttons[slot];b.label=label;b.enabled=enabled
+            if self.mode in ('Auto','Fishing') and slot in ('Preview','Live'):
+                b.active=bool(getattr(self.ctrl,'running',False)) and self.run==slot
+            elif self.mode in ('Repeat','Hold') and slot=='Live':
+                b.active=bool(getattr(self.ctrl,'running',False))
+            elif self.mode in ('Aim','Scout','Stats') and slot=='Preview':
+                b.active=active
+            else:b.active=False
+            b.draw()
+        stop=self.runbuttons['Stop'];stop.label='STOP';stop.enabled=active;stop.active=False;stop.draw()
+        self.global_bind.enabled=not active;self.global_bind.draw()
+        self.global_region.enabled=not active and bool(self.target);self.global_region.draw()
         if self.mode=='Scout':
-            self.hint.set('SCOUT LAB uses START RECORDING in the tab · can also run as a sidecar with Auto / Fishing / Aim')
-            return
-        if self.mode=='Aim':
-            self.hint.set('AIM LAB: START TRACKING, then F6 acquires under cursor/crosshair · LMB captures offline-label samples')
-            return
-        run='TEST' if self.mode=='Stats' else ('LIVE' if self.mode not in ('Auto','Fishing') else self.last_run.upper())
-        self.hint.set(f'\\  START / STOP {run}     •     F8  RELEASE & STOP     •     Switching windows stops output')
+            self.hint.set('Global control: START RECORDING / STOP · sidecar can run with Auto, Fishing or Aim')
+        elif self.mode=='Aim':
+            self.hint.set('Global control: START TRACKING / ACQUIRE F6 / STOP · LMB captures Scout samples')
+        elif self.mode=='Stats':
+            self.hint.set('Global control: RUN TEST / STOP · benchmark remains PREVIEW-only')
+        else:
+            run='LIVE' if self.mode in ('Repeat','Hold') else self.last_run.upper()
+            self.hint.set(f'\\  START / STOP {run}     •     F8  RELEASE & STOP     •     target controls stay global across tabs')
     def persist(self,key,value):
         """Remember a setting across restarts; writes are batched 400 ms after the last change."""
         self.settings.set(key,value)
@@ -715,7 +748,7 @@ class App:
         if self.io.own(h):self.status.set('Switch to the game during the countdown.');return
         self.target=h;self.io.target=h
         self.targettext.set(self.io.title(h)[:70]+'\nSaved capture region loaded; use SELECT REGION to refine.')
-        self.status.set('BOUND — choose region, then start in the game with \\')
+        self.status.set('BOUND — choose region, then start in the game with \\');self.draw_run()
         if self.mode=='Fishing' and getattr(self,'fishing_panel',None) and self.fishing_panel.show_overlay.get():self.fishing_panel.refresh_overlay()
     def select_region(self,suggested=None):
         """Region editor. Drag edges/corners to widen or narrow, drag inside to move, drag outside for a
@@ -768,6 +801,28 @@ class App:
             close()
         c.bind('<Button-1>',down);c.bind('<B1-Motion>',move);c.bind('<Double-Button-1>',apply)
         overlay.bind('<Return>',apply);overlay.bind('<KP_Enter>',apply);overlay.bind('<Escape>',lambda e:close());overlay.focus_force();draw()
+    def global_action(self,slot):
+        """Route the persistent bottom command bar to the active feature."""
+        if slot=='Stop':
+            self.stop('STOPPED');return
+        if self.mode=='Aim':
+            if slot=='Preview':
+                if getattr(self.aim_lab,'session',None):self.aim_lab.stop()
+                else:self.aim_lab.start()
+            elif slot=='Live':self.aim_lab.acquire()
+            self.draw_run();return
+        if self.mode=='Scout':
+            if slot=='Preview':
+                if getattr(self.scout_lab,'session',None):self.scout_lab.stop()
+                else:self.scout_lab.start()
+            self.draw_run();return
+        if self.mode=='Stats':
+            if slot=='Preview':
+                if self.bench:self.stop('Test stopped')
+                else:self.start_bench()
+            self.draw_run();return
+        self.launch(slot)
+
     def launch(self,run):
         """PREVIEW/LIVE buttons: same button stops; the other one switches."""
         if self.ctrl.running:
