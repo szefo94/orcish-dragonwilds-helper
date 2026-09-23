@@ -1,73 +1,108 @@
-# How fishing works in RS: Dragonwilds — working notes for a future bot
+# Fishing research notes and controller rationale
 
-Sources, written in my own words:
-- The official Dragonwilds wiki "Fishing" page (last edited 15 Aug 2026).
-- Guides from PC Gamer, BisectHosting and Sportskeeda.
+This file keeps the gameplay observations that originally motivated the Fishing controller. It is background material, not the implementation contract.
 
-The YouTube video you linked (stYW8Bm-MGk) could not be opened from my side (rate limit). If it shows something that contradicts these notes, the video wins; edit this text.
+For the current user-facing behavior, calibration names, state-machine rules, and limitations, use **`docs/FISHING.md`**. For planned automation, use **`roadmap.md`**.
 
-Status markers: [WIKI] = stated by the wiki. [GUIDE] = stated by guides. [ASSUMPTION] = my inference, must be verified in game.
+## Sources and confidence
 
-## 1. Unlock and gear
-- [WIKI] Fishing is the 11th skill, added 21 Apr 2026 (update 0.11.1), max level 99.
-- [WIKI/GUIDE] Start: craft a Coarse Net (2x Coarse Thread; flax → spinning wheel → thread), then the Wise Old Man in Bramblemead gives the "Shrimp Catcher" quest.
-- [GUIDE] Rods unlock at Fishing level 3 (first: Ash Rod = Ash Log + Coarse Thread).
-- [WIKI] Nets work only on NET fishing spots; rods only on ROD fishing spots.
-- [GUIDE] All spots appear as white rippling circles in the water. Rod spots are the larger ripples.
-- [WIKI] Region gear: Brynmoor → Ash Rod, Ghornfell → Oak, Fellhollow → Willow, Dowdun Reach → Maple, Umbral Sands → Yew. Each fish type has a matching bait.
+The original notes were distilled from:
+- the official RuneScape: Dragonwilds wiki Fishing material available during development;
+- public gameplay guides;
+- manual observations and hypotheses that still require in-game validation after game/UI updates.
 
-## 2. Net fishing (simple loop — the easiest thing to automate)
-- [WIKI] Stand near a net spot with a net equipped and use the Trawl action (default LMB).
-- [WIKI] Each trawl costs 10 stamina.
-- [WIKI] It only works in range of a non-depleted spot. A depleted spot gives a "no fish here" notification.
-- [WIKI] Catches can be fish or junk (stone, weeds). From level 49 the catch chance is 75%.
-- [ASSUMPTION] So the loop is: trawl → wait for the animation/result → repeat while stamina lasts → wait for stamina to regenerate → repeat until the spot depletes → move to another spot.
+Markers below:
+- **[WIKI/GUIDE]** — gameplay rule described by external documentation used during the original research;
+- **[OBSERVED/IMPLEMENTED]** — reflected in the current Orcish controller/detectors;
+- **[TO VERIFY]** — do not treat as reliable automation input yet.
 
-Bot needs:
-- Stamina level (bar).
-- A "no fish here" / depleted notification.
-- Maybe the catch popup, to count results.
+## 1. Unlock and gear background
 
-## 3. Rod fishing (the minigame — the real bot challenge)
-1. **Distance.** [WIKI] You must stand at least a certain distance AWAY from a rod spot, unlike nets.
-2. **Cast.** [WIKI] Hold the Cast button (default LMB) to charge; release to cast. A longer hold casts further. A cast that is too weak or too strong misses. A miss costs no stamina and no bait.
-3. **Bite.** [WIKI] After a good cast, wait for a bite.
-   - [ASSUMPTION] Some visual or audio cue marks the bite, and the fish bar appears. Exact cue: TO VERIFY.
-4. **Fight.** [WIKI] The fish swims away; its remaining energy is the "fish bar" shown ABOVE the stamina bar.
-   - Immediately hold Strafe Left/Right (default A/D) to pull in the OPPOSITE direction to the fish's swim.
-   - When the fish changes direction, the fish bar turns RED. Switch to the other strafe key.
-5. **Reel.** [WIKI] When the fish is "somewhat tired", a Reel option/prompt appears.
-   - Release the strafe key and HOLD the Cast button (LMB) to reel. This drains the fish bar much faster.
-   - If the fish starts swimming again during reeling, release LMB and go back to strafing (opposite direction).
-6. Repeat 4–5 until the fish is caught.
-7. **Failure.** [WIKI] Wrong inputs cost stamina. When the player runs out of stamina, the fish escapes. [WIKI/GUIDE] Reeling/fighting drains stamina throughout.
-8. **Bait.** [WIKI] Without bait, junk is more likely. Bait matched to the target fish is recommended.
+- [WIKI/GUIDE] Fishing uses nets and rods, with spot/tool restrictions.
+- [WIKI/GUIDE] Rod casting uses a hold/release interaction where hold duration affects cast distance.
+- [WIKI/GUIDE] Fishing spots can deplete and may require moving to another position.
+- [TO VERIFY] Exact unlock levels, recipes, fish/bait tables, and region progression should be checked against the current game build before publishing them as authoritative gameplay data.
 
-## 4. What this means for a bot (state machine draft)
-- IDLE → CAST
-  - Hold LMB for T_cast ms, then release. T_cast has to be learned per spot/distance by trial: "miss" feedback → adjust.
-- WAIT_BITE → FIGHT
-  - Trigger: fish bar appears.
-- FIGHT: hold A or D, opposite to the fish direction.
-  - The direction comes from the fish movement on screen or some UI arrow. [ASSUMPTION — TO VERIFY what the UI shows.]
-  - Bar turns red → swap A/D.
-- FIGHT → REEL
-  - Trigger: the Reel prompt appears. Release A/D, hold LMB.
-- REEL → FIGHT
-  - Trigger: the fish resumes swimming. Release LMB, strafe again.
-- REEL → CAUGHT: catch popup; the fish bar disappears. → back to IDLE (or move on if the spot is depleted).
-- Any state → ABORT: stamina too low (wait to regenerate), target window lost, F8.
+## 2. Net fishing
 
-## 5. Signals to capture before coding (screen recordings / screenshots)
-- The fish bar: position, colours (normal vs red), and how "empty" looks.
-- The stamina bar: position, colours, empty.
-- Fish direction cue: arrow? fish icon moving? line angle? THIS IS THE KEY UNKNOWN.
-- The Reel prompt: text and keycap. OrcPresser's prompt reader may already detect it.
-- Cast feedback: what a miss looks like, and whether there is a power meter while charging.
-- The bite cue, the catch popup, and the "no fish here" text.
+Net fishing is conceptually simpler than rod fishing:
+- interact with a valid net spot;
+- wait for result/animation;
+- repeat while the spot and player state allow it;
+- stop or move when the spot is depleted.
 
-## 6. Risks / rules
-- A rod fight needs continuous held keys with fast switching. Mistakes cost stamina and the fish, so a bot must react within ~100–200 ms. [ASSUMPTION]
-- Check Jagex's rules on automation before using this in multiplayer.
+Potential automation signals:
+- interaction prompt;
+- result/depletion message;
+- stamina/availability;
+- spot presence.
 
-(Edit freely — this text is saved to fishing_notes.md as you type.)
+Net automation is not the current Fishing Bot 101 focus.
+
+## 3. Rod fishing signals
+
+### Cast
+- [WIKI/GUIDE] Hold LMB to charge and release to cast.
+- [IMPLEMENTED] Orcish can perform a timed trial cast and learn a position-dependent hold duration from manual SHORT/LONG/HIT feedback.
+- [IMPLEMENTED] Player/camera movement invalidates position-dependent cast calibration.
+
+### Waiting / bite
+- [IMPLEMENTED] A calibrated **STOP** region can observe the `Stop Fishing` UI while waiting.
+- [IMPLEMENTED] When STOP disappears after being confirmed, the controller enters a bounded `BITE_PENDING` state.
+- [IMPLEMENTED] STOP disappearance alone does not send input; BAR or PULL evidence is still required.
+
+### Pull direction
+- [IMPLEMENTED] Calibrated **PULL L** / **PULL R** regions provide the preferred fast direction evidence when one side is clearly stronger.
+- [IMPLEMENTED] Ambiguous PULL evidence is ignored rather than guessed.
+- [IMPLEMENTED] BAR red/blue state remains a fallback. The controller holds one A/D direction continuously, keeps it held through blue, and swaps once on a stable blue→red transition.
+- [IMPLEMENTED] Short unknown-detector gaps preserve the held direction; sustained uncertainty beyond the safety grace releases it.
+
+### Reel
+- [IMPLEMENTED] **REEL has highest priority** during the fight.
+- [IMPLEMENTED] Two consistent fast REEL samples or two distinct OCR confirmations of `Reel (Hold)` immediately release A/D and hold LMB.
+- [IMPLEMENTED] When the fight returns to red after REEL, LMB is released and A/D control resumes.
+
+### End of round
+- [IMPLEMENTED] Catch/recoverable-failure messages can return to the recurring-round wait state.
+- [IMPLEMENTED] Depleted/no-fish and bait-required messages are hard stops that require manual intervention.
+- [IMPLEMENTED] With recurring rounds, STOP clear→reappear is the preferred re-arm handshake; BAR disappearance/return is the fallback when STOP is not calibrated.
+
+## 4. Current controller state sketch
+
+```text
+READY / WAIT_CAST
+    -> WAIT_BITE          when STOP is confirmed
+WAIT_BITE
+    -> BITE_PENDING       when confirmed STOP disappears
+BITE_PENDING
+    -> FIGHT              when BAR/PULL evidence appears
+    -> WAIT_BITE          when candidate expires / STOP returns
+FIGHT
+    -> REEL               when fast REEL or OCR Reel (Hold) is confirmed
+REEL
+    -> FIGHT              when red fight state returns
+FIGHT / REEL
+    -> WAIT_CAST          on recoverable round end when recurring mode is enabled
+    -> STOP               on depletion, bait-required, timeout, focus loss, stale capture, or F8
+```
+
+The exact implementation in `src/orcpresser/fishing.py` is authoritative if this sketch ever falls behind.
+
+## 5. Signals still worth researching
+
+- reliable fish/catch progress;
+- stamina;
+- trustworthy pool/ripple identity and depletion state;
+- cast landing feedback;
+- world/camera geometry for automatic targeting;
+- game-internal Fishing phase, pull direction, reel availability, and result state.
+
+Scout can correlate visual/controller events with read-only semantic memory candidates and optional UE4SS/Frida telemetry. See `docs/SCOUT_CANDIDATES.md` and `docs/INTERNAL_TELEMETRY.md`.
+
+## 6. Safety and validation rules
+
+- Never act on ambiguous PULL evidence.
+- REEL overrides A/D and releases the directional input first.
+- F8, focus loss, stale capture, and bounded timeouts must release helper-owned inputs.
+- Visual control remains the fallback even if game-internal candidates are discovered.
+- Validate internal candidates across multiple launches/areas and after game updates before using them in control logic.
