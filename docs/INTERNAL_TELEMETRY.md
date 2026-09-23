@@ -1,5 +1,35 @@
 # Scout game-internal telemetry
 
+## Microsoft Store / Xbox App (WinGDK) builds
+
+Dragonwilds may run as:
+
+```text
+RSDragonwilds-WinGDK-Shipping.exe
+```
+
+from a package path under:
+
+```text
+C:\Program Files\WindowsApps\JagexLimited.Dominion_*\RSDragonwilds\Binaries\WinGDK\
+```
+
+The toolkit now auto-detects this executable as a valid Dragonwilds target. This is distinct from the Steam-style `RSDragonwilds-Win64-Shipping.exe`.
+
+Because `WindowsApps` is package-managed and ACL-protected, the installer does **not** automatically copy UE4SS into that directory by default. Status checks and process telemetry work normally. To explicitly attempt a UE4SS install into the package directory, run PowerShell as Administrator and pass:
+
+```powershell
+-AllowWindowsAppsInstall
+```
+
+For example:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-TelemetryToolkit.ps1 -Install -All -AllowWindowsAppsInstall
+```
+
+If Windows denies writes or the package is restored by an update/repair, do not change ownership of the entire `WindowsApps` tree. Use a supported mod/injection method for the WinGDK build instead. UE4SS's own installation model still requires its DLL to be loaded by the target process and its working directory to be resolvable. The basic/developer install normally places UE4SS in the actual game executable directory.
+
 ## Installer repair notes
 
 The toolkit installer now identifies the Dragonwilds target strictly as:

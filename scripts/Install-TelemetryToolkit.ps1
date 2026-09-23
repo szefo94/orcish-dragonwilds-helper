@@ -8,6 +8,7 @@ param(
     [switch]$SkipReClass,
     [switch]$SkipX64dbg,
     [switch]$SkipWPT,
+    [switch]$AllowWindowsAppsInstall,
     [string]$GameExe,
     [string]$UE4SSZip = ""
 )
@@ -69,16 +70,17 @@ function Get-SteamLibraries {
 
 function Test-DragonwildsExe([string]$Path) {
     if (-not $Path -or -not (Test-Path $Path)) { return $false }
-    return ([IO.Path]::GetFileName($Path) -ieq "RSDragonwilds-Win64-Shipping.exe")
+    $name=[IO.Path]::GetFileName($Path)
+    return ($name -ieq "RSDragonwilds-Win64-Shipping.exe" -or $name -ieq "RSDragonwilds-WinGDK-Shipping.exe")
 }
 
 function Resolve-DragonwildsExe {
     if ($GameExe) {
         if (Test-DragonwildsExe $GameExe) { return (Resolve-Path $GameExe).Path }
-        throw "-GameExe must point to RSDragonwilds-Win64-Shipping.exe, not '$GameExe'"
+        throw "-GameExe must point to RSDragonwilds-Win64-Shipping.exe or RSDragonwilds-WinGDK-Shipping.exe, not '$GameExe'"
     }
 
-    $proc = Get-Process -Name "RSDragonwilds-Win64-Shipping" -ErrorAction SilentlyContinue | Select-Object -First 1
+    $proc = Get-Process -Name "RSDragonwilds-Win64-Shipping","RSDragonwilds-WinGDK-Shipping" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($proc) {
         try {
             $p = $proc.MainModule.FileName
@@ -89,7 +91,7 @@ function Resolve-DragonwildsExe {
     foreach ($root in Get-SteamLibraries) {
         $common = Join-Path $root "steamapps\common"
         if (-not (Test-Path $common)) { continue }
-        $hit = Get-ChildItem -Path $common -Filter "RSDragonwilds-Win64-Shipping.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        $hit = Get-ChildItem -Path $common -Include "RSDragonwilds-Win64-Shipping.exe","RSDragonwilds-WinGDK-Shipping.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($hit) { return $hit.FullName }
     }
 
@@ -98,6 +100,13 @@ function Resolve-DragonwildsExe {
         (Join-Path $env:ProgramFiles "Steam\steamapps\common\RSDragonwilds\RSDragonwilds\Binaries\Win64\RSDragonwilds-Win64-Shipping.exe")
     )
     foreach ($p in $commonGuesses) { if (Test-DragonwildsExe $p) { return $p } }
+
+    # Microsoft Store / Xbox app (WinGDK) package.
+    $wa = Join-Path $env:ProgramFiles "WindowsApps"
+    if (Test-Path $wa) {
+        $hit = Get-ChildItem $wa -Filter "RSDragonwilds-WinGDK-Shipping.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($hit) { return $hit.FullName }
+    }
     return $null
 }
 
@@ -137,10 +146,17 @@ function Resolve-UE4SSArchive {
 function Install-UE4SS {
     param([string]$ExePath)
     Write-Section "UE4SS"
-    if (-not $ExePath) { Write-Bad "RSDragonwilds-Win64-Shipping.exe not found. Start Dragonwilds or pass -GameExe."; return }
-    if (-not (Test-DragonwildsExe $ExePath)) { throw "Refusing UE4SS install: target is not RSDragonwilds-Win64-Shipping.exe" }
+    if (-not $ExePath) { Write-Bad "Dragonwilds shipping executable not found. Start Dragonwilds or pass -GameExe."; return }
+    if (-not (Test-DragonwildsExe $ExePath)) { throw "Refusing UE4SS install: target is not a supported Dragonwilds shipping executable" }
 
     $gameDir = Split-Path -Parent $ExePath
+    $isWindowsApps = $ExePath -like (Join-Path $env:ProgramFiles "WindowsApps\*")
+    if ($isWindowsApps -and -not $AllowWindowsAppsInstall) {
+        Write-Warn "Detected Microsoft Store/Xbox WinGDK build under WindowsApps."
+        Write-Warn "Status/detection is supported, but automatic UE4SS file injection into WindowsApps is disabled by default."
+        Write-Warn "Rerun with -AllowWindowsAppsInstall only if you explicitly want the script to attempt writing into the package directory."
+        return
+    }
     Write-Ok "Correct game executable: $ExePath"
     $zip = Resolve-UE4SSArchive
 
@@ -344,7 +360,7 @@ function Show-Status {
         if ($runtime) { Write-Ok "UE4SS runtime found at Dragonwilds" } else { Write-Bad "UE4SS runtime not found at Dragonwilds" }
         $bridge = (Test-Path (Join-Path $dir "Mods\OrcishScout\scripts\main.lua")) -or (Test-Path (Join-Path $dir "ue4ss\Mods\OrcishScout\scripts\main.lua"))
         if ($bridge) { Write-Ok "OrcishScout bridge found at Dragonwilds" } else { Write-Bad "OrcishScout bridge not found at Dragonwilds" }
-    } else { Write-Bad "RSDragonwilds-Win64-Shipping.exe not auto-detected" }
+    } else { Write-Bad "Dragonwilds shipping executable not auto-detected" }
 
     $wrong = Find-MistakenEosInstall
     if ($wrong) {
