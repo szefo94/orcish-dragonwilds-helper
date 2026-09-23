@@ -457,8 +457,14 @@ class ScoutLabPanel:
     def stop(self):
         s=self.session;self.session=None
         if s:s.close()
+        # Stop a sidecar even if its recorder was already closed elsewhere.
+        self.stop_sidecar()
         if getattr(self.app,"scout",None):self.app.scout_stop("Scout Lab stopped")
+        self.live.set("No samples yet.")
         if s:self.status.set("Stopped. Raw Scout Lab logs preserved in data/scout_sessions.")
+
+    def shutdown(self):
+        self.stop()
 
     def start_sidecar(self,domain=None):
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
