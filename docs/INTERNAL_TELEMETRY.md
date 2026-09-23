@@ -28,7 +28,7 @@ For example:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-TelemetryToolkit.ps1 -Install -All -AllowWindowsAppsInstall
 ```
 
-If Windows denies writes or the package is restored by an update/repair, do not change ownership of the entire `WindowsApps` tree. Use a supported mod/injection method for the WinGDK build instead. UE4SS's own installation model still requires its DLL to be loaded by the target process and its working directory to be resolvable. The basic/developer install normally places UE4SS in the actual game executable directory. citeturn138471search0turn138471search1
+If Windows denies writes or the package is restored by an update/repair, do not change ownership of the entire `WindowsApps` tree. Use a supported mod/injection method for the WinGDK build instead. UE4SS's own installation model still requires its DLL to be loaded by the target process and its working directory to be resolvable. The basic/developer install normally places UE4SS in the actual game executable directory.
 
 ## Installer repair notes
 
