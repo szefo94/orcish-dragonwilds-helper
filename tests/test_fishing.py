@@ -47,6 +47,42 @@ class Fishing(unittest.TestCase):
         self.see(10.8);self.c.tick(11.01)
         self.assertEqual(self.events,[('LMB',True),('LMB',False)])
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'TRIAL_DONE')
+    def test_persistent_101_focus_loss_releases_but_stays_armed(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.assertEqual(self.c.state,'WAIT_BITE')
+        self.c.tick(10.3,False)
+        self.assertTrue(self.c.running);self.assertIsNone(self.c.held)
+        self.assertEqual(self.c.state,'WAIT_CAST')
+
+    def test_persistent_101_ignores_bar_until_stop_fishing_seen(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,'red');self.see(10.1,'red')
+        self.assertEqual(self.c.state,'READY');self.assertIsNone(self.c.held)
+        self.see(10.2,active=True);self.see(10.4,active=True)
+        self.assertEqual(self.c.state,'WAIT_BITE')
+
+    def test_persistent_101_stale_capture_rearms_instead_of_stopping(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.c.tick(12)
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST');self.assertIsNone(self.c.held)
+
+    def test_persistent_101_result_rearms_for_next_stop_fishing(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True))
+        self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.see(10.4,active=False);self.see(10.5,'red',pull_left=True);self.see(10.9,'red',pull_left=True)
+        self.see(11.3,text='You caught a fish');self.see(11.7,text='You caught a fish')
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST');self.assertIsNone(self.c.held)
+
     def test_focus_loss_releases(self):
         self.fight();self.c.tick(10.1,False)
         self.assertFalse(self.c.running);self.assertEqual(self.events[-1],('A',False))
