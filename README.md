@@ -2,13 +2,13 @@
 
 **A Windows companion for RuneScape: Dragonwilds with local OCR interaction automation, repeat and hold controls, performance diagnostics, and experimental fishing assistance.**
 
-Version **2.4** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
+Development version **2.5.0-dev** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
 
 Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can read an interaction prompt such as **Collect [E]**, check whether the action is allowed, and press the displayed key. You control where your character stands and looks. Repeat and Hold modes also work as configurable key and mouse-button controls.
 
 The interface uses an Orcish-inspired theme, mode buttons, capture previews, detection feedback, and CPU/RAM charts. Recognition runs locally; the application does not send gameplay frames to a cloud service or use an LLM during play.
 
-> **Fishing is experimental.** Version 2.4 includes persistent calibration, fast BAR/PULL/REEL evidence, recurring-round handling, Scout telemetry, and a supervised controller. Automated tests cover the state machine, but real-game reliability still depends on correct calibration and the current Dragonwilds UI/build.
+> **Fishing is experimental.** The 2.5.0 development line includes persistent calibration, fast BAR/PULL/REEL evidence, recurring-round handling, Scout telemetry, and a supervised controller. Automated tests cover the state machine, but real-game reliability still depends on correct calibration and the current Dragonwilds UI/build.
 
 ## UI preview
 
