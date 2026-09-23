@@ -36,7 +36,7 @@ class WinIO:
         self.u.GetClientRect.argtypes=[w.HWND,ctypes.POINTER(w.RECT)]
         self.u.ClientToScreen.argtypes=[w.HWND,ctypes.POINTER(w.POINT)]
         self.u.VkKeyScanW.argtypes=[w.WCHAR];self.u.VkKeyScanW.restype=ctypes.c_short
-        self.lock=threading.RLock();self.held=None;self.target=0;self.heartbeat=time.monotonic();self.tripped=False
+        self.lock=threading.RLock();self.held=None;self.target=0;self.heartbeat=time.monotonic();self.tripped=False;self.trip_reason=None
         self.used=set()   # every key/button pressed this session; F8, close and exit send key-up for all
         self.closed=threading.Event()
         self.watchdog_thread=threading.Thread(target=self.watchdog,daemon=True,name='input-watchdog');self.watchdog_thread.start()
@@ -95,9 +95,12 @@ class WinIO:
                 except Exception:pass
     def watchdog(self):
         while not self.closed.wait(.025):
-            if self.pressed(0x77):self.tripped=True;self.release_all()   # F8: panic, release everything
-            elif self.held and (self.foreground()!=self.target or time.monotonic()-self.heartbeat>1.2):
-                self.tripped=True;self.release()
+            if self.pressed(0x77):
+                self.tripped=True;self.trip_reason='panic';self.release_all()   # F8: panic, release everything
+            elif self.held and self.foreground()!=self.target:
+                self.tripped=True;self.trip_reason='focus';self.release()
+            elif self.held and time.monotonic()-self.heartbeat>1.2:
+                self.tripped=True;self.trip_reason='heartbeat';self.release()
     def close(self):
         self.closed.set();self.release_all()
         t=getattr(self,'watchdog_thread',None)
@@ -1193,7 +1196,11 @@ class App:
                 if getattr(self,'previous_aim_acquire',False) and not aim_acquire and not self.selecting and self.mode=='Aim':
                     self.aim_lab.acquire()
                 self.previous_aim_acquire=aim_acquire
-                if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
+                if self.io.tripped and self.ctrl.running:
+                    if self.mode=='Fishing' and getattr(self.ctrl.config,'persistent_session',False) and self.io.trip_reason in ('focus','heartbeat'):
+                        self.ctrl.release();self.io.tripped=False;self.io.trip_reason=None
+                        self.ctrl._rearm('Paused — still armed; waiting for Stop Fishing')
+                    else:self.stop('STOPPED — F8 pressed' if self.io.trip_reason=='panic' else 'STOPPED — input watchdog')
                 self.drain(now)
                 if getattr(self,'scout_lab',None):self.scout_lab.tick()
                 if self.mode=='Aim' and getattr(self,'aim_lab',None):self.aim_lab.tick()
