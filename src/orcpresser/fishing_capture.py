@@ -65,6 +65,34 @@ def active_indicator(frame):
     return bool(total>=.015 and upper>=.015 and lower>=.006),score
 
 
+def ui_prompt_score(frame):
+    """Cheap white-UI score for small calibrated fishing prompt ROIs.
+
+    This is deliberately geometry/color based and runs much faster than OCR.
+    """
+    if frame is None or getattr(frame,"size",0)==0:return 0.0
+    hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
+    white=((hsv[:,:,1]<75)&(hsv[:,:,2]>185)).astype(np.uint8)*255
+    h,w=white.shape
+    if h<3 or w<3:return float(np.mean(white>0))
+    ratio=float(np.mean(white>0))
+    # Join letter/icon fragments horizontally and score coherent UI-like components.
+    joined=cv2.morphologyEx(white,cv2.MORPH_CLOSE,cv2.getStructuringElement(cv2.MORPH_RECT,(5,2)),iterations=1)
+    contours,_=cv2.findContours(joined,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    widest=max((cv2.boundingRect(x)[2] for x in contours),default=0)/max(1,w)
+    components=sum(1 for x in contours if cv2.contourArea(x)>=4)
+    return min(1.0,min(1.0,ratio/.045)*.55+min(1.0,widest/.45)*.30+min(1.0,components/4)*.15)
+
+
+def resolve_pull_direction(left_score,right_score,min_score=.42,margin=.14,ratio=1.28):
+    """Map calibrated PULL L/PULL R visual evidence to A/D, or None if ambiguous."""
+    ls=float(left_score or 0.);rs=float(right_score or 0.)
+    best=max(ls,rs);other=min(ls,rs)
+    if best<min_score:return None,0.0
+    if best-other<margin and best/max(.001,other)<ratio:return None,best
+    return ('A' if ls>rs else 'D'),best
+
+
 def rect_pixels(client,ratio):
     x,y,w,h=client;l,t,r,b=ratio
     return dict(left=x+int(l*w),top=y+int(t*h),width=max(1,int(r*w)),height=max(1,int(b*h)))
@@ -86,7 +114,7 @@ class FishingCapture:
         self.io,self.target,self.regions=io,target,dict(regions)
         self.record=record;self.dxgi=dxgi;self.closed=threading.Event()
         self.results=queue.Queue(maxsize=1);self.ocr_jobs=queue.Queue(maxsize=1)
-        self.lock=threading.Lock();self.text='';self.text_stamp=0.;self.pull_left=False;self.pull_right=False;self.pull_stamp=0.;self.ocr_ms=0.;self.error=''
+        self.lock=threading.Lock();self.text='';self.text_stamp=0.;self.pull_left=False;self.pull_right=False;self.pull_stamp=0.;self.ocr_regions={};self.ocr_ms=0.;self.error=''
         self.started=time.monotonic();self.folder=None;self.bytes=0
         if record:
             from datetime import datetime
@@ -119,24 +147,27 @@ class FishingCapture:
             while not self.closed.is_set():
                 try:stamp,images=self.ocr_jobs.get(timeout=.2)
                 except queue.Empty:continue
-                lines=[];pull_left=False;pull_right=False;start=time.monotonic()
+                lines=[];pull_left=False;pull_right=False;regions_text={};start=time.monotonic()
                 for name,frame in images:
                     work=cv2.resize(frame,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC) if name in ('left','right') else frame
                     result,_=ocr(work)
                     found=[str(r[1]) for r in result or [] if float(r[2])>=.72]
-                    joined=' '.join(found).lower()
+                    joined=' '.join(found).lower();regions_text[name]=joined
                     if name=='left':pull_left=('pull' in joined and 'left' in joined) or joined.strip() in ('a','[a]')
                     elif name=='right':pull_right=('pull' in joined and 'right' in joined) or joined.strip() in ('d','[d]')
                     else:lines += found
                 with self.lock:
-                    self.text=' | '.join(lines);self.text_stamp=stamp;self.pull_left=pull_left;self.pull_right=pull_right;self.pull_stamp=stamp;self.ocr_ms=(time.monotonic()-start)*1000
+                    self.text=' | '.join(lines);self.text_stamp=stamp;self.pull_left=pull_left;self.pull_right=pull_right;self.pull_stamp=stamp
+                    self.ocr_regions=regions_text;self.ocr_ms=(time.monotonic()-start)*1000
         except Exception as e:
             with self.lock:self.error='Fishing OCR: '+str(e)
     def capture(self):
         try:
             from capture import Grabber
             grab=Grabber();grab.set_dxgi(self.dxgi)
-            last_text=last_save=last_spot=last_active=0.;candidate=None;active=False;active_score=0.;active_stamp=0.
+            last_text=last_save=last_spot=last_active=last_fast=0.;candidate=None;active=False;active_score=0.;active_stamp=0.
+            pull_direction=None;pull_confidence=0.;pull_visual_stamp=0.;left_score=right_score=0.
+            reel_visible=False;reel_score=0.;reel_stamp=0.;fast_frames={}
             log=(self.folder/'observations.jsonl').open('w',encoding='utf-8') if self.folder else None
             try:
                 while not self.closed.is_set():
@@ -148,18 +179,38 @@ class FishingCapture:
                     bar=grab.grab(rect_pixels(client,self.regions['bar']))
                     color,red,blue=indicator(bar)
                     images=[]
+                    # Fast visual pass for time-critical REEL and A/D direction.
+                    if now-last_fast>=.10:
+                        fast_frames={}
+                        for name in ('prompt','left','right'):
+                            if name in self.regions:fast_frames[name]=grab.grab(rect_pixels(client,self.regions[name]))
+                        reel_score=ui_prompt_score(fast_frames.get('prompt'));reel_visible=reel_score>=.50;reel_stamp=now
+                        left_score=ui_prompt_score(fast_frames.get('left'));right_score=ui_prompt_score(fast_frames.get('right'))
+                        pull_direction,pull_confidence=resolve_pull_direction(left_score,right_score)
+                        pull_visual_stamp=now;last_fast=now
                     if now-last_text>=.4 and self.ocr_jobs.empty():
                         for name in ('prompt','result','left','right'):
-                            if name in self.regions:images.append((name,grab.grab(rect_pixels(client,self.regions[name]))))
+                            if name in self.regions:
+                                frame=fast_frames.get(name)
+                                if frame is None:frame=grab.grab(rect_pixels(client,self.regions[name]))
+                                images.append((name,frame))
                         self.ocr_jobs.put_nowait((now,images));last_text=now
                     if 'active' in self.regions and now-last_active>=.15:
                         active_frame=grab.grab(rect_pixels(client,self.regions['active']));active,active_score=active_indicator(active_frame);active_stamp=now;last_active=now
                     if 'spot' in self.regions and now-last_spot>.25:
                         candidate=spot_candidate(grab.grab(rect_pixels(client,self.regions['spot'])));last_spot=now
-                    with self.lock:text,stamp,pull_left,pull_right,pull_stamp,ocr_ms,error=self.text,self.text_stamp,self.pull_left,self.pull_right,self.pull_stamp,self.ocr_ms,self.error
-                    o=Observation(now,color,text,stamp,active=active if 'active' in self.regions else None,active_stamp=active_stamp,pull_left=pull_left if 'left' in self.regions else None,pull_right=pull_right if 'right' in self.regions else None,pull_stamp=pull_stamp)
+                    with self.lock:text,stamp,pull_left,pull_right,pull_stamp,ocr_regions,ocr_ms,error=self.text,self.text_stamp,self.pull_left,self.pull_right,self.pull_stamp,dict(self.ocr_regions),self.ocr_ms,self.error
+                    o=Observation(now,color,text,stamp,active=active if 'active' in self.regions else None,active_stamp=active_stamp,
+                                  pull_left=pull_left if 'left' in self.regions else None,pull_right=pull_right if 'right' in self.regions else None,pull_stamp=pull_stamp,
+                                  pull_direction=pull_direction,pull_confidence=pull_confidence,pull_visual_stamp=pull_visual_stamp,
+                                  reel_visible=reel_visible if 'prompt' in self.regions else None,reel_score=reel_score,reel_stamp=reel_stamp)
                     physical={k:self.io.pressed(v) for k,v in [('A',0x41),('D',0x44),('LMB',1)]}
-                    info=dict(red=red,blue=blue,active=active if 'active' in self.regions else None,active_score=active_score if 'active' in self.regions else None,active_stamp=active_stamp,pull_left=pull_left if 'left' in self.regions else None,pull_right=pull_right if 'right' in self.regions else None,pull_stamp=pull_stamp,ocr_ms=ocr_ms,backend=grab.last_backend,spot=candidate,physical=physical)
+                    info=dict(red=red,blue=blue,active=active if 'active' in self.regions else None,active_score=active_score if 'active' in self.regions else None,active_stamp=active_stamp,
+                              pull_left=pull_left if 'left' in self.regions else None,pull_right=pull_right if 'right' in self.regions else None,pull_stamp=pull_stamp,
+                              pull_direction=pull_direction,pull_confidence=pull_confidence,pull_visual_stamp=pull_visual_stamp,
+                              pull_left_score=left_score,pull_right_score=right_score,
+                              reel_visible=reel_visible if 'prompt' in self.regions else None,reel_score=reel_score,reel_stamp=reel_stamp,
+                              ocr_regions=ocr_regions,ocr_ms=ocr_ms,backend=grab.last_backend,spot=candidate,physical=physical)
                     if error:raise RuntimeError(error)
                     if log and now-self.started<300 and self.bytes<100*1024*1024:
                         line=json.dumps(dict(observation=asdict(o),**info))+'\n';log.write(line);self.bytes+=len(line)
