@@ -82,6 +82,73 @@ def _prompt_transitions(vision):
             out.append({"mono":e.get("mono"),"prompt":v,"confidence":e.get("confidence")});last=key
     return out
 
+def _candidate_summary(memory):
+    samples=[e for e in memory if e.get("signal")=="candidate"]
+    transitions=[e for e in memory if e.get("signal")=="candidate_transition"]
+    by={}
+    for e in samples:
+        v=e.get("value") or {};key=(v.get("domain"),v.get("name"))
+        if not key[1]:continue
+        item=by.setdefault(key,{"domain":key[0],"name":key[1],"role":v.get("role"),"spec":v.get("spec"),
+                                "samples":0,"successful":0,"transitions":0,"values":[]})
+        item["samples"]+=1
+        if v.get("ok") is True:
+            item["successful"]+=1
+            val=v.get("value")
+            if len(item["values"])<20 and val not in item["values"]:item["values"].append(val)
+    for e in transitions:
+        v=e.get("value") or {};key=(v.get("domain"),v.get("name"))
+        if key in by:by[key]["transitions"]+=1
+    out=list(by.values())
+    for item in out:item["success_pct"]=(100.0*item["successful"]/item["samples"]) if item["samples"] else None
+    return sorted(out,key=lambda x:(str(x.get("domain")),str(x.get("name"))))
+
+def _landmarks(domain,vision,controller):
+    out=[]
+    if domain=="fishing":
+        for t in _state_transitions(controller):
+            out.append({"mono":t.get("mono"),"signal":"state:"+str(t.get("state"))})
+        for e in vision:
+            if e.get("signal")!="fishing_observation":continue
+            v=e.get("value") or {};m=e.get("mono")
+            if v.get("stop") is True:out.append({"mono":m,"signal":"vision:stop"})
+            if v.get("pull_left") is True:out.append({"mono":m,"signal":"vision:pull_left"})
+            if v.get("pull_right") is True:out.append({"mono":m,"signal":"vision:pull_right"})
+            if "reel" in str(v.get("text","")).lower():out.append({"mono":m,"signal":"vision:reel"})
+    elif domain=="auto_picker":
+        for t in _prompt_transitions(vision):
+            p=t.get("prompt");label="none" if p is None else str(p.get("action") or "prompt")
+            out.append({"mono":t.get("mono"),"signal":"prompt:"+label})
+    return [x for x in out if isinstance(x.get("mono"),(int,float))]
+
+def _candidate_correlations(domain,memory,vision,controller,lead_ms=500,lag_ms=150):
+    transitions=[e for e in memory if e.get("signal")=="candidate_transition" and (e.get("value") or {}).get("domain") in (domain,"general")]
+    landmarks=_landmarks(domain,vision,controller)
+    rows=[]
+    for e in transitions:
+        ev=e.get("value") or {};tm=e.get("mono")
+        if not isinstance(tm,(int,float)):continue
+        matches=[]
+        for lm in landmarks:
+            delta=(tm-lm["mono"])*1000.0
+            if -lead_ms<=delta<=lag_ms:matches.append((abs(delta),delta,lm["signal"]))
+        if matches:
+            _,delta,signal=min(matches,key=lambda x:x[0])
+            rows.append({"candidate":ev.get("name"),"role":ev.get("role"),"domain":ev.get("domain"),
+                         "from":ev.get("from"),"to":ev.get("to"),"candidate_mono":tm,
+                         "landmark":signal,"delta_ms":delta})
+    grouped={}
+    for r in rows:
+        key=(r["candidate"],r["role"],r["landmark"])
+        g=grouped.setdefault(key,{"candidate":r["candidate"],"role":r["role"],"landmark":r["landmark"],"matches":0,"delta_ms":[]})
+        g["matches"]+=1;g["delta_ms"].append(r["delta_ms"])
+    summary=[]
+    for g in grouped.values():
+        s=stats(g.pop("delta_ms"));g["median_delta_ms"]=s.get("median");g["p95_abs_delta_ms"]=percentile([abs(r["delta_ms"]) for r in rows if r["candidate"]==g["candidate"] and r["landmark"]==g["landmark"]],95)
+        summary.append(g)
+    summary.sort(key=lambda x:(-x["matches"],abs(x.get("median_delta_ms") or 0)))
+    return {"window_ms":{"lead":lead_ms,"lag":lag_ms},"matches":rows,"summary":summary[:50]}
+
 def analyze_session(session):
     session=Path(session)
     manifest=load_json(session/"manifest.json",{}) or {};summary=load_json(session/"summary.json",{}) or {}
@@ -114,6 +181,10 @@ def analyze_session(session):
         report["lmb_samples"]={"frames":len(labels),"sample_ids":len({r.get("sample_id") for r in labels if r.get("sample_id")}),
                                "labeled_frames":len(labeled),"labels":counts}
     watches=[e for e in memory if e.get("signal")=="watch"];marks=[e for e in annotations if e.get("signal") in ("mark","aim_mark","target_seed")]
+    candidates=_candidate_summary(memory)
+    if candidates:
+        report["memory_candidates"]={"candidates":candidates,
+            "correlation":_candidate_correlations(manifest.get("domain"),memory,vision,controller)}
     if watches or marks or system:
         ok=sum(1 for e in watches if (e.get("value") or {}).get("ok") is True)
         report["independent_scout"]={
@@ -205,6 +276,16 @@ def markdown(report):
         if a.get("marks"):
             lines+=["","### Aim annotations",""]
             for m in a["marks"]:lines.append(f"- {m.get('mono')}: {m.get('value')}")
+    if "memory_candidates" in report:
+        mc=report["memory_candidates"];lines+=["","## Semantic memory candidates",""]
+        for x in mc.get("candidates",[]):
+            lines.append(f"- [{x.get('domain')}] {x.get('name')} → {x.get('role')} · samples={x.get('samples')} · success={_fmt(x.get('success_pct'))}% · transitions={x.get('transitions')} · values={x.get('values')}")
+        corr=mc.get("correlation",{});summary=corr.get("summary",[])
+        if summary:
+            lines+=["","### Candidate ↔ visual/controller transition matches","",
+                    f"Window: candidate may lead landmark by up to {corr.get('window_ms',{}).get('lead')} ms or lag by {corr.get('window_ms',{}).get('lag')} ms."]
+            for x in summary[:30]:
+                lines.append(f"- {x.get('candidate')} ({x.get('role')}) ↔ {x.get('landmark')} · matches={x.get('matches')} · median Δ={_fmt(x.get('median_delta_ms'))} ms · p95 |Δ|={_fmt(x.get('p95_abs_delta_ms'))} ms")
     if "independent_scout" in report:
         s=report["independent_scout"];lines+=["","## Independent Scout sidecar","",
             f"- Memory samples: {s.get('memory_samples',0)}",
