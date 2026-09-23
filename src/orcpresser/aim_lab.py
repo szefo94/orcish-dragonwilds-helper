@@ -82,14 +82,38 @@ def impact_features(frame,previous=None):
     return {"bright":bright,"warm":warm,"yellow":yellow,"change":change}
 
 
+def _compensated_difference(frame,previous):
+    """Return residual motion after estimating dominant camera motion with sparse optical flow."""
+    if frame is None or previous is None or frame.shape!=previous.shape:return None,{"compensated":False}
+    g0=cv2.cvtColor(previous,cv2.COLOR_BGR2GRAY);g1=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+    pts=cv2.goodFeaturesToTrack(g0,maxCorners=220,qualityLevel=.01,minDistance=12,blockSize=7)
+    if pts is None or len(pts)<12:
+        return cv2.absdiff(frame,previous),{"compensated":False,"points":0}
+    nxt,status,_=cv2.calcOpticalFlowPyrLK(g0,g1,pts,None,winSize=(21,21),maxLevel=3,
+                                         criteria=(cv2.TERM_CRITERIA_EPS|cv2.TERM_CRITERIA_COUNT,30,.01))
+    if nxt is None or status is None:return cv2.absdiff(frame,previous),{"compensated":False,"points":0}
+    ok=status.reshape(-1)==1;p0=pts.reshape(-1,2)[ok];p1=nxt.reshape(-1,2)[ok]
+    if len(p0)<10:return cv2.absdiff(frame,previous),{"compensated":False,"points":int(len(p0))}
+    M,inliers=cv2.estimateAffinePartial2D(p0,p1,method=cv2.RANSAC,ransacReprojThreshold=3.0,maxIters=1200,confidence=.98)
+    if M is None:return cv2.absdiff(frame,previous),{"compensated":False,"points":int(len(p0))}
+    h,w=frame.shape[:2]
+    warped=cv2.warpAffine(previous,M,(w,h),flags=cv2.INTER_LINEAR,borderMode=cv2.BORDER_REFLECT)
+    angle=math.degrees(math.atan2(float(M[1,0]),float(M[0,0])))
+    dx,dy=float(M[0,2]),float(M[1,2])
+    return cv2.absdiff(frame,warped),{"compensated":True,"points":int(len(p0)),"dx":dx,"dy":dy,"rotation_deg":angle,
+                                      "inliers":int(np.sum(inliers)) if inliers is not None else None}
+
+
 def moving_candidates(frame,previous,max_targets=6):
-    """Find localized motion in the gameplay area; skip HUD edges and global camera sweeps."""
+    """Find localized motion after compensating ordinary camera pan/rotation; skip HUD edges."""
     if frame is None or previous is None or frame.shape!=previous.shape:return []
     h,w=frame.shape[:2]
-    diff=cv2.absdiff(frame,previous);gray=cv2.cvtColor(diff,cv2.COLOR_BGR2GRAY)
-    global_change=float(np.mean(gray))/255.0
-    # When the whole view is rotating, motion contours are not evidence of an independently moving target.
-    if global_change>.095:return []
+    diff,cam=_compensated_difference(frame,previous)
+    if diff is None:return []
+    gray=cv2.cvtColor(diff,cv2.COLOR_BGR2GRAY)
+    residual=float(np.mean(gray))/255.0
+    # If global motion could not be compensated and almost everything changed, do not invent targets.
+    if not cam.get("compensated") and residual>.095:return []
     blur=cv2.GaussianBlur(gray,(5,5),0)
     mask=cv2.threshold(blur,24,255,cv2.THRESH_BINARY)[1]
     # Exclude HUD-prone edges: top radar/captions, bottom action UI, and extreme side strips.
@@ -112,8 +136,11 @@ def moving_candidates(frame,previous,max_targets=6):
         if bw2<18 or bh2<18:continue
         local=float(np.mean(gray[by:ey,bx:ex]))/255.0
         score=min(1.0,(area/1800.0)*.35+local*3.5)
+        cam_txt=(f" gmc Δx={cam.get('dx',0):.1f} Δy={cam.get('dy',0):.1f} rot={cam.get('rotation_deg',0):.1f}°"
+                 if cam.get("compensated") else " no-gmc")
         out.append({"bbox":[int(bx),int(by),int(bw2),int(bh2)],"score":score,
-                    "reason":f"localized motion Δ={local:.3f} area={int(area)}","source":"motion"})
+                    "reason":f"residual motion Δ={local:.3f} area={int(area)}{cam_txt}","source":"motion",
+                    "camera_motion":cam})
     out.sort(key=lambda x:x["score"],reverse=True)
     return out[:max_targets]
 
