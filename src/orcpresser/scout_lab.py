@@ -190,12 +190,13 @@ class ScoutLabSession:
 class ScoutLabPanel:
     def __init__(self,app,parent,colors):
         import tkinter as tk
-        self.app=app;self.tk=tk;self.c=colors;self.session=None
+        self.app=app;self.tk=tk;self.c=colors;self.session=None;self.sidecar=None
         self.status=tk.StringVar(value="Idle — bind the game, configure optional watches, then START RECORDING.")
         self.live=tk.StringVar(value="No samples yet.")
         self.watch_var=tk.StringVar(value="")
         self.watches=list(app.settings.get("scout_memory_watches",[]) or [])
         self.save_crops=tk.BooleanVar(value=bool(app.settings.get("scout_save_cursor_crops",False)))
+        self.background=tk.BooleanVar(value=bool(app.settings.get("scout_background_probes",True)))
         self._build(parent)
 
     def _build(self,p):
@@ -212,6 +213,9 @@ class ScoutLabPanel:
         tk.Checkbutton(p,text="Save 96×64 cursor crop once/second",variable=self.save_crops,
                        command=lambda:self.app.persist("scout_save_cursor_crops",self.save_crops.get()),
                        bg=c["PANEL"],fg=c["BONE"],selectcolor="#15200e",activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
+        tk.Checkbutton(p,text="Run independent Scout probes alongside Auto / Fishing / Aim",variable=self.background,
+                       command=lambda:self.app.persist("scout_background_probes",self.background.get()),
+                       bg=c["PANEL"],fg=c["GREEN"],selectcolor="#15200e",activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
         tk.Label(p,text="Memory watch · MODULE+0xOFFSET:type or 0xADDRESS:type",bg=c["PANEL"],fg=c["GOLD"],anchor="w").pack(fill="x",pady=(10,2))
         entry=tk.Entry(p,textvariable=self.watch_var,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"],relief="flat");entry.pack(fill="x")
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=4)
@@ -254,16 +258,32 @@ class ScoutLabPanel:
         if getattr(self.app,"scout",None):self.app.scout_stop("Scout Lab stopped")
         if s:self.status.set("Stopped. Raw Scout Lab logs preserved in data/scout_sessions.")
 
+    def start_sidecar(self):
+        if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
+        try:
+            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get())
+            self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get()},stream="system")
+        except Exception as e:
+            self.sidecar=None
+            self.app.scout_event("system","sidecar_error",type(e).__name__+": "+str(e),stream="system")
+
+    def stop_sidecar(self):
+        s=self.sidecar;self.sidecar=None
+        if s:
+            s.close()
+            self.app.scout_event("system","sidecar_stopped",True,stream="system")
+
     def mark(self,label):
         if not self.session:self.status.set("Start recording before adding labels.");return
         now=time.monotonic();self.app.scout_event("annotation","mark",label,mono=now,stream="annotations")
         self.status.set("Marked: "+label)
 
     def tick(self):
-        if not self.session:return
+        active=self.session or self.sidecar
+        if not active:return
         latest=None
         while True:
-            try:latest=self.session.latest.get_nowait()
+            try:latest=active.latest.get_nowait()
             except queue.Empty:break
         if latest is None:return
         if latest.get("error"):self.live.set("ERROR: "+latest["error"]);return

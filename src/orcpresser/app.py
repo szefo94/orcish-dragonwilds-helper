@@ -15,6 +15,7 @@ from paths import CODE, DATA, migrate_data, ensure_data
 from version import VERSION
 from scout import ScoutRecorder
 from scout_lab import ScoutLabPanel
+from aim_lab import AimLabPanel
 import bench as benchmod
 import keys as keymap
 from tkinter import ttk
@@ -171,8 +172,8 @@ class App:
         header.create_line(0,80,4000,80,fill=GOLD,width=2)
         modes=tk.Frame(self.root,bg=BG);modes.pack(fill='x',padx=24,pady=12)
         self.modebuttons={}
-        for mode,title in [('Repeat','REPEAT'),('Hold','HOLD'),('Auto','AUTO PRESSER'),('Fishing','FISHING · EXP'),('Scout','SCOUT LAB'),('Stats','STATS')]:
-            b=RuneButton(modes,title,lambda m=mode:self.choose_mode(m),145,48);b.pack(side='left',padx=(0,7));self.modebuttons[mode]=b
+        for mode,title in [('Repeat','REPEAT'),('Hold','HOLD'),('Auto','AUTO PRESSER'),('Fishing','FISHING · EXP'),('Aim','AIM LAB · EXP'),('Scout','SCOUT LAB'),('Stats','STATS')]:
+            b=RuneButton(modes,title,lambda m=mode:self.choose_mode(m),125,48);b.pack(side='left',padx=(0,6));self.modebuttons[mode]=b
         self.modebuttons['Auto'].active=True;self.modebuttons['Auto'].draw()
         body=tk.Frame(self.root,bg=BG);body.pack(fill='both',expand=True,padx=24)
         settings=tk.Frame(body,bg=PANEL);settings.pack(side='left',fill='both',expand=True,padx=(0,12))
@@ -190,7 +191,7 @@ class App:
         right=tk.Frame(body,bg=PANEL,padx=14,pady=12,width=370);right.pack(side='right',fill='both');right.pack_propagate(False)
         self.vis={}      # widget -> modes where it is shown (or a callable(mode)->bool); others always shown
         def show(w,modes):self.vis[w]=modes;return w
-        MAN=('Repeat','Hold','Auto');TARGET=('Repeat','Hold','Auto','Scout')
+        MAN=('Repeat','Hold','Auto');TARGET=('Repeat','Hold','Auto','Scout','Aim')
         show(self.text(left,'01  /  ORDERS',12,GOLD),MAN).pack(fill='x')
         self.key=tk.StringVar(value=self.settings.get('key','LMB'));self.interval=tk.StringVar(value=str(self.settings.get('interval_ms',100)));self.duration=tk.StringVar(value=str(self.settings.get('duration_ms',50)))
         self.timed=tk.BooleanVar(value=bool(self.settings.get('timed',False)))
@@ -229,6 +230,7 @@ class App:
         for k in ('<Return>','<Escape>','<KP_Enter>'):ex.bind(k,lambda e:self.root.focus_set())
         self.exclude.trace_add('write',lambda *_:(self.stop('Exclusions changed'),self.persist('exclude',self.exclude.get())))
         self.build_fishing(left,show)
+        self.build_aim_lab(left,show)
         self.build_scout_lab(left,show)
         self.build_stats_controls(left,show)
         left=self.cols[1]
@@ -361,10 +363,13 @@ class App:
     def draw_run(self):
         for r,b in self.runbuttons.items():
             b.active=self.ctrl.running and self.run==r
-            b.enabled=self.mode not in ('Stats','Scout') and (r=='Live' or self.mode in ('Auto','Fishing'))
+            b.enabled=self.mode not in ('Stats','Scout','Aim') and (r=='Live' or self.mode in ('Auto','Fishing'))
             b.label=('■ STOP ' if b.active else '')+r.upper();b.draw()
         if self.mode=='Scout':
-            self.hint.set('SCOUT LAB uses START RECORDING in the tab · observational only · no aim/input automation')
+            self.hint.set('SCOUT LAB uses START RECORDING in the tab · can also run as a sidecar with Auto / Fishing / Aim')
+            return
+        if self.mode=='Aim':
+            self.hint.set('AIM LAB uses START TRACKING in the tab · boxes/telemetry only · no mouse movement or firing')
             return
         run='TEST' if self.mode=='Stats' else ('LIVE' if self.mode not in ('Auto','Fishing') else self.last_run.upper())
         self.hint.set(f'\\  START / STOP {run}     •     F8  RELEASE & STOP     •     Switching windows stops output')
@@ -432,6 +437,7 @@ class App:
     MODEHELP={'Repeat':'Presses the key again and again: each press lasts "Press length", a new press starts every "Repeat interval". Start with LIVE or \\ in the game.',
               'Hold':'Holds the key down. Timed ticked: releases after "Hold duration" and stops. Unticked: holds until you stop (\\, F8, or switching windows).',
               'Stats':'',
+              'Aim':'Experimental visual target tracker: seeded boxes, head-candidate geometry, crosshair error, impact evidence and Scout logging; no automatic aiming.',
               'Scout':'Observational research: record cursor/crosshair visual probes, process telemetry and optional read-only memory watches on one timeline.',
               'Fishing':'Bot 101: BAR + REEL region, manual cast/movement. F7 = New spot / Reacquire, F8 = emergency release. Advanced mode is staged and never requires an online LLM.'}
     # ---------------------------------------------------------------- STATS tab: automated tests
@@ -616,6 +622,9 @@ class App:
         controls=show(tk.Frame(left,bg=PANEL),('Fishing',));controls.pack(fill='x')
         self.fishing_panel=FishingPanel(self,controls)
         show(tk.Label(left,text='Runtime guidance appears above. Detailed instructions are in README.md and docs/FISHING.md.',bg=PANEL,fg=MUTED,justify='left',anchor='w',wraplength=410,font=('Segoe UI',9)),('Fishing',)).pack(fill='x',pady=(4,0))
+    def build_aim_lab(self,left,show):
+        controls=show(tk.Frame(left,bg=PANEL),('Aim',));controls.pack(fill='x')
+        self.aim_lab=AimLabPanel(self,controls,{'PANEL':PANEL,'GOLD':GOLD,'BONE':BONE,'GREEN':GREEN,'MUTED':MUTED})
     def build_scout_lab(self,left,show):
         controls=show(tk.Frame(left,bg=PANEL),('Scout',));controls.pack(fill='x')
         self.scout_lab=ScoutLabPanel(self,controls,{'PANEL':PANEL,'GOLD':GOLD,'BONE':BONE,'GREEN':GREEN,'MUTED':MUTED})
@@ -653,6 +662,7 @@ class App:
             self.finish_bench()
         self.ctrl.stop();self.generation+=1
         if getattr(self,'fishing_panel',None):self.fishing_panel.stop()
+        if getattr(self,'aim_lab',None):self.aim_lab.stop()
         if getattr(self,'scout_lab',None):self.scout_lab.stop()
         self.scout_stop(reason)
         if hasattr(self,'status'):self.status.set(reason)
@@ -665,6 +675,7 @@ class App:
                   'capture_region':list(self.region),'mode':self.mode}
             self.scout=ScoutRecorder(self.folder,domain,run,pid,meta)
             self.scout.event('controller','session_start',run,details={'mode':self.mode},stream='controller')
+            if domain!='scout_lab' and getattr(self,'scout_lab',None):self.scout_lab.start_sidecar()
         except Exception:
             self.scout=None;log.exception('Scout session start failed')
     def scout_event(self,*args,**kwargs):
@@ -672,10 +683,13 @@ class App:
             try:self.scout.event(*args,**kwargs)
             except Exception:log.exception('Scout event failed')
     def scout_stop(self,reason='stopped'):
-        s=getattr(self,'scout',None);self.scout=None
+        s=getattr(self,'scout',None)
         if s:
-            try:s.close(reason)
+            try:
+                if getattr(self,'scout_lab',None):self.scout_lab.stop_sidecar()
+                s.close(reason)
             except Exception:log.exception('Scout session close failed')
+        self.scout=None
     def bind_game(self):
         self.stop(f'Switch to {PROFILE.name} now… binding in 3 seconds')
         self.root.after(3000,self.finish_bind)
@@ -744,6 +758,7 @@ class App:
             same=self.run==run;self.stop()
             if same:return
         if self.mode=='Fishing':self.fishing_panel.start(run);return
+        if self.mode=='Aim':self.status.set('Use START TRACKING inside AIM LAB.');return
         if self.mode=='Scout':self.status.set('Use START RECORDING inside SCOUT LAB.');return
         if self.mode=='Stats':self.status.set('Use RUN TEST in the STATS tab (or \\ in the game).');return
         if run=='Preview' and self.mode!='Auto':self.status.set('PREVIEW applies to Auto Presser only — use LIVE.');return
@@ -752,6 +767,10 @@ class App:
         """Backslash hotkey: start/stop with the last used PREVIEW/LIVE choice."""
         if self.ctrl.running:self.stop();return
         if self.mode=='Fishing':self.fishing_panel.start(self.last_run);return
+        if self.mode=='Aim':
+            if getattr(self.aim_lab,'session',None):self.aim_lab.stop()
+            else:self.aim_lab.start()
+            return
         if self.mode=='Scout':
             if getattr(self.scout_lab,'session',None):self.scout_lab.stop()
             else:self.scout_lab.start()
@@ -935,7 +954,8 @@ class App:
                 self.previous_reacquire=reacquire
                 if self.io.tripped and self.ctrl.running:self.stop('STOPPED — focus lost or F8 pressed')
                 self.drain(now)
-                if self.mode=='Scout' and getattr(self,'scout_lab',None):self.scout_lab.tick()
+                if getattr(self,'scout_lab',None):self.scout_lab.tick()
+                if self.mode=='Aim' and getattr(self,'aim_lab',None):self.aim_lab.tick()
                 if self.ctrl.running:
                     if self.armed:
                         if fg==self.target:self.armed=False;self.status.set('TEST RUNNING — hands off mouse and keyboard; F8 aborts' if getattr(self,'bench',None) else 'SCOUTING — PREVIEW, no keys sent' if self.mode=='Auto' and self.run=='Preview' else 'LIVE — '+self.mode)

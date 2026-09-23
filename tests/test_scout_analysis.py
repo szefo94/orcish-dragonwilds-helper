@@ -65,7 +65,7 @@ class ScoutAnalyzerTests(unittest.TestCase):
                 before[s.name]={p.name:sha256_file(p) for p in s.iterdir() if p.is_file()}
             sessions,jp,mp,combo=write_all_reports(td)
             self.assertEqual(len(sessions),2)
-            self.assertEqual(combo["domains"],{"fishing":1,"auto_picker":1,"scout_lab":0})
+            self.assertEqual(combo["domains"],{"fishing":1,"auto_picker":1,"aim":0,"scout_lab":0})
             self.assertTrue(jp.is_file());self.assertTrue(mp.is_file())
             self.assertEqual(jp.name,"ALL_SESSIONS.json");self.assertEqual(mp.name,"ALL_SESSIONS.md")
             for s in (s1,s2):
@@ -90,5 +90,34 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertEqual(r["scout_lab"]["memory_success_pct"],100.0)
             self.assertEqual(r["scout_lab"]["annotations"][0]["label"],"head")
             self.assertIn("memory.jsonl",r["source_hashes"])
+
+    def test_aim_summary_and_sidecar_streams(self):
+        with tempfile.TemporaryDirectory() as td:
+            s=Path(td)/"scout_sessions"/"20260923-100000-aim";s.mkdir(parents=True)
+            (s/"manifest.json").write_text(json.dumps({"schema":1,"session_id":"a","domain":"aim","run":"Research"}),encoding="utf-8")
+            (s/"summary.json").write_text(json.dumps({"events":8,"reason":"done"}),encoding="utf-8")
+            tracks=[
+                {"mono":1.0,"source":"vision","signal":"aim_track","confidence":.8,"value":{"id":1,"bbox":[10,20,40,80],"crosshair_error":[10,0]}},
+                {"mono":1.1,"source":"vision","signal":"aim_track","confidence":.9,"value":{"id":1,"bbox":[12,20,40,80],"crosshair_error":[5,0]}},
+                {"mono":1.2,"source":"vision","signal":"impact_candidate","value":{"candidate":True,"change":.1}}
+            ]
+            (s/"vision.jsonl").write_text("".join(json.dumps(x)+"\n" for x in tracks),encoding="utf-8")
+            (s/"controller.jsonl").write_text("",encoding="utf-8")
+            (s/"process.jsonl").write_text("",encoding="utf-8")
+            (s/"memory.jsonl").write_text(json.dumps({"mono":1.05,"source":"memory","signal":"watch","value":{"spec":"game.exe+0x20:f32","ok":True,"value":12.5}})+"\n",encoding="utf-8")
+            anns=[
+                {"mono":.9,"source":"annotation","signal":"target_seed","value":{"id":1}},
+                {"mono":1.25,"source":"annotation","signal":"aim_mark","value":{"label":"crit"}}
+            ]
+            (s/"annotations.jsonl").write_text("".join(json.dumps(x)+"\n" for x in anns),encoding="utf-8")
+            (s/"system.jsonl").write_text(json.dumps({"mono":.8,"source":"system","signal":"sidecar_started","value":{"watches":1}})+"\n",encoding="utf-8")
+            r=analyze_session(s)
+            self.assertEqual(r["aim"]["track_samples"],2)
+            self.assertEqual(r["aim"]["seeded_targets"],1)
+            self.assertEqual(r["aim"]["impact_candidates"],1)
+            self.assertEqual(r["aim"]["target_ids"],["1"])
+            self.assertEqual(r["independent_scout"]["memory_samples"],1)
+            self.assertEqual(r["independent_scout"]["memory_success_pct"],100.0)
+            self.assertIn("system.jsonl",r["source_hashes"])
 
 if __name__=="__main__":unittest.main()
