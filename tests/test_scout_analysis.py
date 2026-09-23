@@ -1,6 +1,6 @@
 import json, tempfile, unittest
 from pathlib import Path
-from scout_analysis import analyze_session, sha256_file, write_report
+from scout_analysis import analyze_session, sha256_file, write_report, write_all_reports
 
 class ScoutAnalyzerTests(unittest.TestCase):
     def _session(self,root,domain="fishing"):
