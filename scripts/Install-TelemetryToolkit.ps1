@@ -112,17 +112,41 @@ function Resolve-DragonwildsExe {
 
 function Get-InstalledBridgeInfo([string]$ExePath) {
     if (-not $ExePath) { return $null }
+
     $dir = Split-Path -Parent $ExePath
-    foreach ($mods in @((Join-Path $dir "Mods"),(Join-Path $dir "ue4ss\Mods"))) {
+    foreach ($mods in @((Join-Path $dir "Mods"), (Join-Path $dir "ue4ss\Mods"))) {
         $lua = Join-Path $mods "OrcishScout\scripts\main.lua"
-        if (Test-Path $lua) {
-            $text = Get-Content -Raw $lua -ErrorAction SilentlyContinue
-            $modsFile = Join-Path $mods "mods.txt"
-            $enabled = $false
-            if (Test-Path $modsFile) {
-                $enabled = (Get-Content -Raw $modsFile) -match '(?im)^\s*OrcishScout\s*:\s*1\s*
+        if (-not (Test-Path $lua)) { continue }
+
+        $text = Get-Content -Raw $lua -ErrorAction SilentlyContinue
+        $modsFile = Join-Path $mods "mods.txt"
+        $enabled = $false
+
+        if (Test-Path $modsFile) {
+            $enabled = (Get-Content -Raw $modsFile) -match '(?im)^\s*OrcishScout\s*:\s*1\s*$'
+        }
+
+        $output = $null
+        if ($text -match 'local OUTPUT = \[\[(.*?)\]\]') {
+            $output = $Matches[1]
+        }
+
+        return [pscustomobject]@{
+            LuaPath          = $lua
+            ModsPath         = $mods
+            Enabled          = $enabled
+            Output           = $output
+            HasStartupEvents = ($text -match 'bridge_start' -and $text -match 'bridge_ready')
+        }
+    }
+
+    return $null
+}
+
+function Find-MistakenEosInstall {
     $base = Join-Path $PF86 "Epic Games\Epic Online Services\managedArtifacts"
     if (-not (Test-Path $base)) { return $null }
+
     return Get-ChildItem $base -Filter "main.lua" -File -Recurse -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -match '\\Mods\\OrcishScout\\scripts\\main\.lua$' } |
         Select-Object -First 1
