@@ -69,7 +69,7 @@ class FishingController:
         self.changed=0.;self.cast_until=0.;self.text_kind='';self.text_count=0;self.text_seen=None;self.unknown_since=None
         self.trial_only=False;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.active_was_seen=False
         self.pull_seen=None;self.pull_count=0;self.pull_visual_seen=None;self.pull_visual_dir=None;self.pull_visual_count=0
-        self.reel_seen=None;self.reel_count=0
+        self.reel_seen=None;self.reel_count=0;self.reel_absent_count=0
     def start(self,preview=True,trial_only=False):
         self.stop();self.running=True;self.preview=preview;self.trial_only=trial_only
         self.state='READY';self.reason='Waiting for current fishing evidence';self.started=None
@@ -77,7 +77,7 @@ class FishingController:
         self.text_kind='';self.text_seen=None;self.direction=self.config.first_pull;self.base_count=self.count
         self.changed=0.;self.cast_until=0.;self.unknown_since=None;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.active_was_seen=False
         self.pull_seen=None;self.pull_count=0;self.pull_visual_seen=None;self.pull_visual_dir=None;self.pull_visual_count=0
-        self.reel_seen=None;self.reel_count=0
+        self.reel_seen=None;self.reel_count=0;self.reel_absent_count=0
     def release(self):
         if self.held:
             if not self.preview:self.output(self.held,False)
@@ -134,9 +134,14 @@ class FishingController:
             self.pull_visual_seen=o.pull_visual_stamp
         pull_direction_confirmed=self.pull_visual_dir if self.pull_visual_count>=2 else None
         if o.reel_stamp!=self.reel_seen:
-            self.reel_count=self.reel_count+1 if o.reel_visible and o.reel_score>=.55 else 0
+            if o.reel_visible and o.reel_score>=.55:
+                self.reel_count+=1;self.reel_absent_count=0
+            else:
+                self.reel_count=0;self.reel_absent_count+=1
             self.reel_seen=o.reel_stamp
         reel_visual_confirmed=self.reel_count>=2
+        reel_visual_absent_confirmed=self.reel_absent_count>=2
+        reel_visual_available=o.reel_visible is not None
         pull_any=bool(pull_confirmed or pull_direction_confirmed)
         # Text confirmations count distinct OCR images, not fast ticks reusing cached text.
         kind=('caught' if re.search(r'\b(?:fish caught|you caught|caught a)\b',text) else
@@ -213,12 +218,32 @@ class FishingController:
                     self.set_key(self.direction);self.reason+=' — red tension, holding '+self.direction
             else:return
         if self.state not in ('FIGHT','REEL'):return
-        if reel_visual_confirmed or (confirmed and kind=='reel'):
-            # REEL is the highest-priority fight command. It always releases A/D
-            # immediately and holds LMB, regardless of the current bar colour.
+        # If the fast REEL region is calibrated, it is authoritative for both prompt
+        # appearance and disappearance. Cached OCR must not keep LMB held after the
+        # prompt has visibly gone away.
+        reel_active=(reel_visual_confirmed if reel_visual_available else bool(confirmed and kind=='reel'))
+        if reel_active:
             self.state='REEL';self.set_key('LMB')
-            self.reason=('REEL visual confirmed — released A/D, holding LMB' if reel_visual_confirmed else
+            self.reason=('REEL visual confirmed — released A/D, holding LMB' if reel_visual_available else
                          'Reel (Hold) OCR confirmed — released A/D, holding LMB');return
+        if self.state=='REEL':
+            # Debounce visual disappearance: one missed frame must not drop LMB.
+            if reel_visual_available and not reel_visual_absent_confirmed:
+                self.reason='REEL visual uncertain — keeping LMB held';return
+            if not reel_visual_available and kind=='reel':
+                self.reason='REEL OCR still visible — keeping LMB held';return
+            self.release();self.state='FIGHT'
+            if pull_direction_confirmed:
+                self.direction=pull_direction_confirmed;self.set_key(self.direction)
+                self.reason='REEL ended — resumed confirmed '+self.direction;return
+            if stable and o.color=='blue':
+                self.set_key(self.direction)
+                self.reason='REEL ended on blue — resumed '+self.direction;return
+            if stable and o.color=='red':
+                self.direction='D' if self.direction=='A' else 'A'
+                self.set_key(self.direction);self.changed=now
+                self.reason='REEL ended on red — swapped and holding '+self.direction;return
+            self.reason='REEL ended — waiting for reliable BAR/PULL before resuming direction';return
         if pull_direction_confirmed and self.state=='FIGHT':
             self.direction=pull_direction_confirmed;self.set_key(self.direction)
             self.reason='Fast PULL direction confirmed — holding '+self.direction;return
@@ -227,11 +252,7 @@ class FishingController:
             # Direction changes are driven by COLOR TRANSITIONS, never by a timer.
             # First red starts first_pull. A later blue keeps that key held. When
             # the indicator returns to red, swap A<->D once and hold it.
-            if self.state=='REEL':
-                self.release();self.state='FIGHT'
-                self.direction='D' if self.direction=='A' else 'A'
-                self.set_key(self.direction);self.changed=now
-            elif self.held is None:
+            if self.held is None:
                 self.set_key(self.direction);self.changed=now
             elif transitioned and previous_stable=='blue':
                 self.direction='D' if self.direction=='A' else 'A'
@@ -239,6 +260,7 @@ class FishingController:
             self.reason='Red tension — holding '+self.direction
         elif o.color=='blue' and self.state=='FIGHT':
             # Keep the current A/D direction held. Do not pulse or alternate it.
+            if self.held is None:self.set_key(self.direction)
             self.reason='Blue tension — keep direction; watching for Reel (Hold)'
         elif o.color=='unknown':
             # Scanning/recognition must not pulse a physical A/D hold. Keep the current
@@ -250,5 +272,3 @@ class FishingController:
             elif self.held in ('A','D'):
                 self.release();self.reason='Indicator unknown beyond grace — released direction'
             else:self.reason='Indicator unknown — waiting; not counted as a catch'
-        elif self.state=='REEL' and kind!='reel':
-            self.release();self.state='FIGHT'
