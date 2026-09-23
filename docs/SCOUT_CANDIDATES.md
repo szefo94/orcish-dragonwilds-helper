@@ -1,11 +1,11 @@
 # Scout semantic memory candidates
 
-Scout can now attach **names and intended meanings** to read-only memory locations instead of treating every address as an anonymous watch.
+Scout can attach **names and intended meanings** to read-only memory locations instead of treating every address as an anonymous watch. These candidates are research evidence only: the current controllers remain visual-first/fallback-capable, and a candidate is not promoted into control logic merely because it correlates once.
 
 A semantic candidate has four fields:
 
 - **name** — your stable project-side identifier, e.g. `reel_flag_01`;
-- **domain** — `fishing`, `auto_picker`, or `general`;
+- **domain** — `fishing`, `auto_picker`, or `general`; `auto_picker` is the internal Scout domain name for Auto Presser interaction research;
 - **role** — what we suspect the value represents;
 - **spec** — read-only address definition: `MODULE+0xOFFSET:type` or `0xADDRESS:type`.
 
@@ -88,6 +88,14 @@ p95 |Δ|=91 ms
 ```
 
 That is the kind of signal worth validating across more sessions.
+
+## Current integration status
+
+- Candidate reads/transitions are recorded on the same monotonic timeline as visual/controller events.
+- Domain filtering is implemented for Fishing and Auto Presser research.
+- Analyzer correlation is implemented.
+- Automatic promotion into controller decisions is **not** implemented; promotion remains a manual engineering decision after validation.
+- Optional UE4SS/Frida events can be correlated through the separate internal-telemetry path documented in `INTERNAL_TELEMETRY.md`.
 
 ## Candidate promotion rules
 
