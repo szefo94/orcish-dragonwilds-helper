@@ -90,7 +90,7 @@ def target_hud_candidates(frame,max_results=3):
     if frame is None or getattr(frame,"size",0)==0:return []
     h,w=frame.shape[:2]
     hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-    green=cv2.inRange(hsv,np.array([35,95,80],dtype=np.uint8),np.array([110,255,255],dtype=np.uint8))
+    green=cv2.inRange(hsv,np.array([35,95,80],dtype=np.uint8),np.array([95,255,255],dtype=np.uint8))
     valid=np.zeros_like(green);valid[int(h*.05):int(h*.68),int(w*.05):int(w*.95)]=255
     green=cv2.bitwise_and(green,valid)
     # Horizontal opening rejects grass/foliage while preserving UI bars.
