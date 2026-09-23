@@ -2,15 +2,19 @@
 import unittest
 import numpy as np
 from fishing import FishingController, FishingConfig, Observation, CastCalibration
-from fishing_capture import indicator, active_indicator, rect_pixels
+from fishing_capture import indicator, active_indicator, rect_pixels, ui_prompt_score, resolve_pull_direction
 
 class Fishing(unittest.TestCase):
     def setUp(self):
         self.events=[];self.c=FishingController(lambda k,d:self.events.append((k,d)))
         self.c.start(preview=False);self.c.tick(10)
-    def see(self,t,color='unknown',text='',stamp=None,active=None,active_stamp=None,pull_left=None,pull_right=None,pull_stamp=None):
+    def see(self,t,color='unknown',text='',stamp=None,active=None,active_stamp=None,pull_left=None,pull_right=None,pull_stamp=None,
+            pull_direction=None,pull_confidence=0.,pull_visual_stamp=None,reel_visible=None,reel_score=0.,reel_stamp=None):
         ts=t if stamp is None else stamp;ats=t if active_stamp is None else active_stamp;pts=t if pull_stamp is None else pull_stamp
-        self.c.observe(Observation(t,color,text,ts,active=active,active_stamp=ats,pull_left=pull_left,pull_right=pull_right,pull_stamp=pts),t)
+        pvs=t if pull_visual_stamp is None else pull_visual_stamp;rs=t if reel_stamp is None else reel_stamp
+        self.c.observe(Observation(t,color,text,ts,active=active,active_stamp=ats,pull_left=pull_left,pull_right=pull_right,pull_stamp=pts,
+                                   pull_direction=pull_direction,pull_confidence=pull_confidence,pull_visual_stamp=pvs,
+                                   reel_visible=reel_visible,reel_score=reel_score,reel_stamp=rs),t)
     def fight(self):
         self.see(10,'red');self.see(10.05,'red')
     def test_preview_never_outputs(self):
@@ -64,6 +68,50 @@ class Fishing(unittest.TestCase):
         self.assertEqual(self.c.held,'A')
         self.see(10.3,'red');self.see(10.35,'red')
         self.assertEqual(self.c.held,'D');self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
+    def test_stop_disappearance_enters_bite_pending_without_pressing(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.assertEqual(self.c.state,'WAIT_BITE')
+        self.see(10.35,active=False)
+        self.assertEqual(self.c.state,'BITE_PENDING');self.assertIsNone(self.c.held)
+
+    def test_fast_visual_pull_direction_controls_a_d(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True);self.see(10.35,active=False)
+        self.see(10.45,pull_direction='D',pull_confidence=.8);self.see(10.55,pull_direction='D',pull_confidence=.82)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'D')
+        self.see(10.65,'blue',pull_direction='A',pull_confidence=.85);self.see(10.75,'blue',pull_direction='A',pull_confidence=.86)
+        self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('D',False),('A',True)])
+
+    def test_ambiguous_pull_ocr_does_not_choose_direction(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True,require_active=True));self.c.start(False);self.c.tick(10)
+        self.see(10,active=True);self.see(10.2,active=True);self.see(10.4,active=False,pull_left=True,pull_right=True)
+        self.see(10.8,'red',active=False,pull_left=True,pull_right=True)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+
+    def test_fast_visual_reel_overrides_direction(self):
+        self.fight();self.assertEqual(self.c.held,'A')
+        self.see(10.1,'blue',reel_visible=True,reel_score=.8)
+        self.see(10.2,'blue',reel_visible=True,reel_score=.82)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
+
+    def test_no_fish_was_caught_is_recoverable_failure(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),FishingConfig(recurring=True));self.c.start(False);self.c.tick(10);self.fight()
+        self.see(10.4,text='No fish was caught.');self.see(10.8,text='No fish was caught.')
+        self.assertTrue(self.c.running);self.assertEqual(self.c.state,'WAIT_CAST')
+
+    def test_pull_visual_resolver_requires_separation(self):
+        self.assertEqual(resolve_pull_direction(.80,.22)[0],'A')
+        self.assertEqual(resolve_pull_direction(.22,.80)[0],'D')
+        self.assertIsNone(resolve_pull_direction(.72,.68)[0])
+
+    def test_ui_prompt_score_prefers_white_ui_geometry(self):
+        blank=np.zeros((60,180,3),dtype=np.uint8)
+        prompt=blank.copy();prompt[20:26,20:160]=(245,245,245);prompt[34:48,82:98]=(245,245,245)
+        self.assertGreater(ui_prompt_score(prompt),ui_prompt_score(blank))
+
     def test_no_fish_stops_for_manual_travel(self):
         self.fight();self.see(10.1,text='No fish here');self.see(10.55,text='No fish here')
         self.assertFalse(self.c.running);self.assertEqual(self.c.state,'DEPLETED')

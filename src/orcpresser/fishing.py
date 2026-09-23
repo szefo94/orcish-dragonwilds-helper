@@ -15,6 +15,12 @@ class Observation:
     pull_left: bool | None = None
     pull_right: bool | None = None
     pull_stamp: float = 0.
+    pull_direction: str | None = None
+    pull_confidence: float = 0.
+    pull_visual_stamp: float = 0.
+    reel_visible: bool | None = None
+    reel_score: float = 0.
+    reel_stamp: float = 0.
 
 @dataclass
 class FishingConfig:
@@ -61,13 +67,17 @@ class FishingController:
         self.state='IDLE';self.reason='';self.started=None;self.last_observation=None
         self.last_color='unknown';self.color_count=0;self.direction=self.config.first_pull
         self.changed=0.;self.cast_until=0.;self.text_kind='';self.text_count=0;self.text_seen=None;self.unknown_since=None
-        self.trial_only=False;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.pull_seen=None;self.pull_count=0
+        self.trial_only=False;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.active_was_seen=False
+        self.pull_seen=None;self.pull_count=0;self.pull_visual_seen=None;self.pull_visual_dir=None;self.pull_visual_count=0
+        self.reel_seen=None;self.reel_count=0
     def start(self,preview=True,trial_only=False):
         self.stop();self.running=True;self.preview=preview;self.trial_only=trial_only
         self.state='READY';self.reason='Waiting for current fishing evidence';self.started=None
         self.last_observation=None;self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown';self.text_count=0
         self.text_kind='';self.text_seen=None;self.direction=self.config.first_pull;self.base_count=self.count
-        self.changed=0.;self.cast_until=0.;self.unknown_since=None;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.pull_seen=None;self.pull_count=0
+        self.changed=0.;self.cast_until=0.;self.unknown_since=None;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.active_was_seen=False
+        self.pull_seen=None;self.pull_count=0;self.pull_visual_seen=None;self.pull_visual_dir=None;self.pull_visual_count=0
+        self.reel_seen=None;self.reel_count=0
     def release(self):
         if self.held:
             if not self.preview:self.output(self.held,False)
@@ -94,6 +104,8 @@ class FishingController:
             if self.trial_only:self.state='TRIAL_DONE';self.stop('Trial cast released; record short / long / hit')
         if self.state in ('READY','WAIT_CAST','WAIT_BITE') and not self.config.recurring and now-(self.changed or self.started)>self.config.bite_timeout:
             self.stop('No bite / cast evidence before timeout')
+        if self.state=='BITE_PENDING' and now-self.changed>1.5:
+            self.state='WAIT_BITE';self.reason='Bite candidate expired — waiting for STOP/PULL/BAR';self.changed=now
         if self.state in ('FIGHT','REEL') and now-self.fight_started>self.config.fight_timeout:
             self.stop('Fight timeout')
     def observe(self,o,now):
@@ -102,8 +114,10 @@ class FishingController:
         if o.stamina is not None and o.stamina<self.config.min_stamina:
             self.stop('Stamina below configured threshold');return
         text=o.text.lower() if now-o.text_stamp<1.5 else ''
-        if o.active_stamp!=self.active_seen:
-            if o.active:self.active_count+=1;self.inactive_count=0
+        active_changed=o.active_stamp!=self.active_seen
+        if active_changed:
+            if o.active:
+                self.active_count+=1;self.inactive_count=0;self.active_was_seen=True
             else:self.inactive_count+=1;self.active_count=0
             self.active_seen=o.active_stamp
         stop_fishing_confirmed=bool(o.active and self.active_count>=2)
@@ -111,11 +125,24 @@ class FishingController:
             self.pull_count=self.pull_count+1 if (o.pull_left or o.pull_right) else 0
             self.pull_seen=o.pull_stamp
         pull_confirmed=bool((o.pull_left or o.pull_right) and self.pull_count>=2)
+        if o.pull_visual_stamp!=self.pull_visual_seen:
+            if o.pull_direction in ('A','D') and o.pull_confidence>=.55:
+                self.pull_visual_count=self.pull_visual_count+1 if o.pull_direction==self.pull_visual_dir else 1
+                self.pull_visual_dir=o.pull_direction
+            else:
+                self.pull_visual_count=0;self.pull_visual_dir=None
+            self.pull_visual_seen=o.pull_visual_stamp
+        pull_direction_confirmed=self.pull_visual_dir if self.pull_visual_count>=2 else None
+        if o.reel_stamp!=self.reel_seen:
+            self.reel_count=self.reel_count+1 if o.reel_visible and o.reel_score>=.55 else 0
+            self.reel_seen=o.reel_stamp
+        reel_visual_confirmed=self.reel_count>=2
+        pull_any=bool(pull_confirmed or pull_direction_confirmed)
         # Text confirmations count distinct OCR images, not fast ticks reusing cached text.
         kind=('caught' if re.search(r'\b(?:fish caught|you caught|caught a)\b',text) else
               'bait' if 'consider bait' in text else
               'depleted' if any(t in text for t in ('no fish here','depleted')) else
-              'failed' if any(t in text for t in ('escaped','startled','too close')) else
+              'failed' if any(t in text for t in ('escaped','startled','too close','no fish was caught')) else
               'reel' if re.search(r'\breel\b',text) and 'hold' in text else
               'cast' if re.search(r'\bcast\b',text) and 'hold' in text else '')
         if o.text_stamp!=self.text_seen:
@@ -149,36 +176,52 @@ class FishingController:
             if stop_fishing_confirmed:
                 self.state='WAIT_BITE';self.reason='Stop Fishing visible — waiting for fish to bite';self.changed=now
                 return
-            if not self.config.require_active and (pull_confirmed or stable and o.color in ('red','blue')):
+            if not self.config.require_active and (pull_any or stable and o.color in ('red','blue')):
                 self.state='FIGHT';self.fight_started=now;self.changed=now;self.reason='New fight evidence detected'
             else:return
         if self.state=='READY':
             if stop_fishing_confirmed:
                 self.state='WAIT_BITE';self.reason='Stop Fishing visible — waiting for fish to bite';self.changed=now
                 return
-            if pull_confirmed or (not self.config.require_active and stable and o.color in ('red','blue')):
+            if pull_any or (not self.config.require_active and stable and o.color in ('red','blue')):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
+                if pull_direction_confirmed:
+                    self.direction=pull_direction_confirmed;self.set_key(self.direction)
             elif confirmed and kind=='cast' and (self.config.auto_cast or self.trial_only):
                 self.state='CAST';self.cast_until=now+self.config.cast_seconds;self.changed=now
                 self.set_key('LMB');return
             else:return
         if self.state=='WAIT_BITE':
             if stop_fishing_confirmed:return
-            if pull_confirmed or stable and o.color in ('red','blue'):
+            # STOP disappearing is an early bite clue. It is not sufficient to press a key,
+            # but it switches us into a short high-attention state while BAR/PULL catches up.
+            if self.active_was_seen and active_changed and o.active is False:
+                self.state='BITE_PENDING';self.changed=now;self.reason='STOP disappeared — bite pending; waiting for BAR/PULL'
+            elif pull_any or stable and o.color in ('red','blue'):
+                self.state='FIGHT';self.fight_started=now;self.changed=now;self.reason='Fish hooked — pull/bar evidence detected'
+            else:return
+        if self.state=='BITE_PENDING':
+            if stop_fishing_confirmed:
+                self.state='WAIT_BITE';self.reason='STOP returned — bite candidate cancelled';return
+            if pull_any or stable and o.color in ('red','blue'):
                 self.state='FIGHT';self.fight_started=now;self.changed=now
-                self.reason='Fish hooked — pull prompts/bar detected'
-                # A confirmed Pull Left/Right prompt is strong phase evidence. If the
-                # same frame already shows red tension, begin the first pull immediately
-                # instead of waiting for a second red frame.
-                if pull_confirmed and o.color=='red':
-                    self.set_key(self.direction);self.reason='Fish hooked + red tension — holding '+self.direction
-                    return
+                self.reason='Bite confirmed after STOP disappeared'
+                if pull_direction_confirmed:
+                    self.direction=pull_direction_confirmed;self.set_key(self.direction)
+                    self.reason+=' — visual direction '+self.direction
+                elif o.color=='red':
+                    self.set_key(self.direction);self.reason+=' — red tension, holding '+self.direction
             else:return
         if self.state not in ('FIGHT','REEL'):return
-        if confirmed and kind=='reel':
+        if reel_visual_confirmed or (confirmed and kind=='reel'):
             # REEL is the highest-priority fight command. It always releases A/D
             # immediately and holds LMB, regardless of the current bar colour.
-            self.state='REEL';self.set_key('LMB');self.reason='Reel (Hold) confirmed — released A/D, holding LMB';return
+            self.state='REEL';self.set_key('LMB')
+            self.reason=('REEL visual confirmed — released A/D, holding LMB' if reel_visual_confirmed else
+                         'Reel (Hold) OCR confirmed — released A/D, holding LMB');return
+        if pull_direction_confirmed and self.state=='FIGHT':
+            self.direction=pull_direction_confirmed;self.set_key(self.direction)
+            self.reason='Fast PULL direction confirmed — holding '+self.direction;return
         if not stable:return
         if o.color=='red':
             # Direction changes are driven by COLOR TRANSITIONS, never by a timer.

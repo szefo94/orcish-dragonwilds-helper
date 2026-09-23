@@ -22,9 +22,11 @@ Label the landing WAS SHORT / LONG / HIT manually. Short and long feedback choos
 
 Start LIVE after a manual cast, or enable Automatic cast to begin with the saved duration. Two consistent color samples are needed. Red tries A, then switches A/D after 300 ms of persistent red. Blue is a neutral/wait state: directional input is released while the controller waits for fresh prompt evidence. Two fresh OCR observations of Reel + Hold while blue release any direction before holding LMB. This prevents A/D probing from continuing during a confirmed reel opportunity. Red overrides a cached Reel prompt immediately after color confirmation, releasing LMB before pulling.
 
-A confirmed caught/bait/failure message stops the single round. Disappearing prompts or unknown color never count as a catch. Unknown color releases input; focus loss, stale capture (>750 ms), F8 and timeouts stop/release. Result phrases are provisional: `fish caught`, `you caught`, `caught a`, `consider bait`, `escaped`, `startled`, `too close`, `no fish here`, `depleted`.
+A confirmed caught/bait/failure message stops the single round. `No fish was caught.` is treated as a recoverable failed round (WAIT_CAST in recurring mode), while `no fish here` / `depleted` still mean the spot should be abandoned. Disappearing prompts or unknown color never count as a catch. Unknown color releases input; focus loss, stale capture (>750 ms), F8 and timeouts stop/release. Result phrases are provisional: `fish caught`, `you caught`, `caught a`, `consider bait`, `escaped`, `startled`, `too close`, `no fish was caught`, `no fish here`, `depleted`.
 
-Color capture targets 20 Hz; prompt OCR is queued about every 400 ms, subject to actual OCR runtime. Two distinct OCR results are required, so text-triggered actions normally have more latency than color reactions. Cropped capture and OCR run on separate workers with bounded queues.
+Color capture targets 20 Hz. In addition, calibrated REEL / PULL L / PULL R regions now have a lightweight white-UI geometry pass about every 100 ms. The fast PULL resolver only emits A or D when one calibrated side is materially stronger than the other; if both regions light up similarly, direction is marked ambiguous and the controller falls back to the bar transition logic rather than guessing. Two consecutive fast samples are required before a visual A/D or REEL decision is trusted.
+
+Prompt OCR remains queued about every 400 ms, subject to actual OCR runtime, and is now primarily semantic confirmation/diagnostics for time-critical fight actions. Raw OCR text per calibrated region is recorded in Scout telemetry so mis-calibrated or overlapping PULL regions can be diagnosed. Cropped capture and OCR run on separate workers with bounded queues.
 
 ## Remaining work after a real recording
 
@@ -49,6 +51,14 @@ Advanced automatic pool detection, positioning and travel are intentionally sepa
 **Advanced · EXP** enables automatic cast timing/calibration and the SPOT diagnostic. It is deliberately not presented as autonomous navigation: pool selection, camera steering, walking, and unattended multi-spot cycles are still pending.
 
 The old editable Fishing notes textbox has been removed. Runtime state and next-action guidance are displayed directly in the Fishing panel; longer explanations live here and in the README.
+
+## Faster bite / A-D / REEL evidence
+
+When STOP Fishing has previously been confirmed and then disappears, the controller now enters a bounded `BITE_PENDING` state immediately. It does **not** press anything on STOP disappearance alone. It waits for BAR or PULL evidence, but this state lets the fast detector react before the slower OCR cycle catches up.
+
+During the fight, an exclusive fast PULL-L / PULL-R visual result directly selects A / D after two consistent samples. Ambiguous results (both regions look active, or their scores are too similar) are never used for direction; the existing red/blue transition state machine remains the fallback. A fast REEL visual confirmation has higher priority than A/D and switches to LMB before the slower two-frame OCR confirmation.
+
+Scout records the new fields `pull_direction`, `pull_confidence`, left/right visual scores, `reel_visible`, `reel_score`, per-region OCR text, and their timestamps so we can measure which signal led each controller action.
 
 ## Recurring rounds and ACTIVE signal
 
