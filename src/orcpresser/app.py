@@ -12,7 +12,7 @@ from capture import dxgi_available
 from game_profile import PROFILE
 from settings import Settings
 from paths import CODE, DATA, migrate_data, ensure_data
-from version import VERSION
+from version import VERSION, DISPLAY_VERSION
 from scout import ScoutRecorder
 from scout_lab import ScoutLabPanel
 from aim_lab import AimLabPanel
@@ -139,7 +139,7 @@ class App:
         self.gpu_ok=False   # the worker reports DirectML availability after loading onnxruntime
         self.dxgi_ok=dxgi_available()
         self.stage='starting';self.stage_since=time.monotonic();self.load_started=time.monotonic()
-        root.title(f'Orcish Dragonwilds Helper {VERSION} | {PROFILE.name} | Ashenfall command post');root.configure(bg=BG);root.attributes('-topmost',True)
+        root.title(f'Orcish Dragonwilds Helper {DISPLAY_VERSION} | {PROFILE.name} | Ashenfall command post');root.configure(bg=BG);root.attributes('-topmost',True)
         root.minsize(900,560)
         self.folder=ensure_data()   # user data: <root>/data (settings, learned data, notes, log)
         self.settings=Settings(self.folder/'settings.json',PROFILE.name);self.save_job=None
