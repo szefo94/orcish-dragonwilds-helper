@@ -58,6 +58,10 @@ def _state_transitions(controller):
         if state and state!=last:
             out.append({"mono":e.get("mono"),"state":state,"held":value.get("held"),"reason":(e.get("details") or {}).get("reason")})
             last=state
+    for i,t in enumerate(out):
+        end=out[i+1]["mono"] if i+1<len(out) else None
+        t["duration_s"]=None if end is None or t.get("mono") is None else max(0.,float(end)-float(t["mono"]))
+        t["from_previous_s"]=None if i==0 else max(0.,float(t["mono"])-float(out[i-1]["mono"]))
     return out
 
 def _prompt_transitions(vision):
@@ -82,15 +86,27 @@ def analyze_session(session):
             "counts":{"vision":len(vision),"controller":len(controller),"process":len(process),"parse_errors":sum(1 for e in all_events if "_parse_error" in e)},
             "timeline":{"start_mono":min(monos) if monos else None,"end_mono":max(monos) if monos else None,"duration_s":(max(monos)-min(monos)) if len(monos)>=2 else 0},
             "latency_ms":stats([e.get("latency_ms") for e in vision]),"fresh_ms":stats([e.get("fresh_ms") for e in vision]),
+            "stage_timing_ms":{
+                "capture":stats([(e.get("details") or {}).get("capture_ms") for e in vision]),
+                "detect":stats([(e.get("details") or {}).get("detect_ms") for e in vision]),
+                "worker_total":stats([(e.get("details") or {}).get("total_worker_ms") for e in vision]),
+                "consume_after_detect":stats([((e.get("details") or {}).get("consumed_mono")-(e.get("details") or {}).get("detected_mono"))*1000
+                                              for e in vision if isinstance((e.get("details") or {}).get("consumed_mono"),(int,float)) and isinstance((e.get("details") or {}).get("detected_mono"),(int,float))])
+            },
             "manifest":manifest,"session_summary":summary}
     if manifest.get("domain")=="fishing":
         obs=[e for e in vision if e.get("signal")=="fishing_observation"]
+        transitions=_state_transitions(controller)
+        reel_durations=[t["duration_s"] for t in transitions if t.get("state")=="REEL" and t.get("duration_s") is not None]
+        fight_to_reel=[t["from_previous_s"] for i,t in enumerate(transitions) if t.get("state")=="REEL" and i and transitions[i-1].get("state")=="FIGHT"]
         report["fishing"]={"observations":len(obs),"ocr_ms":stats([(e.get("details") or {}).get("ocr_ms") for e in obs]),
             "positive_frames":{"stop":sum(1 for e in obs if (e.get("value") or {}).get("stop") is True),
                                "pull_left":sum(1 for e in obs if (e.get("value") or {}).get("pull_left") is True),
                                "pull_right":sum(1 for e in obs if (e.get("value") or {}).get("pull_right") is True),
                                "reel_text":sum(1 for e in obs if "reel" in str((e.get("value") or {}).get("text","")).lower())},
-            "state_transitions":_state_transitions(controller)}
+            "state_transitions":transitions,
+            "phase_timing_s":{"reel_duration":stats(reel_durations),"fight_to_reel":stats(fight_to_reel)},
+            "reel_entries":sum(1 for t in transitions if t.get("state")=="REEL")}
     elif manifest.get("domain")=="auto_picker":
         prompts=[e for e in vision if e.get("signal")=="prompt"]
         report["auto_picker"]={"observations":len(prompts),"approved":sum(1 for e in prompts if e.get("value") is not None),
@@ -107,10 +123,21 @@ def markdown(report):
     lat=report.get("latency_ms",{});fresh=report.get("fresh_ms",{})
     lines.append(f"- Vision latency: n={lat.get('count',0)}, median={_fmt(lat.get('median'))} ms, p95={_fmt(lat.get('p95'))} ms")
     lines.append(f"- Vision freshness at controller: n={fresh.get('count',0)}, median={_fmt(fresh.get('median'))} ms, p95={_fmt(fresh.get('p95'))} ms")
+    stages=report.get("stage_timing_ms",{})
+    for key,label in (("capture","Capture"),("detect","Detection"),("worker_total","Queue→detect complete"),("consume_after_detect","Detect→UI consume")):
+        s=stages.get(key,{})
+        if s.get("count"):lines.append(f"- {label}: n={s.get('count',0)}, median={_fmt(s.get('median'))} ms, p95={_fmt(s.get('p95'))} ms")
     if "fishing" in report:
         f=report["fishing"];lines+=["","## Fishing","",f"- Observations: {f['observations']}",
             "- Positive frames: "+", ".join(f"{k}={v}" for k,v in f["positive_frames"].items()),"","### State transitions",""]
-        for t in f["state_transitions"]:lines.append(f"- {t.get('mono')}: {t.get('state')} · held={t.get('held') or 'none'} · {t.get('reason') or ''}")
+        for t in f["state_transitions"]:
+            dur="open" if t.get("duration_s") is None else f"{t.get('duration_s'):.3f}s"
+            lines.append(f"- {t.get('mono')}: {t.get('state')} · duration={dur} · held={t.get('held') or 'none'} · {t.get('reason') or ''}")
+        phase=f.get("phase_timing_s",{});rd=phase.get("reel_duration",{});fr=phase.get("fight_to_reel",{})
+        lines+=["","### Phase timing",""]
+        lines.append(f"- REEL entries: {f.get('reel_entries',0)}")
+        lines.append(f"- REEL duration: n={rd.get('count',0)}, median={_fmt(None if rd.get('median') is None else rd.get('median')*1000)} ms, p95={_fmt(None if rd.get('p95') is None else rd.get('p95')*1000)} ms")
+        lines.append(f"- FIGHT → REEL interval: n={fr.get('count',0)}, median={_fmt(None if fr.get('median') is None else fr.get('median')*1000)} ms")
     if "auto_picker" in report:
         a=report["auto_picker"];lines+=["","## Auto Picker","",f"- Prompt observations: {a['observations']}",f"- Approved observations: {a['approved']}",
             f"- Sent decisions: {a['sent_decisions']}","","### Prompt transitions",""]
