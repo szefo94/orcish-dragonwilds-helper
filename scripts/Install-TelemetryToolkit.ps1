@@ -391,7 +391,14 @@ if ($CheckOnly -or -not $Install) {
 
 Invoke-Step "Frida" { Install-Frida }
 $game = $null
-Invoke-Step "Dragonwilds detection" { $game = Resolve-DragonwildsExe }
+try {
+    $game = Resolve-DragonwildsExe
+    if ($game) { Write-Ok "Installer target: $game" }
+    else { Write-Warn "Dragonwilds target could not be resolved for installation." }
+} catch {
+    Write-Warn "Dragonwilds detection failed: $($_.Exception.Message)"
+    $script:HadWarnings = $true
+}
 if (-not $SkipUE4SS) { Invoke-Step "UE4SS" { Install-UE4SS -ExePath $game } }
 if (-not $SkipX64dbg) { Invoke-Step "x64dbg" { Install-X64Dbg } }
 if (-not $SkipReClass) { Invoke-Step "ReClass.NET" { Install-ReClass } }
