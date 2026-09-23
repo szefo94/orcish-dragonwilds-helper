@@ -69,26 +69,27 @@ Net automation is not the current Fishing Bot 101 focus.
 - [IMPLEMENTED] Depleted/no-fish and bait-required messages are hard stops that require manual intervention.
 - [IMPLEMENTED] With recurring rounds, STOP clear→reappear is the preferred re-arm handshake; BAR disappearance/return is the fallback when STOP is not calibrated.
 
-## 4. Current controller state sketch
+## 4. Target controller sketch
 
 ```text
-READY / WAIT_CAST
-    -> WAIT_BITE          when STOP is confirmed
 WAIT_BITE
-    -> BITE_PENDING       when confirmed STOP disappears
-BITE_PENDING
-    -> FIGHT              when BAR/PULL evidence appears
-    -> WAIT_BITE          when candidate expires / STOP returns
+    -> FIGHT              when the fish takes the hook
+
 FIGHT
-    -> REEL               when fast REEL or OCR Reel (Hold) is confirmed
+    fish moving RIGHT     -> hold A
+    fish moving LEFT      -> hold D
+    direction reverses    -> switch immediately, even multiple times in one fight
+    blue BAR              -> current counter-pull is likely correct
+    red BAR               -> reacquire direction; fallback swap only if direction is unavailable
+    REEL confirmed        -> release A/D -> REEL
+
 REEL
-    -> FIGHT              when red fight state returns
-FIGHT / REEL
-    -> WAIT_CAST          on recoverable round end when recurring mode is enabled
-    -> STOP               on depletion, bait-required, timeout, focus loss, stale capture, or F8
+    while valid           -> hold LMB
+    prompt ends / fight resumes
+                          -> release LMB -> reacquire fish direction -> FIGHT
 ```
 
-The exact implementation in `src/orcpresser/fishing.py` is authoritative if this sketch ever falls behind.
+Round-end, depletion, focus-loss, stale-capture and timeout safety behavior remains as implemented. The implementation currently still differs from this target in several direction/fallback cases.
 
 ## 5. Signals still worth researching
 
