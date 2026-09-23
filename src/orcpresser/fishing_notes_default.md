@@ -51,11 +51,11 @@ Net automation is not the current Fishing Bot 101 focus.
 - [IMPLEMENTED] When STOP disappears after being confirmed, the controller enters a bounded `BITE_PENDING` state.
 - [IMPLEMENTED] STOP disappearance alone does not send input; BAR or PULL evidence is still required.
 
-### Fight direction and BAR feedback
-- [WIKI/GUIDE + PLAYER REPORTS] Counter the fish's movement: **fish right -> hold A (left)**, **fish left -> hold D (right)**.
-- [OBSERVED/TO VERIFY] A single fight/escape can contain several reversals; direction must therefore be tracked continuously, not chosen once per escape phase.
-- [TARGET LOGIC] Fresh, confident movement/PULL direction is authoritative. Repeated movement in the same direction keeps the same key held.
-- [TARGET LOGIC] BAR colour is validation/fallback, not the primary direction source: **blue** means the current counter-pull appears effective; **red** means the current choice is likely stale/wrong and direction should be reacquired quickly. A red transition may be used as a fallback swap only when reliable movement direction is unavailable.
+### Fight controls and BAR feedback
+- [WIKI/GUIDE + PLAYER REPORTS] Fishing requires counter-pulling against the fish; the helper does **not** visually track the fish model itself.
+- [TARGET LOGIC] Calibrated **PULL L / PULL R** UI cues are the primary A/D control signal. A fight can request several direction changes in one escape phase, so the helper must react continuously rather than choose one key per phase.
+- [TARGET LOGIC] Repeated confirmation of the same PULL command keeps the same key held; a confirmed opposite PULL command switches immediately.
+- [TARGET LOGIC] BAR colour is validation/fallback rather than the preferred direction source: **blue** means the current counter-pull appears effective; a stable transition to **red** can swap A<->D only when no reliable PULL command is available.
 - [IMPLEMENTED] Ambiguous PULL evidence is ignored rather than guessed. Short detector gaps preserve the held direction; sustained uncertainty releases it.
 
 ### Reel
@@ -76,22 +76,30 @@ WAIT_BITE
     -> FIGHT              when the fish takes the hook
 
 FIGHT
-    fish moving RIGHT     -> hold A
-    fish moving LEFT      -> hold D
-    direction reverses    -> switch immediately, even multiple times in one fight
+    PULL L confirmed      -> hold A
+    PULL R confirmed      -> hold D
+    PULL command changes  -> switch immediately, even multiple times in one fight
     blue BAR              -> current counter-pull is likely correct
-    red BAR               -> reacquire direction; fallback swap only if direction is unavailable
+    red BAR transition    -> fallback A<->D swap only if no reliable PULL cue exists
     REEL confirmed        -> release A/D -> REEL
 
 REEL
     while valid           -> hold LMB
     prompt ends / fight resumes
-                          -> release LMB -> reacquire fish direction -> FIGHT
+                          -> release LMB -> use fresh PULL command if available -> FIGHT
 ```
 
 Round-end, depletion, focus-loss, stale-capture and timeout safety behavior remains as implemented. The implementation currently still differs from this target in several direction/fallback cases.
 
-## 5. Signals still worth researching
+## 5. Measurement and fine-tuning data
+
+Runtime measurement is observational and must not steer the fight until validated against real sessions.
+
+Record timestamped JSON for each observation/decision so later analysis can reconstruct the complete sequence: capture timestamp, frame freshness, BAR colour/red/blue scores, PULL L/R scores and OCR results, REEL score/state, controller state/reason, requested/physical A-D-LMB state, OCR latency and capture backend.
+
+Optional future measurements should include **player stamina** and, if a reliable independent value can be extracted, **fish/catch-bar progress**. Store normalized values (0..1) plus timestamps when available. Their burn/progress rates are for offline correlation and tuning first; the rough timing estimates discussed during development are not controller constants.
+
+## 6. Signals still worth researching
 
 - reliable fish/catch progress;
 - stamina;
@@ -102,7 +110,7 @@ Round-end, depletion, focus-loss, stale-capture and timeout safety behavior rema
 
 Scout can correlate visual/controller events with read-only semantic memory candidates and optional UE4SS/Frida telemetry. See `docs/SCOUT_CANDIDATES.md` and `docs/INTERNAL_TELEMETRY.md`.
 
-## 6. Safety and validation rules
+## 7. Safety and validation rules
 
 - Never act on ambiguous PULL evidence.
 - REEL overrides A/D and releases the directional input first.
