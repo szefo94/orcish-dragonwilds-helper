@@ -134,7 +134,7 @@ class FishingPanel:
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False
         if self.show_overlay.get():self.ensure_overlay()
-        a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
+        a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());a.scout_start('fishing',run);self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
         a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING ARMED — switch to the game; F8 stops');self.message.set(('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.')
     def stop(self):
         if self.session:self.session.close();self.session=None
@@ -156,7 +156,12 @@ class FishingPanel:
         try:o,info,error=self.session.results.get_nowait()
         except queue.Empty:return
         if error:a.stop(error);return
-        a.ctrl.observe(o,now)
+        before_held=a.ctrl.held;before_state=a.ctrl.state;a.ctrl.observe(o,now)
+        a.scout_event('vision','fishing_observation',{'color':o.color,'text':o.text[:240],'stop':info.get('active'),'pull_left':info.get('pull_left'),'pull_right':info.get('pull_right'),'red':info.get('red'),'blue':info.get('blue')},
+            mono=o.stamp,latency_ms=info.get('ocr_ms'),fresh_ms=(now-o.stamp)*1000,
+            details={'text_stamp':o.text_stamp,'active_stamp':o.active_stamp,'pull_stamp':o.pull_stamp,'active_score':info.get('active_score'),'ocr_ms':info.get('ocr_ms'),'backend':info.get('backend')},stream='vision')
+        a.scout_event('controller','fishing_decision',{'state':a.ctrl.state,'held':a.ctrl.held,'running':a.ctrl.running},mono=now,
+            details={'previous_state':before_state,'previous_held':before_held,'reason':a.ctrl.reason,'preview':a.ctrl.preview},stream='controller')
         stop_text='YES' if info.get('active') is True else 'NO' if info.get('active') is False else 'N/A';active_score=info.get('active_score')
         score_text='' if active_score is None else f' {active_score:.0%}'
         left_text='YES' if info.get('pull_left') is True else 'NO' if info.get('pull_left') is False else 'N/A'
