@@ -47,4 +47,25 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertEqual(r["auto_picker"]["sent_decisions"],1)
             self.assertEqual(len(r["auto_picker"]["prompt_transitions"]),2)
 
+    def test_all_sessions_generates_combined_reports_and_preserves_raw(self):
+        with tempfile.TemporaryDirectory() as td:
+            s1=self._session(td,"fishing")
+            s2=Path(td)/"scout_sessions"/"20260923-080000-auto";s2.mkdir(parents=True)
+            (s2/"manifest.json").write_text(json.dumps({"schema":1,"session_id":"y","domain":"auto_picker","run":"Live"}),encoding="utf-8")
+            (s2/"summary.json").write_text(json.dumps({"events":2,"reason":"done"}),encoding="utf-8")
+            (s2/"vision.jsonl").write_text(json.dumps({"mono":20.0,"source":"vision","signal":"prompt","value":{"action":"Collect","key":"E","hold":False,"source":"ocr"},"latency_ms":30,"fresh_ms":40})+"\n",encoding="utf-8")
+            (s2/"controller.jsonl").write_text(json.dumps({"mono":20.1,"source":"controller","signal":"decision","value":{"sent":True}})+"\n",encoding="utf-8")
+            (s2/"process.jsonl").write_text("",encoding="utf-8")
+            before={}
+            for s in (s1,s2):
+                before[s.name]={p.name:sha256_file(p) for p in s.iterdir() if p.is_file()}
+            sessions,jp,mp,combo=write_all_reports(td)
+            self.assertEqual(len(sessions),2)
+            self.assertEqual(combo["domains"],{"fishing":1,"auto_picker":1})
+            self.assertTrue(jp.is_file());self.assertTrue(mp.is_file())
+            self.assertEqual(jp.name,"ALL_SESSIONS.json");self.assertEqual(mp.name,"ALL_SESSIONS.md")
+            for s in (s1,s2):
+                after={p.name:sha256_file(p) for p in s.iterdir() if p.is_file()}
+                self.assertEqual(before[s.name],after)
+
 if __name__=="__main__":unittest.main()
