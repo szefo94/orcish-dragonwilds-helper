@@ -18,8 +18,8 @@ class ScoutAnalyzerTests(unittest.TestCase):
             ]
         else:
             vision=[
-                {"mono":1.0,"source":"vision","signal":"prompt","value":{"action":"Collect","key":"E","hold":False,"source":"ocr"},"confidence":.9,"latency_ms":40,"fresh_ms":50},
-                {"mono":2.0,"source":"vision","signal":"prompt","value":None,"latency_ms":35,"fresh_ms":45}
+                {"mono":1.0,"source":"vision","signal":"prompt","value":{"action":"Collect","key":"E","hold":False,"source":"ocr"},"confidence":.9,"latency_ms":40,"fresh_ms":50,"details":{"capture_ms":5,"detect_ms":30,"total_worker_ms":38,"detected_mono":1.04,"consumed_mono":1.05}},
+                {"mono":2.0,"source":"vision","signal":"prompt","value":None,"latency_ms":35,"fresh_ms":45,"details":{"capture_ms":4,"detect_ms":25,"total_worker_ms":32,"detected_mono":2.035,"consumed_mono":2.045}}
             ]
             controller=[{"mono":1.1,"source":"controller","signal":"decision","value":{"sent":True,"held":None,"running":True}}]
         (s/"vision.jsonl").write_text("".join(json.dumps(x)+"\n" for x in vision),encoding="utf-8")
@@ -37,6 +37,8 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertTrue(jp.is_file());self.assertTrue(mp.is_file())
             self.assertEqual(jp.parent,Path(td)/"scout_reports")
             self.assertEqual(r["fishing"]["state_transitions"][-1]["state"],"REEL")
+            self.assertAlmostEqual(r["fishing"]["state_transitions"][0]["duration_s"],.5)
+            self.assertEqual(r["fishing"]["reel_entries"],1)
             self.assertEqual(r["latency_ms"]["median"],85.0)
             self.assertTrue(r["raw_logs_preserved"])
 
@@ -46,6 +48,8 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertEqual(r["auto_picker"]["approved"],1)
             self.assertEqual(r["auto_picker"]["sent_decisions"],1)
             self.assertEqual(len(r["auto_picker"]["prompt_transitions"]),2)
+            self.assertEqual(r["stage_timing_ms"]["capture"]["median"],4.5)
+            self.assertEqual(r["stage_timing_ms"]["detect"]["median"],27.5)
 
     def test_all_sessions_generates_combined_reports_and_preserves_raw(self):
         with tempfile.TemporaryDirectory() as td:
