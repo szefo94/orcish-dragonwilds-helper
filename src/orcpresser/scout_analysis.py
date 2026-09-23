@@ -120,10 +120,15 @@ def markdown(report):
     lines+=["","The analyzer is read-only with respect to data/scout_sessions; generated reports are stored separately."]
     return "\n".join(lines)+"\n"
 
+def session_dirs(root):
+    p=Path(root)/"scout_sessions"
+    if not p.is_dir():return []
+    return sorted((x for x in p.iterdir() if x.is_dir() and (x/"manifest.json").is_file()),key=lambda x:x.stat().st_mtime)
+
 def latest_session(root):
-    p=Path(root)/"scout_sessions";dirs=[x for x in p.iterdir() if x.is_dir()] if p.is_dir() else []
+    dirs=session_dirs(root)
     if not dirs:raise FileNotFoundError("No Scout sessions found")
-    return max(dirs,key=lambda x:x.stat().st_mtime)
+    return dirs[-1]
 
 def write_report(session,data_root=None):
     session=Path(session);report=analyze_session(session);root=Path(data_root) if data_root else session.parent.parent
@@ -132,12 +137,79 @@ def write_report(session,data_root=None):
     jp.write_text(json.dumps(report,indent=2,ensure_ascii=False,default=str),encoding="utf-8");mp.write_text(markdown(report),encoding="utf-8")
     return jp,mp,report
 
+def _merge_stats(reports,key):
+    values=[]
+    for r in reports:
+        s=r.get(key,{})
+        if s.get("count") and s.get("median") is not None:values.append(s.get("median"))
+    return stats(values)
+
+def combined_report(reports):
+    fishing=[r for r in reports if r.get("domain")=="fishing"]
+    auto=[r for r in reports if r.get("domain")=="auto_picker"]
+    out={"schema":1,"generated_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
+         "sessions":len(reports),"domains":{"fishing":len(fishing),"auto_picker":len(auto)},
+         "raw_logs_preserved":True,
+         "vision_latency_session_medians_ms":_merge_stats(reports,"latency_ms"),
+         "vision_freshness_session_medians_ms":_merge_stats(reports,"fresh_ms"),
+         "session_summaries":[]}
+    for r in reports:
+        item={"session":r.get("session"),"domain":r.get("domain"),"run":r.get("run"),
+              "duration_s":r.get("timeline",{}).get("duration_s",0),
+              "vision_latency_median_ms":r.get("latency_ms",{}).get("median"),
+              "vision_freshness_median_ms":r.get("fresh_ms",{}).get("median"),
+              "parse_errors":r.get("counts",{}).get("parse_errors",0)}
+        if "fishing" in r:
+            item["fishing_states"]=[x.get("state") for x in r["fishing"].get("state_transitions",[])]
+            item["fishing_positive_frames"]=r["fishing"].get("positive_frames",{})
+        if "auto_picker" in r:
+            item["auto_picker_approved"]=r["auto_picker"].get("approved",0)
+            item["auto_picker_sent"]=r["auto_picker"].get("sent_decisions",0)
+        out["session_summaries"].append(item)
+    return out
+
+def combined_markdown(report):
+    lines=["# Scout combined analysis","",f"- Sessions: **{report['sessions']}**",
+           f"- Fishing: **{report['domains']['fishing']}**",f"- Auto Picker: **{report['domains']['auto_picker']}**",
+           "- Raw logs preserved: **yes**","","## Cross-session timing",""]
+    lat=report.get("vision_latency_session_medians_ms",{});fresh=report.get("vision_freshness_session_medians_ms",{})
+    lines.append(f"- Session median vision latency: n={lat.get('count',0)}, median={_fmt(lat.get('median'))} ms, p95={_fmt(lat.get('p95'))} ms")
+    lines.append(f"- Session median vision freshness: n={fresh.get('count',0)}, median={_fmt(fresh.get('median'))} ms, p95={_fmt(fresh.get('p95'))} ms")
+    lines+=["","## Sessions",""]
+    for s in report.get("session_summaries",[]):
+        extra=""
+        if s.get("domain")=="fishing":extra=" · states="+"→".join(s.get("fishing_states") or [])
+        elif s.get("domain")=="auto_picker":extra=f" · approved={s.get('auto_picker_approved',0)} · sent={s.get('auto_picker_sent',0)}"
+        lines.append(f"- {s.get('session')} · {s.get('domain')} · {s.get('run')} · {s.get('duration_s',0):.2f}s · latency median={_fmt(s.get('vision_latency_median_ms'))} ms{extra}")
+    lines+=["","Per-session reports remain available beside this combined report in data/scout_reports/. The analyzer never modifies data/scout_sessions/."]
+    return "\n".join(lines)+"\n"
+
+def write_all_reports(data_root="data"):
+    sessions=session_dirs(data_root)
+    if not sessions:raise FileNotFoundError("No Scout sessions found")
+    reports=[]
+    for session in sessions:
+        _,_,r=write_report(session,data_root);reports.append(r)
+    combo=combined_report(reports);outdir=Path(data_root)/"scout_reports";outdir.mkdir(parents=True,exist_ok=True)
+    jp=outdir/"ALL_SESSIONS.json";mp=outdir/"ALL_SESSIONS.md"
+    jp.write_text(json.dumps(combo,indent=2,ensure_ascii=False,default=str),encoding="utf-8")
+    mp.write_text(combined_markdown(combo),encoding="utf-8")
+    return sessions,jp,mp,combo
+
 def main(argv=None):
     ap=argparse.ArgumentParser(description="Analyze Scout logs without modifying raw sessions.")
     ap.add_argument("session",nargs="?",help="Path to one data/scout_sessions/<session> directory")
-    ap.add_argument("--data",default="data",help="Data root used by --latest and report output")
-    ap.add_argument("--latest",action="store_true",help="Analyze the newest Scout session")
+    ap.add_argument("--data",default="data",help="Data root used by --latest/--all and report output")
+    group=ap.add_mutually_exclusive_group()
+    group.add_argument("--latest",action="store_true",help="Analyze the newest Scout session")
+    group.add_argument("--all",action="store_true",help="Analyze every Scout session and build a combined summary")
     args=ap.parse_args(argv)
+    if args.all:
+        sessions,j,m,_=write_all_reports(args.data)
+        print(f"Analyzed {len(sessions)} Scout sessions")
+        print(f"Combined JSON: {j}");print(f"Combined Markdown: {m}")
+        print("Individual reports were also refreshed. Raw Scout logs were read only and left unchanged.")
+        return 0
     session=latest_session(args.data) if args.latest or not args.session else Path(args.session)
     j,m,_=write_report(session,args.data)
     print(f"Analyzed {session}");print(f"JSON: {j}");print(f"Markdown: {m}");print("Raw Scout logs were read only and left unchanged.")

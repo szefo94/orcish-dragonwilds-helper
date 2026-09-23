@@ -298,4 +298,8 @@ Analyze the newest session with:
 
     python src/orcpresser/scout_analysis.py --latest
 
-The analyzer writes separate JSON and Markdown reports under data/scout_reports/. It never edits, truncates, moves, or deletes the original Scout session files; every report includes SHA-256 hashes of the raw files used.
+Analyze every Auto Picker and Fishing Scout session and build a combined summary with:
+
+    python src/orcpresser/scout_analysis.py --all
+
+`--all` refreshes the individual per-session reports and additionally writes `data/scout_reports/ALL_SESSIONS.json` and `ALL_SESSIONS.md`, with cross-session timing and per-domain summaries. The analyzer never edits, truncates, moves, or deletes the original Scout session files; every per-session report includes SHA-256 hashes of the raw files used.
