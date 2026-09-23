@@ -26,6 +26,7 @@ function Ensure-Elevated {
     Write-Host "Requesting elevation..."
     $args = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$PSCommandPath)
     if ($GameExe) { $args += @("-GameExe",$GameExe) }
+    $args += "-NoExit"
     $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList $args
     exit $p.ExitCode
 }
@@ -290,4 +291,7 @@ Write-Host "  3. Close Dragonwilds."
 Write-Host "  4. Run Setup.cmd option 8 (Telemetry toolkit status)."
 Write-Host ""
 Write-Host "Success means UE4SS no longer ends with 'PS scan timed out' and OrcishScout writes bridge_start/bridge_ready."
+Write-Host ""
+Write-Host "Press Enter to close this elevated recovery window."
+[void](Read-Host)
 exit 0
