@@ -292,4 +292,10 @@ No general open-source license has been selected. See [RIGHTS.md](RIGHTS.md) for
 
 ## Scout research
 
-Research/design for parallel visual + process/Unreal telemetry across Auto Picker and Fishing is documented in [`docs/SCOUT_RESEARCH.md`](docs/SCOUT_RESEARCH.md). The proposed first step is parallel logging and offline correlation; experimental process/reflection backends remain optional.
+Research/design for parallel visual + process/Unreal telemetry across Auto Picker and Fishing is documented in [docs/SCOUT_RESEARCH.md](docs/SCOUT_RESEARCH.md). Scout sessions are recorded under data/scout_sessions/ and are treated as immutable raw evidence.
+
+Analyze the newest session with:
+
+    python src/orcpresser/scout_analysis.py --latest
+
+The analyzer writes separate JSON and Markdown reports under data/scout_reports/. It never edits, truncates, moves, or deletes the original Scout session files; every report includes SHA-256 hashes of the raw files used.
