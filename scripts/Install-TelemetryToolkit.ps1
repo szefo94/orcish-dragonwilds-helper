@@ -43,7 +43,7 @@ function Invoke-GitHubLatestAsset {
 
 function Get-SteamLibraries {
     $roots = New-Object System.Collections.Generic.List[string]
-    $steam = Join-Path \${env:ProgramFiles(x86)} "Steam"
+    $steam = Join-Path ${env:ProgramFiles(x86)} "Steam"
     if (Test-Path $steam) { $roots.Add($steam) }
     $vdf = Join-Path $steam "steamapps\libraryfolders.vdf"
     if (Test-Path $vdf) {
@@ -180,7 +180,7 @@ function Install-ReClass {
 
 function Install-CheatEngine {
     Write-Section "Cheat Engine"
-    $known = Get-ChildItem @($env:ProgramFiles,\${env:ProgramFiles(x86)}) -Filter "cheatengine-x86_64.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $known = Get-ChildItem @($env:ProgramFiles,${env:ProgramFiles(x86)}) -Filter "cheatengine-x86_64.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($known) { Write-Ok "Cheat Engine found: $($known.FullName)"; return }
     Write-Warn "No reliable current winget package. Downloading latest PUBLIC installer from official cheat-engine/cheat-engine GitHub release."
     $exe = Invoke-GitHubLatestAsset -Repository "cheat-engine/cheat-engine" -Patterns @('(?i)\.exe$') -Destination $DownloadRoot
@@ -212,12 +212,12 @@ function Show-Status {
     $reclass = Get-ChildItem (Join-Path $ExternalRoot "ReClass.NET") -Filter "ReClass.NET.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($reclass) { Write-Ok "ReClass.NET: $($reclass.FullName)" } else { Write-Bad "ReClass.NET" }
 
-    $ce = Get-ChildItem @($env:ProgramFiles,\${env:ProgramFiles(x86)}) -Filter "cheatengine-x86_64.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $ce = Get-ChildItem @($env:ProgramFiles,${env:ProgramFiles(x86)}) -Filter "cheatengine-x86_64.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($ce) { Write-Ok "Cheat Engine: $($ce.FullName)" } else { Write-Bad "Cheat Engine" }
 
     if (Test-Command "wpr.exe") { Write-Ok "WPR available" } else { Write-Bad "WPR" }
     if (Test-Command "wpa.exe") { Write-Ok "WPA available" } else {
-        $wpa = Get-ChildItem "\${env:ProgramFiles(x86)}\Windows Kits" -Filter "wpa.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        $wpa = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits" -Filter "wpa.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($wpa) { Write-Ok "WPA installed: $($wpa.FullName)" } else { Write-Bad "WPA / Windows Performance Toolkit" }
     }
 
