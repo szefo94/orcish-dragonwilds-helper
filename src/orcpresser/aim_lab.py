@@ -13,7 +13,7 @@ import numpy as np
 class AimOverlay:
     def __init__(self,root):
         self.window=tk.Toplevel(root);self.window.withdraw();self.window.overrideredirect(True)
-        self.window.configure(bg="#010101");self.window.attributes("-topmost",True)
+        self.window.configure(bg="#010101");self.window.attributes("-topmost",True);self.window.attributes("-alpha",.55)
         self.canvas=tk.Canvas(self.window,bg="#010101",highlightthickness=0);self.canvas.pack(fill="both",expand=True)
         self.available=False
         try:
@@ -32,7 +32,7 @@ class AimOverlay:
             self.available=bool(u.SetWindowDisplayAffinity(hwnd,0x11))
         except Exception:self.available=False
 
-    def show(self,client,tracks,impact=None):
+    def show(self,client,tracks,motions=None,impact=None):
         if not self.available:return
         x,y,w,h=client;self.window.geometry(f"{w}x{h}{x:+d}{y:+d}");self.window.update_idletasks()
         ctypes.windll.user32.ShowWindow(self.hwnd,4)
@@ -41,13 +41,24 @@ class AimOverlay:
         c.create_line(cx-9,cy,cx+9,cy,fill="#f0d698",width=1);c.create_line(cx,cy-9,cx,cy+9,fill="#f0d698",width=1)
         for t in tracks:
             bx,by,bw,bh=t["bbox"];score=t.get("score",0.0);tid=t["id"]
-            col="#98c657" if score>=.70 else "#f0d698" if score>=.55 else "#d0623f"
+            # Do not draw weak template matches: these were the source of floating boxes on HUD/background.
+            if score<.60:continue
+            col="#98c657" if score>=.78 else "#f0d698"
             c.create_rectangle(bx,by,bx+bw,by+bh,outline=col,width=2)
             hh=max(6,int(bh*.28))
             c.create_rectangle(bx,by,bx+bw,by+hh,outline="#d9b55b",dash=(3,2),width=1)
             c.create_text(bx,max(10,by-12),text=f"T{tid} {score:.2f}",anchor="w",fill=col,font=("Consolas",10,"bold"))
+            reason=t.get("reason",f"seed template match {score:.2f}")
+            c.create_text(bx,min(h-8,by+bh+4),text=reason,anchor="nw",fill=col,font=("Consolas",8),width=max(100,bw+90))
             tx=bx+bw/2;ty=by+hh/2
             c.create_line(cx,cy,tx,ty,fill="#6f7861",dash=(2,3))
+        for i,m in enumerate((motions or [])[:6],1):
+            bx,by,bw,bh=m["bbox"];score=m.get("score",0.0)
+            if score<.22:continue
+            col="#35d9ff"
+            c.create_rectangle(bx,by,bx+bw,by+bh,outline=col,width=2,dash=(5,3))
+            c.create_text(bx,max(10,by-12),text=f"M{i} {score:.2f}",anchor="w",fill=col,font=("Consolas",9,"bold"))
+            c.create_text(bx,min(h-8,by+bh+4),text=m.get("reason","localized motion"),anchor="nw",fill=col,font=("Consolas",8),width=max(100,bw+100))
         if impact:
             txt=f"impact candidate  Δ={impact.get('change',0):.3f}  bright={impact.get('bright',0):.3f}  warm={impact.get('warm',0):.3f}"
             c.create_text(20,22,text=txt,anchor="nw",fill="#f0d698",font=("Consolas",10,"bold"))
@@ -71,12 +82,48 @@ def impact_features(frame,previous=None):
     return {"bright":bright,"warm":warm,"yellow":yellow,"change":change}
 
 
+def moving_candidates(frame,previous,max_targets=6):
+    """Find localized motion in the gameplay area; skip HUD edges and global camera sweeps."""
+    if frame is None or previous is None or frame.shape!=previous.shape:return []
+    h,w=frame.shape[:2]
+    diff=cv2.absdiff(frame,previous);gray=cv2.cvtColor(diff,cv2.COLOR_BGR2GRAY)
+    global_change=float(np.mean(gray))/255.0
+    # When the whole view is rotating, motion contours are not evidence of an independently moving target.
+    if global_change>.095:return []
+    blur=cv2.GaussianBlur(gray,(5,5),0)
+    mask=cv2.threshold(blur,24,255,cv2.THRESH_BINARY)[1]
+    # Exclude HUD-prone edges: top radar/captions, bottom action UI, and extreme side strips.
+    playable=np.zeros_like(mask)
+    y1=max(1,int(h*.16));y2=max(y1+1,int(h*.88));x1=max(1,int(w*.06));x2=max(x1+1,int(w*.94))
+    playable[y1:y2,x1:x2]=255;mask=cv2.bitwise_and(mask,playable)
+    k=cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(7,7))
+    mask=cv2.morphologyEx(mask,cv2.MORPH_CLOSE,k,iterations=2)
+    contours,_=cv2.findContours(mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    out=[]
+    frame_area=float(w*h)
+    for cnt in contours:
+        area=float(cv2.contourArea(cnt))
+        if area<220 or area>frame_area*.08:continue
+        x,y,bw,bh=cv2.boundingRect(cnt)
+        if bw<12 or bh<12:continue
+        pad=max(8,int(max(bw,bh)*.12))
+        bx=max(x1,x-pad);by=max(y1,y-pad);ex=min(x2,x+bw+pad);ey=min(y2,y+bh+pad)
+        bw2=ex-bx;bh2=ey-by
+        if bw2<18 or bh2<18:continue
+        local=float(np.mean(gray[by:ey,bx:ex]))/255.0
+        score=min(1.0,(area/1800.0)*.35+local*3.5)
+        out.append({"bbox":[int(bx),int(by),int(bw2),int(bh2)],"score":score,
+                    "reason":f"localized motion Δ={local:.3f} area={int(area)}","source":"motion"})
+    out.sort(key=lambda x:x["score"],reverse=True)
+    return out[:max_targets]
+
+
 class AimTrackerSession:
     def __init__(self,io,target,event_cb,overlay,interval=.10,max_targets=8):
         self.io=io;self.target=target;self.event_cb=event_cb;self.overlay=overlay
         self.interval=max(.05,float(interval));self.max_targets=max_targets;self.closed=threading.Event()
         self.lock=threading.RLock();self.frame=None;self.client=None;self.tracks=[];self.next_id=1
-        self.latest=queue.Queue(maxsize=1);self.previous_impact=None;self.history=deque(maxlen=12)
+        self.latest=queue.Queue(maxsize=1);self.previous_impact=None;self.previous_frame=None;self.history=deque(maxlen=12)
         self.thread=threading.Thread(target=self._run,daemon=True,name="aim-lab");self.thread.start()
 
     def close(self):
@@ -96,13 +143,17 @@ class AimTrackerSession:
         if not ctypes.windll.user32.GetCursorPos(ctypes.byref(p)):return None
         return int(p.x),int(p.y)
 
-    def acquire_at_cursor(self,width=90,height=140):
+    def acquire_at_cursor(self,width=90,height=140,prefer_crosshair=True):
         with self.lock:
             if self.frame is None or self.client is None:return False,"No game frame yet."
-            cur=self._cursor()
-            if not cur:return False,"Could not read cursor position."
-            x,y,w,h=self.client;cx,cy=cur;rx,ry=cx-x,cy-y
-            if not (0<=rx<w and 0<=ry<h):return False,"Move the cursor over the game target first."
+            x,y,w,h=self.client
+            if prefer_crosshair:
+                rx,ry=w//2,h//2;source="crosshair"
+            else:
+                cur=self._cursor()
+                if not cur:return False,"Could not read cursor position."
+                cx,cy=cur;rx,ry=cx-x,cy-y;source="cursor"
+                if not (0<=rx<w and 0<=ry<h):return False,"Move the cursor over the game target first."
             bw=min(max(24,int(width)),w);bh=min(max(24,int(height)),h)
             bx=max(0,min(w-bw,int(rx-bw/2)));by=max(0,min(h-bh,int(ry-bh/2)))
             crop=self.frame[by:by+bh,bx:bx+bw].copy()
@@ -112,8 +163,8 @@ class AimTrackerSession:
             self.tracks.append({"id":tid,"bbox":[bx,by,bw,bh],"template":gray,"score":1.0,"lost":0,"age":0})
             self.tracks=self.tracks[-self.max_targets:]
             now=time.monotonic()
-            self.event_cb("annotation","target_seed",{"id":tid,"bbox":[bx,by,bw,bh]},mono=now,stream="annotations")
-            return True,f"Target T{tid} acquired at cursor."
+            self.event_cb("annotation","target_seed",{"id":tid,"bbox":[bx,by,bw,bh],"source":source},mono=now,stream="annotations")
+            return True,f"Target T{tid} seeded at {source}; template tracking begins."
 
     def clear(self):
         with self.lock:self.tracks=[]
@@ -136,7 +187,8 @@ class AimTrackerSession:
         _,score,_,loc=cv2.minMaxLoc(res)
         nbx=sx+loc[0];nby=sy+loc[1]
         t["score"]=float(score);t["age"]+=1
-        if score>=.48:
+        # A low-score match is treated as lost rather than jumping the rectangle to unrelated HUD/background.
+        if score>=.60:
             t["bbox"]=[int(nbx),int(nby),bw,bh];t["lost"]=0
             if score>=.82 and t["age"]%8==0:
                 fresh=gray[nby:nby+bh,nbx:nbx+bw]
@@ -155,6 +207,8 @@ class AimTrackerSession:
                 client=self.io.rect(self.target);x,y,w,h=client
                 if w<100 or h<100:raise RuntimeError("Game is minimized or capture size is invalid")
                 frame=grab.grab({"left":x,"top":y,"width":w,"height":h});gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+                motions=moving_candidates(frame,self.previous_frame);self.previous_frame=frame.copy()
+                for m in motions:self.event_cb("vision","motion_candidate",m,confidence=m.get("score"),mono=started,stream="vision")
                 with self.lock:
                     self.frame=frame;self.client=client
                     updated=[]
@@ -169,7 +223,8 @@ class AimTrackerSession:
                         dx=cx-w/2;dy=cy-h/2
                         item={"id":t["id"],"bbox":list(t["bbox"]),"score":t["score"],"lost":t["lost"],
                               "head_candidate":[bx,by,bw,hh],"crosshair_error":[round(dx,2),round(dy,2)],
-                              "normalized":[bx/w,by/h,bw/w,bh/h]}
+                              "normalized":[bx/w,by/h,bw/w,bh/h],
+                              "reason":f"seed template match {t['score']:.2f}","source":"template"}
                         public.append(item)
                         self.event_cb("vision","aim_track",item,confidence=t["score"],mono=started,stream="vision")
                 rw=max(80,int(w*.45));rh=max(70,int(h*.32));rx=max(0,(w-rw)//2);ry=max(0,int(h*.18))
@@ -178,8 +233,8 @@ class AimTrackerSession:
                 candidate=impact.get("change",0)>.025 and (impact.get("bright",0)>.015 or impact.get("warm",0)>.003 or impact.get("yellow",0)>.003)
                 impact["candidate"]=bool(candidate);impact["roi"]=[rx,ry,roi.shape[1],roi.shape[0]]
                 if candidate:self.event_cb("vision","impact_candidate",impact,mono=started,stream="vision")
-                self.overlay.show(client,public,impact if candidate else None)
-                self._offer({"foreground":True,"tracks":public,"impact":impact})
+                self.overlay.show(client,public,motions,impact if candidate else None)
+                self._offer({"foreground":True,"tracks":public,"motions":motions,"impact":impact})
                 self.closed.wait(max(0.,self.interval-(time.monotonic()-started)))
         except Exception as e:
             self.overlay.hide();self._offer({"error":type(e).__name__+": "+str(e)})
@@ -235,7 +290,7 @@ class AimLabPanel:
 
     def acquire(self):
         if not self.session:self.status.set("Start tracking first.");return
-        try:self._persist_size();ok,msg=self.session.acquire_at_cursor(self.box_w.get(),self.box_h.get())
+        try:self._persist_size();ok,msg=self.session.acquire_at_cursor(self.box_w.get(),self.box_h.get(),prefer_crosshair=True)
         except Exception as e:ok,msg=False,str(e)
         self.status.set(msg)
 
@@ -256,8 +311,8 @@ class AimLabPanel:
         if latest is None:return
         if latest.get("error"):self.live.set("ERROR: "+latest["error"]);return
         if not latest.get("foreground"):self.live.set("Game not foreground — tracking paused.");return
-        tracks=latest.get("tracks") or [];impact=latest.get("impact") or {}
-        lines=[f"tracks={len(tracks)}  impactΔ={impact.get('change',0):.3f}  candidate={impact.get('candidate',False)}"]
+        tracks=latest.get("tracks") or [];motions=latest.get("motions") or [];impact=latest.get("impact") or {}
+        lines=[f"template tracks={len(tracks)}  motion candidates={len(motions)}  impactΔ={impact.get('change',0):.3f}"]
         for t in tracks[:6]:
             lines.append(f"T{t['id']} score={t['score']:.2f} bbox={t['bbox']} head={t['head_candidate']} err={t['crosshair_error']}")
         self.live.set("\n".join(lines))
