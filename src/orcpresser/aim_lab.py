@@ -374,7 +374,7 @@ class AimLabPanel:
         s=self.session;self.session=None
         if s:s.close()
         self.overlay.hide()
-        if getattr(self.app,"scout",None):self.app.scout_stop("Aim Lab stopped")
+        if s and getattr(self.app,"scout",None):self.app.scout_stop("Aim Lab stopped")
         self.live.set("No target tracks yet.")
         if s:self.status.set("Stopped. Aim/Scout logs preserved in data/scout_sessions.")
 
