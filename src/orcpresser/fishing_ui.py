@@ -64,7 +64,8 @@ class FishingPanel:
         overlay=self.ensure_overlay()
         if not overlay.available:
             self.message.set('Overlay is unavailable on this system/capture mode.');return
-        overlay.show(a.io.rect(a.target),self.regions,caption,{'spot':None,'app_minimized':a.root.state()=='iconic','running':bool(getattr(a.ctrl,'running',False)),'preview':bool(getattr(a.ctrl,'preview',False)),'state':getattr(a.ctrl,'state','IDLE'),'held':getattr(a.ctrl,'held',None)})
+        shared_hud_visible=a.root.state()=='iconic' or (hasattr(a,'opacity') and a.opacity.get()==0)
+        overlay.show(a.io.rect(a.target),self.regions,caption,{'spot':None,'app_minimized':a.root.state()=='iconic','shared_hud_visible':shared_hud_visible,'running':bool(getattr(a.ctrl,'running',False)),'preview':bool(getattr(a.ctrl,'preview',False)),'state':getattr(a.ctrl,'state','IDLE'),'held':getattr(a.ctrl,'held',None)})
     def overlay_changed(self):
         self.app.persist('fishing_show_overlay',self.show_overlay.get())
         if self.show_overlay.get():self.refresh_overlay()
@@ -207,7 +208,8 @@ class FishingPanel:
         elif a.ctrl.state=='BITE_PENDING':caption+='\nSTOP disappeared — high-attention bite window; waiting for BAR/PULL confirmation.'
         self.message.set(caption+'\n'+o.text[:180]+'\n'+a.ctrl.reason);a.scan_ms=info['ocr_ms'];a.capture_backend=info['backend']
         if self.show_overlay.get():
-            overlay_info=dict(info);overlay_info.update(app_minimized=a.root.state()=='iconic',running=a.ctrl.running,preview=a.ctrl.preview,state=a.ctrl.state,held=a.ctrl.held)
+            shared_hud_visible=a.root.state()=='iconic' or (hasattr(a,'opacity') and a.opacity.get()==0)
+            overlay_info=dict(info);overlay_info.update(app_minimized=a.root.state()=='iconic',shared_hud_visible=shared_hud_visible,running=a.ctrl.running,preview=a.ctrl.preview,state=a.ctrl.state,held=a.ctrl.held)
             self.ensure_overlay().show(a.io.rect(a.target),self.regions,caption,overlay_info)
         elif self.overlay:self.overlay.hide()
         if not a.ctrl.running:a.stop(a.ctrl.reason)
