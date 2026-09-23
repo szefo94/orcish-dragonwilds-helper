@@ -7,6 +7,7 @@ the same Scout timeline. It never writes game memory and never moves the mouse.
 from __future__ import annotations
 from pathlib import Path
 import ctypes, csv, json, math, os, queue, struct, sys, threading, time
+import numpy as np
 
 WATCH_TYPES={"u8":("B",1),"u16":("H",2),"u32":("I",4),"i32":("i",4),"f32":("f",4),"f64":("d",8)}
 
@@ -358,7 +359,7 @@ class ScoutLabPanel:
         self.app.scout_start("scout_lab","Research")
         try:
             folder=self.app.scout.folder if getattr(self.app,"scout",None) else self.app.folder
-            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get())
+            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode="auto")
             self.status.set("RECORDING — LMB creates screenshot bursts; label them later in this session's labels.csv.")
         except Exception as e:
             self.app.scout_stop("Scout Lab start failed");self.session=None;self.status.set("Start failed: "+str(e))
@@ -369,12 +370,13 @@ class ScoutLabPanel:
         if getattr(self.app,"scout",None):self.app.scout_stop("Scout Lab stopped")
         if s:self.status.set("Stopped. Raw Scout Lab logs preserved in data/scout_sessions.")
 
-    def start_sidecar(self):
+    def start_sidecar(self,domain=None):
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
         try:
-            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get())
+            focus_mode="crosshair" if domain=="aim" else "auto"
+            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode)
             self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get(),
-                                 "lmb_samples":self.capture_lmb.get()},stream="system")
+                                 "lmb_samples":self.capture_lmb.get(),"focus_mode":focus_mode},stream="system")
         except Exception as e:
             self.sidecar=None
             self.app.scout_event("system","sidecar_error",type(e).__name__+": "+str(e),stream="system")
