@@ -161,19 +161,29 @@ class FishingPanel:
         except queue.Empty:return
         if error:a.stop(error);return
         before_held=a.ctrl.held;before_state=a.ctrl.state;a.ctrl.observe(o,now)
-        a.scout_event('vision','fishing_observation',{'color':o.color,'text':o.text[:240],'stop':info.get('active'),'pull_left':info.get('pull_left'),'pull_right':info.get('pull_right'),'red':info.get('red'),'blue':info.get('blue')},
+        a.scout_event('vision','fishing_observation',{'color':o.color,'text':o.text[:240],'stop':info.get('active'),
+            'pull_left':info.get('pull_left'),'pull_right':info.get('pull_right'),'pull_direction':info.get('pull_direction'),
+            'pull_confidence':info.get('pull_confidence'),'pull_left_score':info.get('pull_left_score'),'pull_right_score':info.get('pull_right_score'),
+            'reel_visible':info.get('reel_visible'),'reel_score':info.get('reel_score'),'red':info.get('red'),'blue':info.get('blue')},
             mono=o.stamp,latency_ms=info.get('ocr_ms'),fresh_ms=(now-o.stamp)*1000,
-            details={'text_stamp':o.text_stamp,'active_stamp':o.active_stamp,'pull_stamp':o.pull_stamp,'active_score':info.get('active_score'),'ocr_ms':info.get('ocr_ms'),'backend':info.get('backend')},stream='vision')
+            details={'text_stamp':o.text_stamp,'active_stamp':o.active_stamp,'pull_stamp':o.pull_stamp,
+                     'pull_visual_stamp':info.get('pull_visual_stamp'),'reel_stamp':info.get('reel_stamp'),
+                     'active_score':info.get('active_score'),'ocr_regions':info.get('ocr_regions'),
+                     'ocr_ms':info.get('ocr_ms'),'backend':info.get('backend')},stream='vision')
         a.scout_event('controller','fishing_decision',{'state':a.ctrl.state,'held':a.ctrl.held,'running':a.ctrl.running},mono=now,
             details={'previous_state':before_state,'previous_held':before_held,'reason':a.ctrl.reason,'preview':a.ctrl.preview},stream='controller')
         stop_text='YES' if info.get('active') is True else 'NO' if info.get('active') is False else 'N/A';active_score=info.get('active_score')
         score_text='' if active_score is None else f' {active_score:.0%}'
         left_text='YES' if info.get('pull_left') is True else 'NO' if info.get('pull_left') is False else 'N/A'
         right_text='YES' if info.get('pull_right') is True else 'NO' if info.get('pull_right') is False else 'N/A'
-        caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}';caption+=f'\nSTOP {stop_text}{score_text} | PULL L {left_text} | PULL R {right_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
+        pd=info.get('pull_direction') or '—';pc=float(info.get('pull_confidence') or 0);rv='YES' if info.get('reel_visible') else 'NO'
+        caption=f'{"PREVIEW" if a.ctrl.preview else "LIVE"}  {a.ctrl.state} | {o.color} | {"would hold" if a.ctrl.preview else "holding"}: {a.ctrl.held or "none"}'
+        caption+=f'\nSTOP {stop_text}{score_text} | PULL visual {pd} {pc:.0%} (L {float(info.get("pull_left_score") or 0):.0%}/R {float(info.get("pull_right_score") or 0):.0%}) | REEL visual {rv} {float(info.get("reel_score") or 0):.0%}'
+        caption+=f'\nOCR PULL L {left_text} / R {right_text} | red {info["red"]:.0%} blue {info["blue"]:.0%} | OCR {info["ocr_ms"]:.0f} ms | frame {(now-o.stamp)*1000:.0f} ms'
         if a.ctrl.state in ('FAILED','DEPLETED'):caption+='\nNO FISH / DEPLETED — move manually, then NEW SPOT / REACQUIRE.'
         elif a.ctrl.state=='WAIT_CAST':caption+='\nROUND ENDED — cast again manually; waiting for STOP Fishing.'
         elif a.ctrl.state=='WAIT_BITE':caption+='\nSTOP Fishing visible — waiting for bite / PULL L-R.'
+        elif a.ctrl.state=='BITE_PENDING':caption+='\nSTOP disappeared — high-attention bite window; waiting for BAR/PULL confirmation.'
         self.message.set(caption+'\n'+o.text[:180]+'\n'+a.ctrl.reason);a.scan_ms=info['ocr_ms'];a.capture_backend=info['backend']
         if self.show_overlay.get():
             overlay_info=dict(info);overlay_info.update(app_minimized=a.root.state()=='iconic',running=a.ctrl.running,preview=a.ctrl.preview,state=a.ctrl.state,held=a.ctrl.held)
