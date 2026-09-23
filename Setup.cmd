@@ -17,8 +17,8 @@ echo   3  Back to CPU runtime           undo 2
 echo   4  Start once in SAFE mode       defaults, learned data not loaded
 echo   5  Run self-tests
 echo   6  Clean up old files            backups, old zips, caches - shows what first
-echo   7  Install telemetry extras       optional Frida integration for Scout
-echo   8  Telemetry status / help        show optional under-the-hood prerequisites
+echo   7  Install telemetry toolkit      Frida + UE4SS + research tools
+echo   8  Telemetry toolkit status       check everything without installing
 echo   Q  Quit
 echo.
 set "ACTION="
@@ -111,22 +111,16 @@ goto end_ok
 :telemetry
 if not exist "%PY%" goto noinstall
 echo.
-echo   Installing optional Scout telemetry Python dependencies...
-"%PY%" -m pip install -r src\requirements-telemetry.txt
+echo   Starting guided telemetry toolkit installer...
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\Install-TelemetryToolkit.ps1" -Install -All
 if errorlevel 1 goto failed
-goto telemetry_check
+goto end_ok
 
 :telemetry_check
 if not exist "%PY%" goto noinstall
 echo.
-echo   Scout telemetry status
-echo   ----------------------
-"%PY%" -c "import importlib.util; print('Frida Python package: ' + ('INSTALLED' if importlib.util.find_spec('frida') else 'NOT INSTALLED'))"
-echo   ReadProcessMemory watches: BUILT IN (Windows API, no extra package)
-echo   UE4SS bridge: EXTERNAL / MANUAL install into the game directory
-echo      Template: tools\ue4ss\OrcishScout\scripts\main.lua
-echo      Guide:    docs\INTERNAL_TELEMETRY.md
-echo   Cheat Engine / ReClass.NET / x64dbg / WPR: EXTERNAL research tools, not Orcish runtime dependencies
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\Install-TelemetryToolkit.ps1" -CheckOnly
+if errorlevel 1 goto failed
 goto end_ok
 
 :nopython
