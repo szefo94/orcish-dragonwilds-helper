@@ -1143,7 +1143,7 @@ class App:
         # Destroy feature-owned overlays after their worker threads have stopped.
         if getattr(self,'fishing_panel',None):self.fishing_panel.shutdown()
         if getattr(self,'aim_lab',None):self.aim_lab.shutdown()
-        if getattr(self,'scout_lab',None):self.scout_lab.stop()
+        if getattr(self,'scout_lab',None):self.scout_lab.shutdown()
         if getattr(self,'settings',None):
             try:self.save_window()
             except tk.TclError:pass
