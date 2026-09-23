@@ -1201,10 +1201,12 @@ class App:
                     if self.armed:
                         if fg==self.target:self.armed=False;self.status.set('TEST RUNNING — hands off mouse and keyboard; F8 aborts' if getattr(self,'bench',None) else 'SCOUTING — PREVIEW, no keys sent' if self.mode=='Auto' and self.run=='Preview' else 'LIVE — '+self.mode)
                     else:
-                        # Foreground focus controls stopping; pointer position does not.
-                        self.ctrl.tick(now,fg==self.target)
+                        # Fishing capture is asynchronous. Consume the newest queued observation
+                        # before the stale watchdog runs, otherwise a short UI-thread hiccup can
+                        # stop a healthy fishing session while a fresh frame is already waiting.
+                        if self.mode=='Fishing':self.fishing_panel.tick(now,fg)
+                        if self.ctrl.running:self.ctrl.tick(now,fg==self.target)
                         if not self.ctrl.running:self.stop(getattr(self.ctrl,'reason','STOPPED — finished or target lost focus'))
-                    if self.ctrl.running and not self.armed and self.mode=='Fishing':self.fishing_panel.tick(now,fg)
                     if self.ctrl.running and not self.armed and getattr(self,'bench',None):self.bench_tick(now)
                     if self.ctrl.running and not self.armed and (self.mode=='Auto' or getattr(self,'bench',None)) and not self.busy and now-self.last_scan>=SCAN_GAP:
                         # Do not capture an area covered by our own panel.
