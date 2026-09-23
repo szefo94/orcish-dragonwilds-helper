@@ -459,7 +459,7 @@ class ScoutLabPanel:
         if s:s.close()
         # Stop a sidecar even if its recorder was already closed elsewhere.
         self.stop_sidecar()
-        if getattr(self.app,"scout",None):self.app.scout_stop("Scout Lab stopped")
+        if s and getattr(self.app,"scout",None):self.app.scout_stop("Scout Lab stopped")
         self.live.set("No samples yet.")
         if s:self.status.set("Stopped. Raw Scout Lab logs preserved in data/scout_sessions.")
 
