@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 import ctypes, csv, json, math, os, queue, struct, sys, threading, time
 import numpy as np
+from internal_telemetry import InternalTelemetryHub, parse_function_hook, FridaFunctionProvider
 
 WATCH_TYPES={"u8":("B",1),"u16":("H",2),"u32":("I",4),"i32":("i",4),"u64":("Q",8),"i64":("q",8),"ptr":("Q",8),"f32":("f",4),"f64":("d",8)}
 CANDIDATE_ROLES={
@@ -121,7 +122,7 @@ class ReadOnlyMemory:
 class ScoutLabSession:
     SAMPLE_DELAYS=(0,.25,.60,1.00,1.50)
 
-    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10,focus_mode="auto",candidates=(),active_domain=None):
+    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10,focus_mode="auto",candidates=(),active_domain=None,internal_config=None):
         self.io=io;self.target=target;self.event_cb=event_cb;self.folder=Path(folder)
         self.watches=[parse_watch(x) if isinstance(x,str) else x for x in watches]
         self.active_domain=active_domain
@@ -133,6 +134,7 @@ class ScoutLabSession:
         self.last_cursor=None;self.last_cursor_move=0.
         self.latest=queue.Queue(maxsize=1);self.started=time.monotonic();self.last_process=0.;self.last_crop=0.;self.memory=None
         self.pending_samples=[];self.sample_seq=0;self.sample_count=0
+        self.internal=InternalTelemetryHub(self.io.pid(self.target),self.event_cb,internal_config).start() if internal_config else None
         self.sample_dir=self.folder/"samples";self.context_dir=self.folder/"sample_context";self.labels_path=self.folder/"labels.csv"
         if self.capture_lmb:self._prepare_labels()
         self.thread=threading.Thread(target=self._run,daemon=True,name="scout-lab");self.thread.start()
@@ -144,6 +146,7 @@ class ScoutLabSession:
             t=getattr(self,"thread",None)
             if t and t is not threading.current_thread() and t.is_alive():t.join(timeout=2.0)
         if self.memory:self.memory.close();self.memory=None
+        if self.internal:self.internal.close();self.internal=None
 
     def _offer(self,value):
         try:self.latest.put_nowait(value)
@@ -338,7 +341,8 @@ class ScoutLabSession:
                 mem=self._memory(tick)
                 self._offer({"foreground":True,"cursor":cursor,"inside":inside,"client":rel,"cursor_features":visual,
                              "crosshair_features":cross,"memory":mem,"process":proc,"sample_frames":self.sample_count,
-                             "pending_sample_frames":len(self.pending_samples)})
+                             "pending_sample_frames":len(self.pending_samples),
+                             "internal":None if not self.internal else self.internal.status()})
                 self.closed.wait(max(0.,self.interval-(time.monotonic()-tick)))
         except Exception as e:self._offer({"error":type(e).__name__+": "+str(e)})
 
@@ -356,6 +360,11 @@ class ScoutLabPanel:
         self.save_crops=tk.BooleanVar(value=bool(app.settings.get("scout_save_cursor_crops",False)))
         self.capture_lmb=tk.BooleanVar(value=bool(app.settings.get("scout_capture_lmb_samples",True)))
         self.background=tk.BooleanVar(value=bool(app.settings.get("scout_background_probes",True)))
+        self.bridge_enabled=tk.BooleanVar(value=bool(app.settings.get("scout_internal_bridge_enabled",False)))
+        self.bridge_path=tk.StringVar(value=str(app.settings.get("scout_internal_bridge_path","")))
+        self.frida_enabled=tk.BooleanVar(value=bool(app.settings.get("scout_frida_enabled",False)))
+        self.frida_hook_var=tk.StringVar(value="")
+        self.frida_hooks=list(app.settings.get("scout_frida_hooks",[]) or [])
         self._build(parent)
 
     def _build(self,p):
@@ -399,6 +408,21 @@ class ScoutLabPanel:
         self.candidate_text=tk.StringVar();tk.Label(p,textvariable=self.candidate_text,bg=c["PANEL"],fg=c["MUTED"],justify="left",anchor="w",wraplength=410,font=("Consolas",8)).pack(fill="x")
         self._refresh_candidates()
         self.candidate_domain.trace_add("write",lambda *_:self._sync_roles())
+        tk.Label(p,text="Game-internal telemetry · optional",bg=c["PANEL"],fg=c["GOLD"],anchor="w").pack(fill="x",pady=(10,2))
+        tk.Checkbutton(p,text="Read external JSONL bridge (UE4SS / other producer)",variable=self.bridge_enabled,
+                       command=self._persist_internal,bg=c["PANEL"],fg=c["BONE"],selectcolor="#15200e",
+                       activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
+        tk.Entry(p,textvariable=self.bridge_path,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"],relief="flat").pack(fill="x",pady=2)
+        tk.Checkbutton(p,text="Observe native function entry with Frida (optional package)",variable=self.frida_enabled,
+                       command=self._persist_internal,bg=c["PANEL"],fg=c["BONE"],selectcolor="#15200e",
+                       activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
+        tk.Label(p,text="Frida hook · label=MODULE+0xOFFSET",bg=c["PANEL"],fg=c["MUTED"],anchor="w").pack(fill="x")
+        tk.Entry(p,textvariable=self.frida_hook_var,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"],relief="flat").pack(fill="x")
+        row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
+        tk.Button(row,text="ADD FUNCTION HOOK",command=self.add_frida_hook).pack(side="left")
+        tk.Button(row,text="CLEAR HOOKS",command=self.clear_frida_hooks).pack(side="left",padx=6)
+        self.frida_text=tk.StringVar();tk.Label(p,textvariable=self.frida_text,bg=c["PANEL"],fg=c["MUTED"],justify="left",anchor="w",wraplength=410,font=("Consolas",8)).pack(fill="x")
+        self._refresh_frida()
         tk.Label(p,textvariable=self.status,bg=c["PANEL"],fg=c["GREEN"],justify="left",anchor="w",wraplength=410,font=("Segoe UI",9,"bold")).pack(fill="x",pady=(8,2))
         tk.Label(p,textvariable=self.live,bg="#10150e",fg=c["BONE"],justify="left",anchor="nw",wraplength=410,font=("Consolas",8),height=8).pack(fill="x")
 
@@ -416,6 +440,32 @@ class ScoutLabPanel:
         for x in self.candidates[:10]:
             lines.append(f"  [{x.get('domain','?')}] {x.get('name','?')} → {x.get('role','?')} · {x.get('spec','?')}")
         self.candidate_text.set("Semantic candidates:\n"+"\n".join(lines))
+
+    def _persist_internal(self,*_):
+        self.app.persist("scout_internal_bridge_enabled",self.bridge_enabled.get())
+        self.app.persist("scout_internal_bridge_path",self.bridge_path.get().strip())
+        self.app.persist("scout_frida_enabled",self.frida_enabled.get())
+
+    def _internal_config(self):
+        self._persist_internal()
+        return {"bridge_enabled":self.bridge_enabled.get(),"bridge_path":self.bridge_path.get().strip(),
+                "frida_enabled":self.frida_enabled.get(),"frida_hooks":list(self.frida_hooks)}
+
+    def _refresh_frida(self):
+        avail="installed" if FridaFunctionProvider.available() else "not installed"
+        if not self.frida_hooks:self.frida_text.set(f"Frida: {avail} · hooks: none");return
+        self.frida_text.set(f"Frida: {avail} · hooks:\n"+"\n".join("  "+x for x in self.frida_hooks[:8]))
+
+    def add_frida_hook(self):
+        try:h=parse_function_hook(self.frida_hook_var.get())
+        except Exception as e:self.status.set(str(e));return
+        if h["spec"] not in self.frida_hooks:self.frida_hooks.append(h["spec"])
+        self.app.persist("scout_frida_hooks",self.frida_hooks);self.frida_hook_var.set("");self._refresh_frida()
+        self.status.set("Function hook saved. Restart recording/feature to apply it.")
+
+    def clear_frida_hooks(self):
+        self.frida_hooks=[];self.app.persist("scout_frida_hooks",[]);self._refresh_frida()
+        self.status.set("Frida function hooks cleared.")
 
     def add_candidate(self):
         value={"name":self.candidate_name.get(),"domain":self.candidate_domain.get(),
@@ -449,7 +499,7 @@ class ScoutLabPanel:
         self.app.scout_start("scout_lab","Research")
         try:
             folder=self.app.scout.folder if getattr(self.app,"scout",None) else self.app.folder
-            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode="auto",candidates=self.candidates,active_domain=None)
+            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode="auto",candidates=self.candidates,active_domain=None,internal_config=self._internal_config())
             self.status.set("RECORDING — LMB creates screenshot bursts; label them later in this session's labels.csv.")
         except Exception as e:
             self.app.scout_stop("Scout Lab start failed");self.session=None;self.status.set("Start failed: "+str(e))
@@ -470,9 +520,11 @@ class ScoutLabPanel:
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
         try:
             focus_mode="crosshair" if domain=="aim" else "auto"
-            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode,candidates=self.candidates,active_domain=domain)
+            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode,candidates=self.candidates,active_domain=domain,internal_config=self._internal_config())
             self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get(),
-                                 "lmb_samples":self.capture_lmb.get(),"focus_mode":focus_mode,"semantic_candidates":len(self.candidates)},stream="system")
+                                 "lmb_samples":self.capture_lmb.get(),"focus_mode":focus_mode,"semantic_candidates":len(self.candidates),
+                                 "internal_bridge":self.bridge_enabled.get(),"frida":self.frida_enabled.get(),
+                                 "frida_hooks":len(self.frida_hooks)},stream="system")
         except Exception as e:
             self.sidecar=None
             self.app.scout_event("system","sidecar_error",type(e).__name__+": "+str(e),stream="system")
@@ -505,6 +557,8 @@ class ScoutLabPanel:
                f"crosshair BGR={(latest.get('crosshair_features') or {}).get('center_bgr')}",
                f"memory reads={len(mem)} · candidates={len(self.candidates)}",
                f"LMB sample frames={latest.get('sample_frames',0)}  pending={latest.get('pending_sample_frames',0)}"]
+        internal=latest.get("internal") or {}
+        if internal:lines.append(f"internal providers={','.join(internal.get('providers',[])) or 'none'} · events={internal.get('events',0)} · errors={len(internal.get('errors',[]))}")
         for m in mem[:4]:
             lines.append(f"  {m.get('spec')}: {m.get('value') if m.get('ok') else m.get('error')}")
         self.live.set("\n".join(lines))
