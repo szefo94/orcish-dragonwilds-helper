@@ -137,8 +137,12 @@ class ScoutLabSession:
         if self.capture_lmb:self._prepare_labels()
         self.thread=threading.Thread(target=self._run,daemon=True,name="scout-lab");self.thread.start()
 
-    def close(self):
+    def close(self,wait=True):
+        """Stop Scout sampling and release the process handle before returning."""
         self.closed.set()
+        if wait:
+            t=getattr(self,"thread",None)
+            if t and t is not threading.current_thread() and t.is_alive():t.join(timeout=2.0)
         if self.memory:self.memory.close();self.memory=None
 
     def _offer(self,value):
