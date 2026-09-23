@@ -1285,6 +1285,10 @@ def setup_log(folder):
     h=RotatingFileHandler(Path(folder)/'orcpresser.log',maxBytes=256*1024,backupCount=1,encoding='utf-8')
     h.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(threadName)s %(message)s'))
     log.addHandler(h);log.setLevel(logging.INFO)
+    def thread_error(args):
+        log.error('Unhandled thread exception in %s',getattr(args.thread,'name','?'),
+                  exc_info=(args.exc_type,args.exc_value,args.exc_traceback))
+    threading.excepthook=thread_error
 
 if __name__=='__main__':
     moved=migrate_data()             # flat layout (<= 1.9) -> data/, before anything reads settings
