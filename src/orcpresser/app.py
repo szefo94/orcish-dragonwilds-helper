@@ -399,9 +399,12 @@ class App:
                 b.active=active
             else:b.active=False
             b.draw()
-        stop=self.runbuttons['Stop'];stop.label='STOP';stop.enabled=active;stop.active=False;stop.draw()
-        self.global_bind.enabled=not active;self.global_bind.draw()
-        self.global_region.enabled=not active and bool(self.target);self.global_region.draw()
+        if 'Stop' in self.runbuttons:
+            stop=self.runbuttons['Stop'];stop.label='STOP';stop.enabled=active;stop.active=False;stop.draw()
+        if hasattr(self,'global_bind'):
+            self.global_bind.enabled=not active;self.global_bind.draw()
+        if hasattr(self,'global_region'):
+            self.global_region.enabled=not active and bool(getattr(self,'target',0));self.global_region.draw()
         if self.mode=='Scout':
             self.hint.set('Global control: START RECORDING / STOP · sidecar can run with Auto, Fishing or Aim')
         elif self.mode=='Aim':
