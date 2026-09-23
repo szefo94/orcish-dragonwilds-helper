@@ -34,6 +34,7 @@ class FishingConfig:
     bite_timeout: float = 30.
     fight_timeout: float = 90.
     min_stamina: float = .08
+    persistent_session: bool = False
 
     def validate(self):
         for name,low,high in [('cast_seconds',.05,3.),('stale_seconds',.2,2.),('unknown_grace_seconds',.1,2.),('bite_timeout',3.,120.),
@@ -72,7 +73,7 @@ class FishingController:
         self.reel_seen=None;self.reel_count=0;self.reel_absent_count=0
     def start(self,preview=True,trial_only=False):
         self.stop();self.running=True;self.preview=preview;self.trial_only=trial_only
-        self.state='READY';self.reason='Waiting for current fishing evidence';self.started=None
+        self.state='READY';self.reason=('Armed — waiting for Stop Fishing' if self.config.require_active else 'Waiting for current fishing evidence');self.started=None
         self.last_observation=None;self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown';self.text_count=0
         self.text_kind='';self.text_seen=None;self.direction=self.config.first_pull;self.base_count=self.count
         self.changed=0.;self.cast_until=0.;self.unknown_since=None;self.active_seen=None;self.active_count=0;self.inactive_count=0;self.active_was_seen=False
@@ -91,28 +92,41 @@ class FishingController:
     def stop(self,reason='Stopped'):
         self.release();self.running=False;self.reason=reason
     def next_due(self,now):return None
+    def _rearm(self,reason):
+        self.release();self.state='WAIT_CAST';self.reason=reason
+        self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown'
+        self.unknown_since=None;self.pull_count=0;self.pull_visual_count=0;self.pull_visual_dir=None
+        self.reel_count=0;self.reel_absent_count=0
     def tick(self,now,focused=True):
         if not self.running:return
-        if not focused:self.stop('Game lost focus');return
+        if not focused:
+            if self.config.persistent_session:self._rearm('Paused — game not focused; still armed and waiting for Stop Fishing');return
+            self.stop('Game lost focus');return
         if self.started is None:self.started=now
         if self.last_observation is not None and now-self.last_observation>self.config.stale_seconds:
+            if self.config.persistent_session:self._rearm('Capture paused/stale — still armed; waiting for Stop Fishing');return
             self.stop('Capture stale — released all inputs');return
         if self.last_observation is None and now-self.started>3:
+            if self.config.persistent_session:
+                self.reason='Armed — waiting for capture / Stop Fishing';return
             self.stop('No capture received');return
         if self.state=='CAST' and now>=self.cast_until:
             self.release();self.state='WAIT_BITE';self.changed=now
             if self.trial_only:self.state='TRIAL_DONE';self.stop('Trial cast released; record short / long / hit')
-        if self.state in ('READY','WAIT_CAST','WAIT_BITE') and not self.config.recurring and now-(self.changed or self.started)>self.config.bite_timeout:
+        if self.state in ('READY','WAIT_CAST','WAIT_BITE') and not self.config.recurring and not self.config.persistent_session and now-(self.changed or self.started)>self.config.bite_timeout:
             self.stop('No bite / cast evidence before timeout')
         if self.state=='BITE_PENDING' and now-self.changed>1.5:
             self.state='WAIT_BITE';self.reason='Bite candidate expired — waiting for STOP/PULL/BAR';self.changed=now
         if self.state in ('FIGHT','REEL') and now-self.fight_started>self.config.fight_timeout:
-            self.stop('Fight timeout')
+            if self.config.persistent_session:self._rearm('Fight timeout — inputs released; still armed and waiting for Stop Fishing')
+            else:self.stop('Fight timeout')
     def observe(self,o,now):
         if not self.running or now-o.stamp>self.config.stale_seconds:return
         self.last_observation=o.stamp
         if o.stamina is not None and o.stamina<self.config.min_stamina:
-            self.stop('Stamina below configured threshold');return
+            if self.config.persistent_session:self._rearm('Stamina threshold reached — inputs released; still armed')
+            else:self.stop('Stamina below configured threshold')
+            return
         text=o.text.lower() if now-o.text_stamp<1.5 else ''
         active_changed=o.active_stamp!=self.active_seen
         if active_changed:
@@ -159,12 +173,14 @@ class FishingController:
         confirmed=kind and self.text_count>=2
         if self.state not in ('WAIT_CAST','WAIT_BITE') and confirmed and kind in ('caught','failed'):
             self.release()
-            if self.config.recurring:
-                self.state='WAIT_CAST';self.reason='Round ended: '+kind+' — waiting for you to cast again';self.changed=now
+            if self.config.recurring or self.config.persistent_session:
+                self.state='WAIT_CAST';self.reason='Round ended: '+kind+' — still armed; waiting for Stop Fishing';self.changed=now
                 self.last_color='unknown';self.color_count=0;self.stable_color='unknown';self.previous_stable_color='unknown';self.direction=self.config.first_pull
                 return
             self.state={'caught':'CAUGHT','failed':'FAILED'}[kind];self.stop('Observed result: '+kind);return
         if confirmed and kind in ('bait','depleted'):
+            if self.config.persistent_session:
+                self._rearm('Observed '+kind+' — still armed; waiting for Stop Fishing');self.changed=now;return
             self.state={'bait':'BAIT_MESSAGE','depleted':'DEPLETED'}[kind]
             self.stop('Observed result: '+kind);return
         self.color_count=self.color_count+1 if o.color==self.last_color else 1
