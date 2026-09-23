@@ -223,8 +223,7 @@ class ScoutLabPanel:
         tk.Label(p,textvariable=self.live,bg="#10150e",fg=c["BONE"],justify="left",anchor="nw",wraplength=410,font=("Consolas",8),height=8).pack(fill="x")
 
     def _refresh_watches(self):
-        self.watch_text.set("Memory watches: none" if not self.watches else "Memory watches:\n"+"
-".join("  "+x for x in self.watches[:8]))
+        self.watch_text.set("Memory watches: none" if not self.watches else "Memory watches:\\n"+"\\n".join("  "+x for x in self.watches[:8]))
 
     def add_watch(self):
         try:w=parse_watch(self.watch_var.get())
