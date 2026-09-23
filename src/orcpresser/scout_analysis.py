@@ -112,6 +112,15 @@ def analyze_session(session):
         report["auto_picker"]={"observations":len(prompts),"approved":sum(1 for e in prompts if e.get("value") is not None),
             "sent_decisions":sum(1 for e in controller if e.get("signal")=="decision" and (e.get("value") or {}).get("sent")),
             "prompt_transitions":_prompt_transitions(vision)}
+    elif manifest.get("domain")=="scout_lab":
+        memory=load_jsonl(session/"memory.jsonl");annotations=load_jsonl(session/"annotations.jsonl")
+        cursor=[e for e in vision if e.get("signal")=="cursor_probe"];cross=[e for e in vision if e.get("signal")=="crosshair_probe"]
+        watches=[e for e in memory if e.get("signal")=="watch"];marks=[e for e in annotations if e.get("signal")=="mark"]
+        ok=sum(1 for e in watches if (e.get("value") or {}).get("ok") is True)
+        report["scout_lab"]={"cursor_probes":len(cursor),"crosshair_probes":len(cross),"memory_samples":len(watches),
+            "memory_success":ok,"memory_success_pct":(100.0*ok/len(watches)) if watches else None,
+            "annotations":[{"mono":e.get("mono"),"label":e.get("value")} for e in marks],
+            "watch_specs":sorted({(e.get("value") or {}).get("spec") for e in watches if (e.get("value") or {}).get("spec")})}
     return report
 
 def _fmt(v): return "—" if v is None else f"{v:.1f}"
@@ -142,6 +151,13 @@ def markdown(report):
         a=report["auto_picker"];lines+=["","## Auto Picker","",f"- Prompt observations: {a['observations']}",f"- Approved observations: {a['approved']}",
             f"- Sent decisions: {a['sent_decisions']}","","### Prompt transitions",""]
         for t in a["prompt_transitions"][:100]:lines.append(f"- {t.get('mono')}: {t.get('prompt')}")
+    if "scout_lab" in report:
+        s=report["scout_lab"];lines+=["","## Scout Lab","",f"- Cursor probes: {s['cursor_probes']}",f"- Crosshair probes: {s['crosshair_probes']}",
+            f"- Memory samples: {s['memory_samples']}",f"- Memory read success: {_fmt(s.get('memory_success_pct'))}%"
+            if s.get("memory_success_pct") is not None else "- Memory read success: no watches configured"]
+        if s.get("watch_specs"):lines.append("- Watches: "+", ".join(s["watch_specs"]))
+        lines+=["","### Annotations",""]
+        for mark in s.get("annotations",[]):lines.append(f"- {mark.get('mono')}: {mark.get('label')}")
     lines+=["","## Source hashes",""]
     for name,h in report.get("source_hashes",{}).items():lines.append(f"- {name}: {h}")
     lines+=["","The analyzer is read-only with respect to data/scout_sessions; generated reports are stored separately."]
@@ -174,8 +190,9 @@ def _merge_stats(reports,key):
 def combined_report(reports):
     fishing=[r for r in reports if r.get("domain")=="fishing"]
     auto=[r for r in reports if r.get("domain")=="auto_picker"]
+    lab=[r for r in reports if r.get("domain")=="scout_lab"]
     out={"schema":1,"generated_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
-         "sessions":len(reports),"domains":{"fishing":len(fishing),"auto_picker":len(auto)},
+         "sessions":len(reports),"domains":{"fishing":len(fishing),"auto_picker":len(auto),"scout_lab":len(lab)},
          "raw_logs_preserved":True,
          "vision_latency_session_medians_ms":_merge_stats(reports,"latency_ms"),
          "vision_freshness_session_medians_ms":_merge_stats(reports,"fresh_ms"),
@@ -192,12 +209,17 @@ def combined_report(reports):
         if "auto_picker" in r:
             item["auto_picker_approved"]=r["auto_picker"].get("approved",0)
             item["auto_picker_sent"]=r["auto_picker"].get("sent_decisions",0)
+        if "scout_lab" in r:
+            item["scout_lab_cursor_probes"]=r["scout_lab"].get("cursor_probes",0)
+            item["scout_lab_memory_samples"]=r["scout_lab"].get("memory_samples",0)
+            item["scout_lab_annotations"]=len(r["scout_lab"].get("annotations",[]))
         out["session_summaries"].append(item)
     return out
 
 def combined_markdown(report):
     lines=["# Scout combined analysis","",f"- Sessions: **{report['sessions']}**",
            f"- Fishing: **{report['domains']['fishing']}**",f"- Auto Picker: **{report['domains']['auto_picker']}**",
+           f"- Scout Lab: **{report['domains'].get('scout_lab',0)}**",
            "- Raw logs preserved: **yes**","","## Cross-session timing",""]
     lat=report.get("vision_latency_session_medians_ms",{});fresh=report.get("vision_freshness_session_medians_ms",{})
     lines.append(f"- Session median vision latency: n={lat.get('count',0)}, median={_fmt(lat.get('median'))} ms, p95={_fmt(lat.get('p95'))} ms")
@@ -207,6 +229,7 @@ def combined_markdown(report):
         extra=""
         if s.get("domain")=="fishing":extra=" · states="+"→".join(s.get("fishing_states") or [])
         elif s.get("domain")=="auto_picker":extra=f" · approved={s.get('auto_picker_approved',0)} · sent={s.get('auto_picker_sent',0)}"
+        elif s.get("domain")=="scout_lab":extra=f" · cursor={s.get('scout_lab_cursor_probes',0)} · memory={s.get('scout_lab_memory_samples',0)} · marks={s.get('scout_lab_annotations',0)}"
         lines.append(f"- {s.get('session')} · {s.get('domain')} · {s.get('run')} · {s.get('duration_s',0):.2f}s · latency median={_fmt(s.get('vision_latency_median_ms'))} ms{extra}")
     lines+=["","Per-session reports remain available beside this combined report in data/scout_reports/. The analyzer never modifies data/scout_sessions/."]
     return "\n".join(lines)+"\n"
