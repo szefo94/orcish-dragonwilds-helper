@@ -50,7 +50,7 @@ Advanced automatic pool detection, positioning and travel are intentionally sepa
 
 ## Mode split
 
-**Fishing Bot 101** is the minimal supervised mode. Configure BAR and REEL; PULL L/R is strongly recommended for reliable fight control. Cast and position manually, then let confirmed PULL commands drive A/D continuously through direction changes. BAR provides validation/fallback, and confirmed `Reel (Hold)` overrides A/D with LMB. F7 or **NEW SPOT / REACQUIRE** pauses the workflow after manual movement and invalidates position-dependent cast timing.
+**Fishing Bot 101** is a persistent supervised mode. Configure **BAR, REEL and STOP**; PULL L/R is strongly recommended for reliable fight control. Pressing LIVE arms the helper indefinitely, but it does not aid the fight until `Stop Fishing` is confirmed on screen. That prompt is the ready/set/go gate for each manually cast round. Alt-tab, temporary capture loss, catch/failure/depletion messages and ordinary timeouts release helper-owned inputs and return to the armed waiting state instead of ending the Fishing 101 session. Explicit STOP (or F8 panic) ends the session. During an active round, confirmed PULL commands drive A/D continuously through direction changes, BAR provides validation/fallback, and confirmed `Reel (Hold)` overrides A/D with LMB.
 
 **Advanced · EXP** enables automatic cast timing/calibration and the SPOT diagnostic. It is deliberately not presented as autonomous navigation: pool selection, camera steering, walking, and unattended multi-spot cycles are still pending.
 
