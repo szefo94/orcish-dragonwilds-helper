@@ -487,9 +487,18 @@ Implemented foundation:
 - Tier 0 PID/process/module snapshot at session start;
 - local session storage under `data/scout_sessions/` with a 20 MiB per-session event cap.
 
+Implemented analyzer layer:
+
+- read-only analyzer for one Scout session;
+- merges vision/controller/process streams by monotonic time;
+- summarizes latency/freshness distributions;
+- reconstructs Fishing state transitions and Auto Picker prompt transitions;
+- writes reports only to `data/scout_reports/`;
+- preserves `data/scout_sessions/` byte-for-byte and records SHA-256 hashes of every raw file used.
+
 Still pending in Phase A:
 
-- offline correlation/report generator;
+- cross-source candidate correlation once Unreal/process candidate signals exist;
 - optional screenshot sampling tied to event IDs;
 - calibration-health statistics derived from recorded sessions.
 
