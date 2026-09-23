@@ -7,7 +7,7 @@ monotonic timeline.
 """
 from __future__ import annotations
 from pathlib import Path
-import json, os, platform, time, uuid
+import json, os, platform, time, uuid, threading
 
 MAX_BYTES=20*1024*1024
 
@@ -18,7 +18,7 @@ class ScoutRecorder:
         stamp=time.strftime('%Y%m%d-%H%M%S')
         self.folder=Path(root)/'scout_sessions'/f'{stamp}-{self.session_id[:8]}'
         self.folder.mkdir(parents=True,exist_ok=True)
-        self.streams={}
+        self.streams={};self.lock=threading.RLock()
         manifest={
             'schema':1,'session_id':self.session_id,'domain':domain,'run':run,
             'created_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
@@ -39,21 +39,22 @@ class ScoutRecorder:
         return f
 
     def event(self,source,signal,value=None,confidence=None,mono=None,latency_ms=None,fresh_ms=None,details=None,stream=None):
-        if self.closed or self.bytes>=MAX_BYTES:return False
-        self.seq+=1
-        m=self.clock() if mono is None else float(mono)
-        obj={'session_id':self.session_id,'seq':self.seq,'mono':m,
-             'wall_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
-             'source':source,'domain':self.domain,'signal':signal,'value':value}
-        if confidence is not None:obj['confidence']=float(confidence)
-        if latency_ms is not None:obj['latency_ms']=float(latency_ms)
-        if fresh_ms is not None:obj['fresh_ms']=float(fresh_ms)
-        if details:obj['details']=details
-        line=json.dumps(obj,ensure_ascii=False,default=str,separators=(',',':'))+'\n'
-        data=line.encode('utf-8')
-        if self.bytes+len(data)>MAX_BYTES:return False
-        f=self._stream(stream or source);f.write(line);f.flush();self.bytes+=len(data)
-        return True
+        with self.lock:
+            if self.closed or self.bytes>=MAX_BYTES:return False
+            self.seq+=1
+            m=self.clock() if mono is None else float(mono)
+            obj={'session_id':self.session_id,'seq':self.seq,'mono':m,
+                 'wall_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
+                 'source':source,'domain':self.domain,'signal':signal,'value':value}
+            if confidence is not None:obj['confidence']=float(confidence)
+            if latency_ms is not None:obj['latency_ms']=float(latency_ms)
+            if fresh_ms is not None:obj['fresh_ms']=float(fresh_ms)
+            if details:obj['details']=details
+            line=json.dumps(obj,ensure_ascii=False,default=str,separators=(',',':'))+'\n'
+            data=line.encode('utf-8')
+            if self.bytes+len(data)>MAX_BYTES:return False
+            f=self._stream(stream or source);f.write(line);f.flush();self.bytes+=len(data)
+            return True
 
     def process_snapshot(self,pid):
         try:
@@ -71,11 +72,12 @@ class ScoutRecorder:
             self.event('process','snapshot_error',type(e).__name__+': '+str(e),stream='process')
 
     def close(self,reason='stopped'):
-        if self.closed:return
-        self.event('controller','session_end',reason,stream='controller')
-        self.closed=True
-        for f in self.streams.values():
-            try:f.close()
+        with self.lock:
+            if self.closed:return
+            self.event('controller','session_end',reason,stream='controller')
+            self.closed=True
+            for f in self.streams.values():
+                try:f.close()
+                except OSError:pass
+            try:self._write_json(self.folder/'summary.json',{'session_id':self.session_id,'events':self.seq,'bytes':self.bytes,'reason':reason})
             except OSError:pass
-        try:self._write_json(self.folder/'summary.json',{'session_id':self.session_id,'events':self.seq,'bytes':self.bytes,'reason':reason})
-        except OSError:pass
