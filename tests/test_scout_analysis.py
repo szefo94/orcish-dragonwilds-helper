@@ -137,4 +137,29 @@ class ScoutAnalyzerTests(unittest.TestCase):
             self.assertEqual(r["lmb_samples"]["labels"],{"target":1,"crit":1})
             self.assertIn("labels.csv",r["source_hashes"])
 
+    def test_semantic_candidate_summary_and_fishing_correlation(self):
+        with tempfile.TemporaryDirectory() as td:
+            s=Path(td)/"scout_sessions"/"20260923-120000-fish";s.mkdir(parents=True)
+            (s/"manifest.json").write_text(json.dumps({"schema":1,"session_id":"m","domain":"fishing","run":"Preview"}),encoding="utf-8")
+            (s/"summary.json").write_text(json.dumps({"events":6}),encoding="utf-8")
+            vision=[{"mono":10.10,"source":"vision","signal":"fishing_observation","value":{"text":"REEL","stop":False,"pull_left":True,"pull_right":False}}]
+            controller=[
+                {"mono":10.00,"source":"controller","signal":"fishing_decision","value":{"state":"FIGHT","held":"A"}},
+                {"mono":10.12,"source":"controller","signal":"fishing_decision","value":{"state":"REEL","held":"LMB"}}
+            ]
+            memory=[
+                {"mono":10.02,"source":"memory","signal":"candidate","value":{"name":"reel_flag","domain":"fishing","role":"reel_allowed","spec":"0x1000:u8","ok":True,"value":0}},
+                {"mono":10.08,"source":"memory","signal":"candidate_transition","value":{"name":"reel_flag","domain":"fishing","role":"reel_allowed","spec":"0x1000:u8","from":0,"to":1,"ok":True}},
+                {"mono":10.08,"source":"memory","signal":"candidate","value":{"name":"reel_flag","domain":"fishing","role":"reel_allowed","spec":"0x1000:u8","ok":True,"value":1}}
+            ]
+            for name,rows in (("vision.jsonl",vision),("controller.jsonl",controller),("memory.jsonl",memory)):
+                (s/name).write_text("".join(json.dumps(x)+"\n" for x in rows),encoding="utf-8")
+            (s/"process.jsonl").write_text("",encoding="utf-8");(s/"annotations.jsonl").write_text("",encoding="utf-8");(s/"system.jsonl").write_text("",encoding="utf-8")
+            r=analyze_session(s)
+            mc=r["memory_candidates"]
+            self.assertEqual(mc["candidates"][0]["name"],"reel_flag")
+            self.assertEqual(mc["candidates"][0]["transitions"],1)
+            self.assertTrue(mc["correlation"]["summary"])
+            self.assertEqual(mc["correlation"]["summary"][0]["candidate"],"reel_flag")
+
 if __name__=="__main__":unittest.main()
