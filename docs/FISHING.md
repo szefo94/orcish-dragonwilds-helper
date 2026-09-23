@@ -1,6 +1,6 @@
 # Fishing — Bot 101 and staged Advanced mode
 
-Read `src/orcpresser/fishing_notes_default.md` for the original observations. User-edited `data/fishing_notes.md` remains untouched. This implementation has synthetic tests, but has not been tested in a live Dragonwilds session.
+Read `src/orcpresser/fishing_notes_default.md` for the original observations. User-edited `data/fishing_notes.md` remains untouched. The implementation has automated state-machine and detector tests; real-game behavior still depends on the current Dragonwilds build, UI layout, and accurate calibration.
 
 ## First manual recording
 
@@ -20,9 +20,11 @@ Label the landing WAS SHORT / LONG / HIT manually. Short and long feedback choos
 
 ## Supervised fight loop
 
-Start LIVE after a manual cast, or enable Automatic cast to begin with the saved duration. Two consistent color samples are needed. Red tries A, then switches A/D after 300 ms of persistent red. Blue is a neutral/wait state: directional input is released while the controller waits for fresh prompt evidence. Two fresh OCR observations of Reel + Hold while blue release any direction before holding LMB. This prevents A/D probing from continuing during a confirmed reel opportunity. Red overrides a cached Reel prompt immediately after color confirmation, releasing LMB before pulling.
+Start LIVE after a manual cast, or enable Automatic cast to begin with the saved duration. Two consistent color samples are needed before BAR colour becomes stable. Red starts or continues the current A/D pull. Blue **does not release or alternate A/D**: the current direction remains held while the controller watches for a reel opportunity. When BAR transitions from blue back to red, the controller swaps A↔D once and holds the new direction. A confirmed fast PULL-L/PULL-R visual signal can directly select A/D after two consistent samples.
 
-A confirmed caught/bait/failure message stops the single round. `No fish was caught.` is treated as a recoverable failed round (WAIT_CAST in recurring mode), while `no fish here` / `depleted` still mean the spot should be abandoned. Disappearing prompts or unknown color never count as a catch. Unknown color releases input; focus loss, stale capture (>750 ms), F8 and timeouts stop/release. Result phrases are provisional: `fish caught`, `you caught`, `caught a`, `consider bait`, `escaped`, `startled`, `too close`, `no fish was caught`, `no fish here`, `depleted`.
+**REEL has highest priority regardless of BAR colour.** Two consistent fast REEL visual samples, or two distinct OCR confirmations of `Reel (Hold)`, immediately release A/D and hold LMB. When red returns after REEL, LMB is released, the controller resumes FIGHT, swaps direction once, and holds the new A/D direction.
+
+A confirmed caught/failure message ends the current round; with **Recurring rounds** enabled, caught/recoverable-failure states release input and return to the wait-for-next-cast flow instead of disarming the helper. Bait-required and depleted/no-fish states remain hard stops. `No fish was caught.` is treated as a recoverable failed round (WAIT_CAST in recurring mode), while `no fish here` / `depleted` still mean the spot should be abandoned. Disappearing prompts or unknown color never count as a catch. Short `unknown` BAR gaps keep an already-held A/D direction through the configured safety grace so scanning does not create key-up pulses. Sustained unknown state beyond the grace releases direction. Focus loss, stale capture (>750 ms), F8 and timeouts stop/release. Result phrases are provisional: `fish caught`, `you caught`, `caught a`, `consider bait`, `escaped`, `startled`, `too close`, `no fish was caught`, `no fish here`, `depleted`.
 
 Color capture targets 20 Hz. In addition, calibrated REEL / PULL L / PULL R regions now have a lightweight white-UI geometry pass about every 100 ms. The fast PULL resolver only emits A or D when one calibrated side is materially stronger than the other; if both regions light up similarly, direction is marked ambiguous and the controller falls back to the bar transition logic rather than guessing. Two consecutive fast samples are required before a visual A/D or REEL decision is trusted.
 
@@ -36,9 +38,9 @@ An LLM can analyze selected recording frames offline. It is not in the real-time
 
 ## Fishing Bot 101 and travel
 
-BAR and PROMPT are the two required calibrations. RESULT is recommended for detecting `No fish here`, `depleted`, and other terminal messages. SPOT remains experimental and is not required for the basic mode.
+BAR and REEL are the two required calibrations. RESULT is recommended for detecting `No fish here`, `depleted`, and other terminal messages. SPOT remains experimental and is not required for the basic mode.
 
-When a result reports no fish/depletion, the controller stops and releases all held input. Move the player manually to another fishing position, then use **NEW SPOT / REACQUIRE**. Player movement or a meaningful camera change invalidates cast timing because the required hold duration depends on geometry; screen-fixed BAR/PROMPT regions remain saved and should be checked in Preview before resuming.
+When a result reports no fish/depletion, the controller stops and releases all held input. Move the player manually to another fishing position, then use **NEW SPOT / REACQUIRE**. Player movement or a meaningful camera change invalidates cast timing because the required hold duration depends on geometry; screen-fixed BAR/REEL regions remain saved and should be checked in Preview before resuming.
 
 Cast buttons are a bracket search: **USE SHORT** = current lower bound, **USE LONG** = upper bound, **USE MID** = halfway. Label the landing with **WAS SHORT**, **WAS LONG**, or **WAS HIT**; HIT stores the successful duration.
 
@@ -62,4 +64,4 @@ Scout records the new fields `pull_direction`, `pull_confidence`, left/right vis
 
 ## Recurring rounds and ACTIVE signal
 
-The optional **ACTIVE** region should tightly cover the `Stop Fishing` label/icon that appears while the game considers a fishing round active. With **Recurring rounds** enabled, the controller does not stop after a normal catch or recoverable failure. It releases A/D/LMB, waits for the previous ACTIVE signal to disappear, then waits for a fresh ACTIVE signal before rearming BAR/REEL handling. This clear-then-reappear handshake prevents stale end-of-round UI from immediately starting another fight. If ACTIVE is not calibrated, the controller falls back to waiting for the BAR to disappear and return. `No fish here`, `depleted`, and bait-required states still stop the bot for manual intervention.
+The optional **STOP** region should tightly cover the `Stop Fishing` label/icon. It is stored internally as the active-region signal for backward compatibility. With **Recurring rounds** enabled, the controller does not stop after a normal catch or recoverable failure. It releases A/D/LMB, waits for the previous ACTIVE signal to disappear, then waits for a fresh ACTIVE signal before rearming BAR/REEL handling. This clear-then-reappear handshake prevents stale end-of-round UI from immediately starting another fight. If STOP is not calibrated, the controller falls back to waiting for the BAR to disappear and return. `No fish here`, `depleted`, and bait-required states still stop the bot for manual intervention.
