@@ -2,6 +2,40 @@
 
 ## Microsoft Store / Xbox App (WinGDK) builds
 
+### Current Dragonwilds WinGDK recovery path
+
+The current goal is not "install more tools"; it is to get one reliable internal-data path working:
+
+```text
+Dragonwilds -> UE4SS starts -> OrcishScout Lua runs -> data\ue4ss\orcish_scout_ue4ss.jsonl
+```
+
+On the tested Microsoft Store/Xbox WinGDK build, the older UE4SS v3.0.1 runtime loaded its proxy DLL and created `UE4SS.log`, but its pattern scan repeatedly failed to locate core Unreal structures and ended with `Fatal Error: PS scan timed out`. That happens before the OrcishScout Lua mod can execute, so an empty JSONL folder is a downstream symptom rather than the root problem.
+
+For that specific recovery case, `Setup.cmd` now provides:
+
+- **9 · Recover UE4SS for WinGDK** — downloads the current official `experimental-latest` zDEV UE4SS build, backs up the existing UE4SS files, installs the current `ue4ss\` subfolder layout, installs OrcishScout, patches the JSONL path, and automatically restores the backup if installation fails.
+- **8 · Telemetry toolkit status** — after one game launch, checks both old and new UE4SS log locations and reports whether the PS scan timed out or the OrcishScout startup heartbeat appeared.
+
+Dragonwilds must be closed before option 9 runs. The script requests Administrator elevation automatically because the WinGDK build lives under `WindowsApps`. It does not take ownership of the WindowsApps tree.
+
+The recovery installer keeps a timestamped backup beside the game executable and records what it installed in:
+
+```text
+data\ue4ss\ue4ss_experimental_install.json
+```
+
+After option 9 completes, the intended test is deliberately short:
+
+```text
+start Dragonwilds
+-> wait for menu/world
+-> close Dragonwilds
+-> Setup.cmd -> 8
+```
+
+Success is defined narrowly: UE4SS no longer ends in `PS scan timed out`, and the OrcishScout bridge reaches `bridge_start` / `bridge_ready`. Only after that should Fishing UFunction discovery continue.
+
 Dragonwilds may run as:
 
 ```text
@@ -77,6 +111,7 @@ The same operations are available through `Setup.cmd`:
 
 - **7 · Install telemetry toolkit**
 - **8 · Telemetry toolkit status**
+- **9 · Recover UE4SS for WinGDK**
 
 The installer currently:
 
