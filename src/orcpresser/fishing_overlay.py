@@ -27,8 +27,14 @@ class FishingOverlay:
                 u.ShowWindow.argtypes=[w.HWND,ctypes.c_int]
                 self.available=bool(u.SetWindowDisplayAffinity(hwnd,0x11))
             except Exception:self.available=False
+    def _revive(self):
+        if not self.available:return False
+        try:
+            self.window.deiconify();self.window.attributes("-topmost",True);self.window.attributes("-alpha",.55)
+            self.window.update_idletasks();ctypes.windll.user32.ShowWindow(self.hwnd,4);return True
+        except Exception:return False
     def show(self,client,regions,caption,info):
-        if not self.available:return
+        if not self._revive():return
         x,y,w,h=client;self.window.geometry(f'{w}x{h}{x:+d}{y:+d}')
         self.window.update_idletasks()
         ctypes.windll.user32.ShowWindow(self.hwnd,4)  # SW_SHOWNOACTIVATE
