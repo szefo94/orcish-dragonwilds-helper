@@ -6,7 +6,7 @@ the same Scout timeline. It never writes game memory and never moves the mouse.
 """
 from __future__ import annotations
 from pathlib import Path
-import ctypes, json, math, os, queue, struct, sys, threading, time
+import ctypes, csv, json, math, os, queue, struct, sys, threading, time
 
 WATCH_TYPES={"u8":("B",1),"u16":("H",2),"u32":("I",4),"i32":("i",4),"f32":("f",4),"f64":("d",8)}
 
@@ -98,11 +98,16 @@ class ReadOnlyMemory:
         return {"ok":True,"address":address,"value":value}
 
 class ScoutLabSession:
-    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,interval=.10):
+    SAMPLE_DELAYS=(0,.25,.60,1.00,1.50)
+
+    def __init__(self,io,target,event_cb,folder,watches=(),save_crops=False,capture_lmb=True,interval=.10):
         self.io=io;self.target=target;self.event_cb=event_cb;self.folder=Path(folder)
         self.watches=[parse_watch(x) if isinstance(x,str) else x for x in watches]
-        self.save_crops=bool(save_crops);self.interval=max(.05,float(interval));self.closed=threading.Event()
+        self.save_crops=bool(save_crops);self.capture_lmb=bool(capture_lmb);self.interval=max(.05,float(interval));self.closed=threading.Event()
         self.latest=queue.Queue(maxsize=1);self.started=time.monotonic();self.last_process=0.;self.last_crop=0.;self.memory=None
+        self.pending_samples=[];self.sample_seq=0;self.sample_count=0
+        self.sample_dir=self.folder/"samples";self.labels_path=self.folder/"labels.csv"
+        if self.capture_lmb:self._prepare_labels()
         self.thread=threading.Thread(target=self._run,daemon=True,name="scout-lab");self.thread.start()
 
     def close(self):
@@ -122,6 +127,73 @@ class ScoutLabSession:
         p=w.POINT()
         if not ctypes.windll.user32.GetCursorPos(ctypes.byref(p)):return None
         return int(p.x),int(p.y)
+
+    def _prepare_labels(self):
+        self.sample_dir.mkdir(parents=True,exist_ok=True)
+        if not self.labels_path.exists():
+            with self.labels_path.open("w",newline="",encoding="utf-8") as f:
+                csv.writer(f).writerow(["sample_id","delay_ms","mono","image","focus_source","focus_x","focus_y","label","notes"])
+        guide=self.folder/"LABELING_README.txt"
+        if not guide.exists():
+            guide.write_text(
+                "Scout LMB sample labeling\n\n"
+                "Every left-click while the bound game is foreground creates a short screenshot burst.\n"
+                "Open labels.csv and fill only the label / notes columns; keep IDs/timestamps/image paths unchanged.\n"
+                "Suggested labels: target, head, item_pickup, hit, crit, miss, inventory, other.\n"
+                "A click can produce several delayed frames so projectile impact can appear after the shot.\n",
+                encoding="utf-8")
+
+    def _lmb_edge(self):
+        if not self.capture_lmb:return False
+        try:return bool(ctypes.windll.user32.GetAsyncKeyState(0x01)&1)
+        except Exception:return False
+
+    def _sample_focus(self,client,cursor):
+        x,y,w,h=client;sx=x+w//2;sy=y+h//2
+        if cursor:
+            cx,cy=cursor
+            if x<=cx<x+w and y<=cy<y+h and math.hypot(cx-sx,cy-sy)>40:
+                return "cursor",cx,cy
+        return "crosshair",sx,sy
+
+    def _queue_lmb_sample(self,client,cursor,now):
+        self.sample_seq+=1
+        sid=f"{self.sample_seq:05d}-{int((now-self.started)*1000):09d}"
+        source,fx,fy=self._sample_focus(client,cursor)
+        for delay in self.SAMPLE_DELAYS:
+            self.pending_samples.append({"due":now+delay,"sample_id":sid,"delay_ms":int(delay*1000),
+                                         "focus_source":source,"focus_x":fx,"focus_y":fy})
+        mem=self._memory(now)
+        self.event_cb("annotation","lmb_sample_trigger",
+                      {"sample_id":sid,"focus_source":source,"screen":[fx,fy],"delays_ms":[int(x*1000) for x in self.SAMPLE_DELAYS],
+                       "memory":mem},mono=now,stream="annotations")
+
+    def _capture_due_samples(self,grab,client,now):
+        if not self.pending_samples:return
+        x,y,w,h=client;remaining=[]
+        for s in self.pending_samples:
+            if s["due"]>now:
+                remaining.append(s);continue
+            fx=max(x,min(x+w-1,int(s["focus_x"])));fy=max(y,min(y+h-1,int(s["focus_y"])))
+            cw=min(640,w);ch=min(360,h)
+            left=max(x,min(x+w-cw,fx-cw//2));top=max(y,min(y+h-ch,fy-ch//2))
+            try:
+                frame=grab.grab({"left":left,"top":top,"width":cw,"height":ch})
+                import cv2
+                name=f"{s['sample_id']}_t+{s['delay_ms']:04d}.png";path=self.sample_dir/name
+                cv2.imwrite(str(path),frame)
+                rel=str(Path("samples")/name)
+                with self.labels_path.open("a",newline="",encoding="utf-8") as f:
+                    csv.writer(f).writerow([s["sample_id"],s["delay_ms"],f"{now:.6f}",rel,s["focus_source"],
+                                            fx-x,fy-y,"",""])
+                self.sample_count+=1
+                self.event_cb("vision","lmb_sample_frame",
+                              {"sample_id":s["sample_id"],"delay_ms":s["delay_ms"],"image":rel,
+                               "focus_source":s["focus_source"],"focus_client":[fx-x,fy-y],
+                               "capture_rect":[left-x,top-y,cw,ch]},mono=now,stream="vision")
+            except Exception as e:
+                self.event_cb("vision","lmb_sample_error",type(e).__name__+": "+str(e),mono=now,stream="vision")
+        self.pending_samples=remaining
 
     def _process(self,now):
         import psutil
@@ -159,6 +231,8 @@ class ScoutLabSession:
                     self._offer({"foreground":False});self.closed.wait(self.interval);continue
                 client=self.io.rect(self.target);x,y,w,h=client
                 cursor=self._cursor();visual=None;cross=None;inside=False;rel=None
+                if self._lmb_edge():self._queue_lmb_sample(client,cursor,tick)
+                self._capture_due_samples(grab,client,tick)
                 try:
                     if cursor:
                         cx,cy=cursor;inside=x<=cx<x+w and y<=cy<y+h
@@ -183,7 +257,8 @@ class ScoutLabSession:
                 if tick-self.last_process>=1.0:proc=self._process(tick);self.last_process=tick
                 mem=self._memory(tick)
                 self._offer({"foreground":True,"cursor":cursor,"inside":inside,"client":rel,"cursor_features":visual,
-                             "crosshair_features":cross,"memory":mem,"process":proc})
+                             "crosshair_features":cross,"memory":mem,"process":proc,"sample_frames":self.sample_count,
+                             "pending_sample_frames":len(self.pending_samples)})
                 self.closed.wait(max(0.,self.interval-(time.monotonic()-tick)))
         except Exception as e:self._offer({"error":type(e).__name__+": "+str(e)})
 
@@ -196,6 +271,7 @@ class ScoutLabPanel:
         self.watch_var=tk.StringVar(value="")
         self.watches=list(app.settings.get("scout_memory_watches",[]) or [])
         self.save_crops=tk.BooleanVar(value=bool(app.settings.get("scout_save_cursor_crops",False)))
+        self.capture_lmb=tk.BooleanVar(value=bool(app.settings.get("scout_capture_lmb_samples",True)))
         self.background=tk.BooleanVar(value=bool(app.settings.get("scout_background_probes",True)))
         self._build(parent)
 
@@ -212,6 +288,9 @@ class ScoutLabPanel:
             tk.Button(row,text=title,command=lambda x=label:self.mark(x)).pack(side="left",padx=(0,4))
         tk.Checkbutton(p,text="Save 96×64 cursor crop once/second",variable=self.save_crops,
                        command=lambda:self.app.persist("scout_save_cursor_crops",self.save_crops.get()),
+                       bg=c["PANEL"],fg=c["BONE"],selectcolor="#15200e",activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
+        tk.Checkbutton(p,text="LMB sample burst → screenshots + editable labels.csv",variable=self.capture_lmb,
+                       command=lambda:self.app.persist("scout_capture_lmb_samples",self.capture_lmb.get()),
                        bg=c["PANEL"],fg=c["BONE"],selectcolor="#15200e",activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
         tk.Checkbutton(p,text="Run independent Scout probes alongside Auto / Fishing / Aim",variable=self.background,
                        command=lambda:self.app.persist("scout_background_probes",self.background.get()),
@@ -247,8 +326,8 @@ class ScoutLabPanel:
         self.app.scout_start("scout_lab","Research")
         try:
             folder=self.app.scout.folder if getattr(self.app,"scout",None) else self.app.folder
-            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get())
-            self.status.set("RECORDING — move the cursor/crosshair over useful objects; use MARK TARGET / MARK HEAD for labels.")
+            self.session=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,folder,self.watches,self.save_crops.get(),self.capture_lmb.get())
+            self.status.set("RECORDING — LMB creates screenshot bursts; label them later in this session's labels.csv.")
         except Exception as e:
             self.app.scout_stop("Scout Lab start failed");self.session=None;self.status.set("Start failed: "+str(e))
 
@@ -261,8 +340,9 @@ class ScoutLabPanel:
     def start_sidecar(self):
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
         try:
-            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get())
-            self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get()},stream="system")
+            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get())
+            self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get(),
+                                 "lmb_samples":self.capture_lmb.get()},stream="system")
         except Exception as e:
             self.sidecar=None
             self.app.scout_event("system","sidecar_error",type(e).__name__+": "+str(e),stream="system")
@@ -293,7 +373,8 @@ class ScoutLabPanel:
         lines=[f"cursor screen={cur}  client={None if not rel else rel[:2]}",
                f"cursor center BGR={feat.get('center_bgr')}  patch σ={feat.get('std')}",
                f"crosshair BGR={(latest.get('crosshair_features') or {}).get('center_bgr')}",
-               f"memory watches={len(mem)}"]
+               f"memory watches={len(mem)}",
+               f"LMB sample frames={latest.get('sample_frames',0)}  pending={latest.get('pending_sample_frames',0)}"]
         for m in mem[:4]:
             lines.append(f"  {m.get('spec')}: {m.get('value') if m.get('ok') else m.get('error')}")
         self.live.set("\n".join(lines))
