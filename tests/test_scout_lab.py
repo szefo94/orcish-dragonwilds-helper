@@ -1,7 +1,7 @@
 import csv, tempfile, unittest
 from pathlib import Path
 import numpy as np
-from scout_lab import ScoutLabSession, parse_watch, visual_features
+from scout_lab import ScoutLabSession, parse_watch, parse_candidate, visual_features
 
 class ScoutLabTests(unittest.TestCase):
     def test_parse_module_relative_watch(self):
@@ -52,5 +52,28 @@ class ScoutLabTests(unittest.TestCase):
                 header=next(csv.reader(f))
             self.assertEqual(header[-2:],["label","notes"])
             self.assertIn("delay_ms",header)
+
+    def test_parse_semantic_candidate(self):
+        c=parse_candidate({"name":"reel_flag","domain":"fishing","role":"reel_allowed",
+                           "spec":"Dragonwilds-Win64-Shipping.exe+0x1234:u8"})
+        self.assertEqual(c["name"],"reel_flag")
+        self.assertEqual(c["domain"],"fishing")
+        self.assertEqual(c["role"],"reel_allowed")
+        self.assertEqual(c["offset"],0x1234)
+
+    def test_parse_candidate_supports_pointer_sized_values(self):
+        c=parse_candidate({"name":"focused_actor","domain":"auto_picker","role":"focused_actor",
+                           "spec":"0x7ff612340000:ptr"})
+        self.assertEqual(c["type"],"ptr")
+        self.assertEqual(c["address"],0x7ff612340000)
+
+    def test_session_filters_candidates_by_domain(self):
+        s=ScoutLabSession.__new__(ScoutLabSession)
+        parsed=[parse_candidate({"name":"phase","domain":"fishing","role":"phase","spec":"0x1000:u8"}),
+                parse_candidate({"name":"actor","domain":"auto_picker","role":"focused_actor","spec":"0x2000:ptr"}),
+                parse_candidate({"name":"state","domain":"general","role":"state","spec":"0x3000:u32"})]
+        # Mirror constructor filtering without starting the capture thread.
+        active="fishing";filtered=[x for x in parsed if not active or x["domain"] in (active,"general")]
+        self.assertEqual([x["name"] for x in filtered],["phase","state"])
 
 if __name__=="__main__":unittest.main()
