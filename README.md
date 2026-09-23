@@ -180,6 +180,18 @@ Automatic positioning, walking, reliable pond-distance measurement, fish-directi
 
 See the [complete fishing guide](docs/FISHING.md) for timing, calibration limits, recording details, and next steps. The old editable Fishing notes textbox has been removed; runtime guidance is shown directly in the Fishing controls.
 
+## Global command bar
+
+Target binding and runtime controls now stay visible across feature tabs. **BIND GAME · 3s** and **SELECT REGION** live in the global target bar instead of being repeated inside individual tabs. The bottom command bar changes by mode:
+
+- Auto / Fishing: PREVIEW, LIVE, STOP;
+- Repeat / Hold: LIVE, STOP (Preview is visibly disabled);
+- Aim Lab: START TRACKING, ACQUIRE F6, STOP;
+- Scout Lab: START RECORDING, STOP;
+- Stats: RUN TEST, STOP.
+
+The state text remains global, so switching tabs no longer changes where the user looks for binding/start/stop controls. Feature-specific controls such as Fishing BAR/REEL calibration, Aim target marking, and Scout candidate/watch configuration stay inside their own tabs.
+
 ## Performance and diagnostics
 
 The interface displays CPU and RAM history, scan duration, input counts, and capture/recognition status. Auto Presser offers optional faster detection, recognition-only processing, learned memory, templates, single-scan confirmation, DXGI capture, and DirectML acceleration. Some shortcuts are restricted when exclusions require surrounding text.
@@ -321,7 +333,7 @@ The **SCOUT LAB** tab is an observational research workspace. After binding the 
 
 Scout can now ingest **named Unreal/native function events** on the same timeline as vision and controller decisions. Two optional adapters are included: a local JSONL bridge intended for UE4SS or another external producer, and an opt-in Frida function-entry provider for already-discovered module-relative native function addresses. Neither is required for normal operation; Frida is deliberately kept out of the default requirements.
 
-See `docs/INTERNAL_TELEMETRY.md` for installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow.
+See `docs/INTERNAL_TELEMETRY.md` for installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry extras** for the optional Frida Python dependency and **8 · Telemetry status / help**. UE4SS, Cheat Engine, ReClass.NET, x64dbg and WPR remain external/manual tools rather than bundled dependencies.
 
 ### Semantic memory candidates for Fishing / Auto Picker
 
