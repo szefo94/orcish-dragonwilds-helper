@@ -396,20 +396,35 @@ function Show-Status {
         if ($bridgeInfo) {
             Write-Ok "OrcishScout bridge found: $($bridgeInfo.LuaPath)"
             if ($bridgeInfo.Enabled) { Write-Ok "OrcishScout enabled in mods.txt" } else { Write-Bad "OrcishScout not enabled in mods.txt" }
-            if ($bridgeInfo.HasStartupEvents) { Write-Ok "Bridge contains startup heartbeat events" } else { Write-Warn "Installed bridge is older: no bridge_start/bridge_ready events. Re-run option 7." }
+            if ($bridgeInfo.HasStartupEvents) { Write-Ok "Bridge contains startup heartbeat events" } else { Write-Warn "Installed bridge is older: no bridge_start/bridge_ready events. Re-run option 7 or option 9 for WinGDK recovery." }
             if ($bridgeInfo.Output) {
                 Write-Ok "Bridge output path: $($bridgeInfo.Output)"
                 $outDir = Split-Path -Parent $bridgeInfo.Output
                 if (Test-Path $outDir) { Write-Ok "Bridge output directory exists" } else { Write-Bad "Bridge output directory missing: $outDir" }
             } else { Write-Bad "Bridge OUTPUT path not found in installed main.lua" }
-            $log = Join-Path $dir "UE4SS.log"
-            if (Test-Path $log) {
-                $hits = Select-String -Path $log -Pattern "OrcishScout|Lua|Mod" -SimpleMatch:$false -ErrorAction SilentlyContinue | Select-Object -Last 8
+            $logCandidates = @(
+                (Join-Path $dir "ue4ss\UE4SS.log"),
+                (Join-Path $dir "UE4SS.log")
+            )
+            $log = $logCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($log) {
+                Write-Ok "UE4SS log: $log"
+                $tail = Get-Content $log -Tail 250 -ErrorAction SilentlyContinue
+                if ($tail -match 'Fatal Error: PS scan timed out') {
+                    Write-Bad "UE4SS startup failed: PS scan timed out before mods could load."
+                } elseif ($tail -match '\[OrcishScout\].*bridge ready') {
+                    Write-Ok "OrcishScout runtime heartbeat found in UE4SS log."
+                } elseif ($tail -match '\[OrcishScout\].*bridge loading') {
+                    Write-Warn "OrcishScout started loading but no bridge-ready message was found."
+                } else {
+                    Write-Warn "No OrcishScout runtime heartbeat found yet."
+                }
+                $hits = Select-String -Path $log -Pattern "OrcishScout|PS scan timed out|Failed to find GUObjectArray|Scan failed" -ErrorAction SilentlyContinue | Select-Object -Last 12
                 if ($hits) {
-                    Write-Host "  Recent UE4SS bridge/mod log lines:"
+                    Write-Host "  Recent relevant UE4SS log lines:"
                     $hits | ForEach-Object { Write-Host ("    " + $_.Line) }
-                } else { Write-Warn "UE4SS.log exists but contains no OrcishScout/Lua/Mod lines." }
-            } else { Write-Warn "UE4SS.log not found next to the game executable." }
+                }
+            } else { Write-Warn "UE4SS.log not found in root or ue4ss subfolder." }
         } else { Write-Bad "OrcishScout bridge not found at Dragonwilds" }
     } else { Write-Bad "Dragonwilds shipping executable not auto-detected" }
 

@@ -22,13 +22,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path "scripts\Install-TelemetryToolkit.ps1"),
-            [ref]$null,
-            [ref]$errors
-          )
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          $failed = $false
+          Get-ChildItem scripts -Filter *.ps1 -File | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              Write-Host "PowerShell parse errors in $($_.Name):"
+              $errors | ForEach-Object { Write-Error $_.Message }
+              $failed = $true
+            }
           }
+          if ($failed) { exit 1 }
