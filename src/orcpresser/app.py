@@ -241,12 +241,11 @@ class App:
         self.build_scout_lab(left,show)
         self.build_stats_controls(left,show)
         left=self.cols[1]
-        show(self.text(left,'02  /  TARGET & CAPTURE',12,GOLD),TARGET).pack(fill='x',pady=(0,5))
-        row=show(tk.Frame(left,bg=PANEL),TARGET);row.pack(fill='x');self.bindrow=row
-        RuneButton(row,'BIND GAME · 3s',self.bind_game,177,38).pack(side='left')
-        show(RuneButton(row,'SELECT REGION',self.select_region,177,38),('Auto',)).pack(side='right')
-        self.targettext=tk.StringVar(value='Bind game, then select the prompt area.')
-        show(tk.Label(left,textvariable=self.targettext,bg=PANEL,fg=MUTED,wraplength=360,justify='left',anchor='w',font=('Segoe UI',9)),TARGET).pack(fill='x',pady=6)
+        # Shared target state is presented once in the command bar / command center.
+        # Feature pages must not duplicate game binding or generic readiness instructions.
+        self.bindrow=tk.Frame(left,bg=PANEL)
+        self.targettext=tk.StringVar(value='No game bound.')
+        self.text(left,'UI BEHAVIOUR',12,GOLD).pack(fill='x',pady=(0,5))
         self.text(left,'Unfocused opacity · 0 = minimize on focus loss',10,GOLD).pack(fill='x',pady=(4,0))
         self.opacity=tk.IntVar(value=int(self.settings.get('opacity',60)))
         tk.Scale(left,from_=0,to=100,orient='horizontal',variable=self.opacity,command=lambda *_:self.persist('opacity',self.opacity.get()),bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
@@ -254,8 +253,16 @@ class App:
         for w in left.pack_slaves():
             if w not in before:self.vis[w]=('Auto',)
         self.build_stats_charts(left,show)
+        # One shared source of truth for game detection, readiness and instructions.
+        self.text(right,'COMMAND CENTER',12,GOLD).pack(fill='x')
+        self.common_game=tk.StringVar(value='GAME  · not bound')
+        self.common_require=tk.StringVar(value='REQUIRES  · bind Dragonwilds')
+        self.common_next=tk.StringVar(value='NEXT  · bind the game, then configure this tool')
+        tk.Label(right,textvariable=self.common_game,bg='#10150e',fg=GREEN,justify='left',anchor='w',wraplength=330,font=('Consolas',10,'bold')).pack(fill='x',pady=(6,2))
+        tk.Label(right,textvariable=self.common_require,bg='#10150e',fg=BONE,justify='left',anchor='w',wraplength=330,font=('Consolas',9)).pack(fill='x',pady=2)
+        tk.Label(right,textvariable=self.common_next,bg='#10150e',fg=GOLD,justify='left',anchor='w',wraplength=330,font=('Consolas',9,'bold')).pack(fill='x',pady=(2,10))
         before=set(right.pack_slaves())
-        self.text(right,'04  /  SCOUT VISION',12,GOLD).pack(fill='x')
+        self.text(right,'TOOL OUTPUT',12,GOLD).pack(fill='x')
         self.previewbox=tk.Label(right,text='Capture preview appears here\nGold = keycap · Green = OCR\nBlue = learned · Red = excluded',bg='#10150e',fg=MUTED,width=42,height=7,font=('Segoe UI',10));self.previewbox.pack(fill='x',pady=8)
         self.detected=tk.StringVar(value='Loading local recognition engine…')
         tk.Label(right,textvariable=self.detected,bg=PANEL,fg=GREEN,wraplength=330,justify='left',anchor='w',font=('Segoe UI',11,'bold'),height=2).pack(fill='x')
@@ -283,8 +290,8 @@ class App:
         self.chart=tk.Canvas(right,height=90,bg='#10150e',highlightthickness=1,highlightbackground='#4c5035');self.chart.pack(fill='x',pady=6)
         self.text(right,'CPU %  /  RAM MiB · separate scales · last 90 s',8,MUTED).pack(fill='x')
         targetbar=tk.Frame(self.root,bg=BG);targetbar.pack(fill='x',padx=24,pady=(8,2))
-        tk.Label(targetbar,text='GLOBAL TARGET',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
-        self.global_bind=RuneButton(targetbar,'BIND GAME · 3s',self.bind_game,165,36);self.global_bind.pack(side='left',padx=(0,7))
+        tk.Label(targetbar,text='GAME & CAPTURE',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
+        self.global_bind=RuneButton(targetbar,'BIND DRAGONWILDS · 3s',self.bind_game,165,36);self.global_bind.pack(side='left',padx=(0,7))
         self.global_region=RuneButton(targetbar,'SELECT REGION',self.select_region,165,36);self.global_region.pack(side='left',padx=(0,10))
         tk.Label(targetbar,textvariable=self.targettext,bg=BG,fg=MUTED,anchor='w',justify='left',wraplength=520,font=('Segoe UI',8)).pack(side='left',fill='x',expand=True)
 
@@ -686,8 +693,48 @@ class App:
         if dl:self.fieldlabels['duration'].configure(text=dl)
         self.modehelp.set(self.MODEHELP.get(self.mode,''))
         if hasattr(self,'settings_canvas'):self.root.after_idle(self.fit_settings)
+    def update_command_center(self):
+        """Refresh the single cross-feature game/readiness/instruction surface."""
+        if not hasattr(self,'common_game'):return
+        bound=bool(getattr(self,'target',0))
+        title=''
+        if bound and self.io:
+            try:title=self.io.title(self.target)[:72]
+            except Exception:title=''
+        self.common_game.set('GAME  · '+(title or PROFILE.name if bound else 'not bound'))
+
+        requirements={
+            'Repeat':'game bound',
+            'Hold':'game bound',
+            'Auto':'game bound + prompt capture region + recognition ready',
+            'Fishing':'game bound + BAR + REEL regions',
+            'Aim':'game bound; F6 acquires a target',
+            'Scout':'game bound for live capture',
+            'Stats':'game bound + AUTO capture region + recognition ready',
+        }
+        req=requirements.get(self.mode,'game bound')
+        self.common_require.set('REQUIRES  · '+req)
+
+        if not bound:
+            nxt='Bind Dragonwilds with the GAME & CAPTURE button below.'
+        elif self.mode in ('Auto','Stats') and not getattr(self,'ready',False):
+            nxt='Recognition is loading; wait for READY before running.'
+        elif self.mode=='Fishing' and getattr(self,'fishing_panel',None):
+            missing=[name.upper() if name!='prompt' else 'REEL' for name in ('bar','prompt') if name not in self.fishing_panel.regions]
+            nxt=('Select '+', '.join(missing)+' calibration region(s).' if missing else 'Use PREVIEW to verify detection, then LIVE.')
+        elif self.mode in ('Auto','Stats'):
+            nxt='Select/verify capture region, then use PREVIEW before LIVE.' if self.mode=='Auto' else 'Use RUN TEST; benchmark stays preview-only.'
+        elif self.mode=='Aim':
+            nxt='Start tracking, switch to the game, then press F6 to acquire.'
+        elif self.mode=='Scout':
+            nxt='Start recording, then perform the gameplay you want sampled.'
+        else:
+            nxt='Choose LIVE, switch to the game, and use \\ to start/stop.'
+        self.common_next.set('NEXT  · '+nxt)
+
     def update_mode_fields(self):
         if hasattr(self,'rightpanel'):self.apply_visibility()
+        self.update_command_center()
         if getattr(self,'mode','')=='Stats' and hasattr(self,'plantext'):self.update_plan();self.root.after_idle(self.draw_charts)
         if hasattr(self,'hint'):self.draw_run()
     def choose_mode(self,m):
@@ -750,7 +797,7 @@ class App:
         if self.io.own(h):self.status.set('Switch to the game during the countdown.');return
         self.target=h;self.io.target=h
         self.targettext.set(self.io.title(h)[:70]+'\nSaved capture region loaded; use SELECT REGION to refine.')
-        self.status.set('BOUND — choose region, then start in the game with \\');self.draw_run()
+        self.status.set('BOUND — configure the selected tool, then start in the game with \\');self.targettext.set('Bound to '+self.io.title(self.target)[:72]);self.update_command_center();self.draw_run()
         if self.mode=='Fishing' and getattr(self,'fishing_panel',None) and self.fishing_panel.show_overlay.get():self.fishing_panel.refresh_overlay()
     def select_region(self,suggested=None):
         """Region editor. Drag edges/corners to widen or narrow, drag inside to move, drag outside for a
@@ -1135,6 +1182,7 @@ class App:
                     self.root.iconify()
                 self.last_focused=focused
                 self.update_status_overlay(fg)
+                self.update_command_center()
                 hot=self.io.pressed(0xDC)
                 if self.previous_hot and not hot and not self.selecting:self.toggle()
                 self.previous_hot=hot
