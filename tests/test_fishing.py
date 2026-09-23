@@ -180,10 +180,12 @@ class Fishing(unittest.TestCase):
         self.see(10.1,'red','Reel (Hold)');self.see(10.5,'red','Reel (Hold)')
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.assertEqual(self.events[-2:],[('A',False),('LMB',True)])
-    def test_stale_reel_text_does_not_hold_forever(self):
+    def test_stale_reel_text_does_not_hold_lmb_forever(self):
         self.fight();self.see(10.1,'blue','Reel (Hold)');self.see(10.5,'blue','Reel (Hold)')
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.see(12.1,'blue','Reel (Hold)',10.5)
-        self.assertIsNone(self.c.held)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
     def test_restart_resets_wait_timeout(self):
         self.c.changed=10;self.c.start();self.c.tick(100);self.c.tick(100.1)
         self.assertTrue(self.c.running)
