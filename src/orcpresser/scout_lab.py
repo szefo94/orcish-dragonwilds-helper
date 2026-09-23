@@ -372,9 +372,7 @@ class ScoutLabPanel:
         tk.Label(p,text="SCOUT LAB · DATA ACQUISITION",bg=c["PANEL"],fg=c["GOLD"],font=("Segoe UI",12,"bold"),anchor="w").pack(fill="x")
         tk.Label(p,text="Visual cursor/crosshair probes + OS telemetry + optional read-only module-relative memory watches. No aiming or memory writes.",
                  bg=c["PANEL"],fg=c["MUTED"],wraplength=410,justify="left",anchor="w",font=("Segoe UI",9)).pack(fill="x",pady=(2,8))
-        row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
-        tk.Button(row,text="START RECORDING",command=self.start).pack(side="left")
-        tk.Button(row,text="STOP",command=self.stop).pack(side="left",padx=6)
+        tk.Label(p,text="Start/stop recording from the global control bar below.",bg=c["PANEL"],fg=c["MUTED"],anchor="w",font=("Segoe UI",8)).pack(fill="x",pady=(0,3))
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
         for label,title in (("target","MARK TARGET"),("head","MARK HEAD"),("inventory","MARK INVENTORY"),("hit","MARK HIT"),("miss","MARK MISS")):
             tk.Button(row,text=title,command=lambda x=label:self.mark(x)).pack(side="left",padx=(0,4))
