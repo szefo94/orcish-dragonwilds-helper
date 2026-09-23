@@ -261,7 +261,8 @@ The project separates perception, control, and UI so work on one feature can be 
 | `src/orcpresser/fishing_capture.py` | Fishing color detection, OCR workers, and local recording. |
 | `src/orcpresser/fishing_ui.py` / `fishing_overlay.py` | Fishing controls and overlay. |
 | `src/orcpresser/scout.py` / `scout_lab.py` | Immutable Scout recording plus supervised visual/process/read-only-memory research probes. |
-| `src/orcpresser/scout_analysis.py` | Per-session and cross-session Scout analysis. |
+| `src/orcpresser/aim_lab.py` | Experimental visual target tracking, head-candidate/crosshair geometry, impact evidence and overlay. |
+| `src/orcpresser/scout_analysis.py` | Per-session and cross-session Scout analysis across Auto Picker, Fishing, Aim and Scout Lab. |
 | `tests/` | Regression and synthetic evidence tests. |
 | `.github/` | CI workflow and issue/PR templates. |
 | `docs/` | Fishing instructions, architecture, history, and review notes. |
@@ -306,4 +307,6 @@ Analyze every Auto Picker, Fishing, and Scout Lab session and build a combined s
 
 `--all` refreshes the individual per-session reports and additionally writes `data/scout_reports/ALL_SESSIONS.json` and `ALL_SESSIONS.md`, with cross-session timing and per-domain summaries. The analyzer never edits, truncates, moves, or deletes the original Scout session files; every per-session report includes SHA-256 hashes of the raw files used.
 
-The **SCOUT LAB** tab is an observational research workspace. After binding the game, it can record cursor and screen-center/crosshair visual probes, OS process telemetry, optional 96×64 cursor crops, manual labels (`TARGET`, `HEAD`, `INVENTORY`, `HIT`, `MISS`), and explicitly configured **read-only** memory watches. A watch uses `MODULE+0xOFFSET:type` (preferred across ASLR) or an absolute `0xADDRESS:type`, where type is `u8`, `u16`, `u32`, `i32`, `f32`, or `f64`. The Lab does not write game memory or move/aim the mouse; it exists to collect aligned evidence before any target/distance/trajectory model is attempted.
+The **SCOUT LAB** tab is an observational research workspace. After binding the game, it can record cursor and screen-center/crosshair visual probes, OS process telemetry, optional 96×64 cursor crops, manual labels (`TARGET`, `HEAD`, `INVENTORY`, `HIT`, `MISS`), and explicitly configured **read-only** memory watches. A watch uses `MODULE+0xOFFSET:type` (preferred across ASLR) or an absolute `0xADDRESS:type`, where type is `u8`, `u16`, `u32`, `i32`, `f32`, or `f64`. Enable **Run independent Scout probes alongside Auto / Fishing / Aim** to put those probes in the same session/timeline as the active feature. The Lab does not write game memory or move/aim the mouse.
+
+The **AIM LAB · EXP** tab is a research tracker rather than an automatic aimer. Start tracking, hover a visible target, and use **ACQUIRE AT CURSOR**. The click-through overlay follows the seeded appearance template, draws a target rectangle plus a provisional upper-box head candidate, and logs crosshair-to-target error. **MARK HIT**, **MARK CRIT**, and **MARK MISS** add labels to the same Scout timeline; transient center-region visual changes are logged as impact candidates for later damage/critical-indicator classification. See [`docs/AIM_RESEARCH.md`](docs/AIM_RESEARCH.md).
