@@ -1,5 +1,5 @@
 """Orc Presser — Windows desktop controller. All recognition stays on this PC."""
-import os, sys, time, threading, queue, ctypes, atexit, logging, importlib.util
+import os, sys, time, threading, queue, ctypes, atexit, logging, importlib.util, faulthandler
 from collections import deque
 from pathlib import Path
 import tkinter as tk
@@ -1282,12 +1282,37 @@ class App:
 log=logging.getLogger('orcpresser')
 def setup_log(folder):
     from logging.handlers import RotatingFileHandler
-    h=RotatingFileHandler(Path(folder)/'orcpresser.log',maxBytes=256*1024,backupCount=1,encoding='utf-8')
+    folder=Path(folder)
+    h=RotatingFileHandler(folder/'orcpresser.log',maxBytes=256*1024,backupCount=1,encoding='utf-8')
     h.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(threadName)s %(message)s'))
     log.addHandler(h);log.setLevel(logging.INFO)
+
+    # Keep a separate low-level crash stream. faulthandler can record fatal interpreter/native
+    # faults that may bypass Tk callbacks and normal logging completely.
+    crash=(folder/'orcpresser-crash.log').open('a',encoding='utf-8',buffering=1)
+    try:faulthandler.enable(file=crash,all_threads=True)
+    except (OSError,RuntimeError):pass
+    atexit.register(crash.close)
+
+    def main_error(exc_type,exc_value,exc_tb):
+        if issubclass(exc_type,KeyboardInterrupt):
+            return sys.__excepthook__(exc_type,exc_value,exc_tb)
+        log.critical('Unhandled main-thread exception',exc_info=(exc_type,exc_value,exc_tb))
+        try:
+            import traceback
+            crash.write('\n=== UNHANDLED MAIN THREAD EXCEPTION ===\n')
+            traceback.print_exception(exc_type,exc_value,exc_tb,file=crash);crash.flush()
+        except Exception:pass
+    sys.excepthook=main_error
+
     def thread_error(args):
         log.error('Unhandled thread exception in %s',getattr(args.thread,'name','?'),
                   exc_info=(args.exc_type,args.exc_value,args.exc_traceback))
+        try:
+            import traceback
+            crash.write('\n=== UNHANDLED THREAD EXCEPTION: '+getattr(args.thread,'name','?')+' ===\n')
+            traceback.print_exception(args.exc_type,args.exc_value,args.exc_traceback,file=crash);crash.flush()
+        except Exception:pass
     threading.excepthook=thread_error
 
 if __name__=='__main__':
