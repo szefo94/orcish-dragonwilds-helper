@@ -222,7 +222,11 @@ class FishingCapture:
                         fast_frames={}
                         for name in ('prompt','left','right'):
                             if name in self.regions:fast_frames[name]=grab.grab(rect_pixels(client,self.regions[name]))
-                        reel_score=ui_prompt_score(fast_frames.get('prompt'));reel_visible=reel_score>=.50;reel_stamp=now
+                        # The calibrated REEL prompt remains visually distinct at night, but
+                        # real captures commonly score ~0.44-0.54. Keep the UI-level
+                        # presence threshold permissive; controller hysteresis performs the
+                        # authoritative enter/exit decision.
+                        reel_score=ui_prompt_score(fast_frames.get('prompt'));reel_visible=reel_score>=.42;reel_stamp=now
                         left_score=ui_prompt_score(fast_frames.get('left'));right_score=ui_prompt_score(fast_frames.get('right'))
                         pull_direction,pull_confidence=resolve_pull_direction(left_score,right_score)
                         pull_visual_stamp=now;last_fast=now
