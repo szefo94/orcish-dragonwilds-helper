@@ -1,5 +1,8 @@
 # Scout game-internal telemetry
 
+> **Status: experimental research.** Tooling paths and observations here may be build-specific or provisional. Confirm current implementation and validation status before making runtime behavior depend on them.
+
+
 ## Microsoft Store / Xbox App (WinGDK) builds
 
 ### Current Dragonwilds WinGDK recovery path
