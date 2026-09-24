@@ -518,9 +518,14 @@ class ScoutLabPanel:
         if self.sidecar or not self.background.get() or self.app.visual or not self.app.target or not getattr(self.app,"scout",None):return
         try:
             focus_mode="crosshair" if domain=="aim" else "auto"
-            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,self.save_crops.get(),self.capture_lmb.get(),focus_mode=focus_mode,candidates=self.candidates,active_domain=domain,internal_config=self._internal_config())
-            self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":self.save_crops.get(),
-                                 "lmb_samples":self.capture_lmb.get(),"focus_mode":focus_mode,"semantic_candidates":len(self.candidates),
+            # Fishing has its own calibrated BAR/STOP/REEL/result diagnostics. Generic
+            # cursor crops and LMB 640x360 bursts only capture unrelated HUD/terrain.
+            fishing_specific=domain=="fishing"
+            save_crops=False if fishing_specific else self.save_crops.get()
+            capture_lmb=False if fishing_specific else self.capture_lmb.get()
+            self.sidecar=ScoutLabSession(self.app.io,self.app.target,self.app.scout_event,self.app.scout.folder,self.watches,save_crops,capture_lmb,focus_mode=focus_mode,candidates=self.candidates,active_domain=domain,internal_config=self._internal_config())
+            self.app.scout_event("system","sidecar_started",{"watches":len(self.watches),"cursor_crops":save_crops,
+                                 "lmb_samples":capture_lmb,"focus_mode":focus_mode,"semantic_candidates":len(self.candidates),
                                  "internal_bridge":self.bridge_enabled.get(),"frida":self.frida_enabled.get(),
                                  "frida_hooks":len(self.frida_hooks)},stream="system")
         except Exception as e:
