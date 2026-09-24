@@ -1058,6 +1058,12 @@ class App:
         """Return a compact app-attention hint only when configuration/intervention is actually needed."""
         text=" · ".join(str(x) for x in messages if x).strip()
         low=text.lower()
+        # In persistent Fishing 101 these are ordinary round outcomes, not faults.
+        # Remove only the known outcome phrases so genuine capture/start failures
+        # and depleted-spot warnings still surface normally.
+        if self.mode=="Fishing" and getattr(getattr(self,"ctrl",None),"config",None) and getattr(self.ctrl.config,"persistent_session",False):
+            for phrase in ("no fish was caught.","no' fish was caught.","round ended: failed","round ended: caught","round ended: junk"):
+                low=low.replace(phrase,"")
         danger=any(k in low for k in ("error","failed","depleted","fatal","stuck"))
         needs=any(k in low for k in (
             "bind the game","bind a dragonwilds","select bar","select reel","select region","requires",
