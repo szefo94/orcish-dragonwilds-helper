@@ -118,6 +118,28 @@ class Fishing(unittest.TestCase):
     def test_sustained_unknown_releases_after_grace(self):
         self.fight();self.see(10.1);self.see(10.15);self.see(10.56)
         self.assertTrue(self.c.running);self.assertIsNone(self.c.held);self.assertEqual(self.events,[('A',True),('A',False)])
+    def test_red_after_confirmed_blue_swaps_on_first_red_frame(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=False,use_pull_direction=False))
+        self.c.start(False)
+        self.see(10,'red');self.see(10.1,'red')
+        self.assertEqual(self.c.held,'A')
+        self.see(10.2,'blue');self.see(10.3,'blue')
+        self.assertEqual(self.c.held,'A')
+        self.see(10.4,'red')
+        self.assertEqual(self.c.held,'D')
+        self.assertIn('immediate direction swap',self.c.reason)
+
+    def test_101_can_treat_pull_labels_as_presence_only(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=True,persistent_session=True,use_pull_direction=False))
+        self.c.start(False)
+        self.see(10,active=True);self.see(10.2,active=True)
+        self.see(10.4,active=False)
+        self.see(10.5,pull_direction='D',pull_confidence=.9)
+        self.see(10.6,pull_direction='D',pull_confidence=.9)
+        self.assertNotEqual(self.c.held,'D')
+
     def test_unknown_gap_preserves_last_reliable_blue_for_swap(self):
         self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
         self.see(10.2);self.see(10.25)

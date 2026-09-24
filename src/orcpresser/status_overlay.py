@@ -1,7 +1,7 @@
 """Shared non-activating HUD for minimized / opacity-0 operation.
 
-All cards are stacked from the top-left so the helper has one predictable
-in-game information rail instead of occupying all four corners.
+All cards are stacked in a middle-left rail so the helper stays readable without
+covering the top-left game HUD or occupying all four corners.
 """
 import ctypes, sys, tkinter as tk
 
@@ -37,11 +37,15 @@ class StatusOverlay:
                 self.hwnd=hwnd;self.available=bool(u.SetWindowDisplayAffinity(hwnd,0x11))
             except Exception:self.available=False
 
+    def _card_height(self,lines):
+        clean=[str(x).replace("\n"," · ").strip() for x in lines if str(x).strip()][:6]
+        return 36+20*max(1,len(clean))
+
     def _card(self,y,w,h,palette,title,lines):
         margin=max(12,min(28,int(min(w,h)*.018)))
         max_w=max(320,min(640,int(w*.34)))
         clean=[str(x).replace("\n"," · ").strip() for x in lines if str(x).strip()][:6]
-        panel_h=36+20*max(1,len(clean))
+        panel_h=self._card_height(clean)
         x1=margin;y1=max(margin,y);x2=min(w,x1+max_w);y2=min(h,y1+panel_h)
         if y2<=y1:return y
         bg,edge,fg=PALETTES.get(palette,PALETTES["tl"])
@@ -67,18 +71,20 @@ class StatusOverlay:
         ctypes.windll.user32.ShowWindow(self.hwnd,4)
         self.canvas.delete("all")
 
-        cursor=max(12,min(28,int(min(w,h)*.018)))
+        margin=max(12,min(28,int(min(w,h)*.018)))
+        entries=[]
         # Preserve the caller's logical order while rendering every section in one rail.
         for pos in ("tl","tr","bl","br"):
             data=panels.get(pos) if isinstance(panels,dict) else None
-            if data:
-                title,lines=data
-                cursor=self._card(cursor,w,h,pos,title,lines)
-                if cursor>=h-44:break
-
-        if attention and cursor<h-42:
+            if data:entries.append((pos,data[0],data[1]))
+        if attention:
             msg=str(attention).replace("\n"," · ")[:150]
-            cursor=self._card(cursor,w,h,"danger" if danger else "attention","ACTION NEEDED",[msg])
+            entries.append(("danger" if danger else "attention","ACTION NEEDED",[msg]))
+        total=sum(self._card_height(lines)+8 for _,_,lines in entries)
+        cursor=max(margin,(h-total)//2)
+        for palette,title,lines in entries:
+            cursor=self._card(cursor,w,h,palette,title,lines)
+            if cursor>=h-44:break
 
     def hide(self):
         try:self.window.withdraw()

@@ -16,7 +16,7 @@ class FishingPanel:
         if isinstance(saved,dict) and isinstance(saved.get('confirmed'),(int,float)):self.calibration.confirmed=float(saved['confirmed'])
         self.regions=app.settings.get('fishing_regions',{})
         if not isinstance(self.regions,dict):self.regions={}
-        self.regions={k:v for k,v in self.regions.items() if k in ('bar','prompt','result','spot','active','left','right') and isinstance(v,list) and len(v)==4 and all(isinstance(n,(float,int)) and 0<=n<=1 for n in v) and v[2]>0 and v[3]>0 and v[0]+v[2]<=1.001 and v[1]+v[3]<=1.001}
+        self.regions={k:v for k,v in self.regions.items() if k in ('bar','prompt','result','active','left','right') and isinstance(v,list) and len(v)==4 and all(isinstance(n,(float,int)) and 0<=n<=1 for n in v) and v[2]>0 and v[3]>0 and v[0]+v[2]<=1.001 and v[1]+v[3]<=1.001}
         self.mode=tk.StringVar(value=app.settings.get('fishing_mode','101'))
         if self.mode.get() not in ('101','advanced'):self.mode.set('101')
         self.record=tk.BooleanVar(value=bool(app.settings.get('fishing_record',False)));self.auto=tk.BooleanVar(value=bool(app.settings.get('fishing_auto_cast',False)))
@@ -30,9 +30,10 @@ class FishingPanel:
         for value,title in [('101','FISHING BOT 101'),('advanced','ADVANCED · EXP')]:
             tk.Radiobutton(modes,text=title,value=value,variable=self.mode,command=self.mode_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg).pack(side='left',expand=True,fill='x')
         row=tk.Frame(parent,bg=bg);row.pack(fill='x')
-        for key,label in [('bar','BAR'),('prompt','REEL'),('active','STOP'),('left','PULL L'),('right','PULL R'),('result','RESULT'),('spot','SPOT')]:tk.Button(row,text=label,command=lambda n=key:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
+        # SPOT was an early cast-location experiment. It is intentionally hidden/disabled: it did not add reliable Fishing 101 value.
+        for key,label in [('bar','BAR'),('prompt','REEL'),('active','STOP'),('left','PULL L'),('right','PULL R'),('result','RESULT')]:tk.Button(row,text=label,command=lambda n=key:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
         tk.Label(parent,text='CALIBRATION · BAR and REEL are required. Optional: STOP (waiting), PULL L/R (fight prompts), RESULT (catch/depleted), SPOT (Advanced).',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
-        self.overlay_box=tk.Checkbutton(parent,text='Show calibration overlay (BAR / REEL / STOP / PULL L / PULL R / RESULT / SPOT)',variable=self.show_overlay,command=self.overlay_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.overlay_box.pack(fill='x')
+        self.overlay_box=tk.Checkbutton(parent,text='Show calibration overlay (BAR / REEL / STOP / PULL L / PULL R / RESULT)',variable=self.show_overlay,command=self.overlay_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.overlay_box.pack(fill='x')
         self.recurring_box=tk.Checkbutton(parent,text='Recurring rounds · after catch/failure, wait for your next cast',variable=self.recurring,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_recurring',self.recurring.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.recurring_box.pack(fill='x')
         self.record_box=tk.Checkbutton(parent,text='Record manual test (cropped images + A/D/LMB states)',variable=self.record,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_record',self.record.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.record_box.pack(fill='x')
         self.auto_box=tk.Checkbutton(parent,text='Advanced: automatic cast from current position',variable=self.auto,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_auto_cast',self.auto.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.auto_box.pack(fill='x')
@@ -138,13 +139,16 @@ class FishingPanel:
             auto_cast=self.mode.get()=='advanced' and self.auto.get(),
             recurring=self.recurring.get(),
             require_active=(self.mode.get()=='101') or (self.recurring.get() and 'active' in self.regions),
-            persistent_session=self.mode.get()=='101').validate()
+            persistent_session=self.mode.get()=='101',
+            use_pull_direction=self.mode.get()!='101').validate()
         except ValueError as e:a.status.set(str(e));return
         a.stop();a.generation+=1;a.io.tripped=False
         if self.show_overlay.get():self.ensure_overlay()
-        a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());a.scout_start('fishing',run);self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
+        a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());a.scout_start('fishing',run)
+        diagnostic_folder=a.scout.folder if self.mode.get()=='101' and getattr(a,'scout',None) else None
+        self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'],diagnostic_folder=diagnostic_folder)
         a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING 101 ARMED — waiting for Stop Fishing; STOP/F8 ends session' if self.mode.get()=='101' else 'FISHING ARMED — switch to the game; F8 stops')
-        self.message.set('Fishing Bot 101 armed. No aid starts until STOP Fishing is confirmed; alt-tab pauses inputs but keeps the session armed.' if self.mode.get()=='101' else
+        self.message.set('Fishing Bot 101 monitoring immediately. STOP Fishing authorizes fight inputs; Scout saves fishing-specific BAR/context frames. PULL L/R labels are treated as fight-presence UI, not live direction.' if self.mode.get()=='101' else
                          (('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.'))
     def stop(self):
         if self.session:self.session.close();self.session=None
@@ -175,7 +179,8 @@ class FishingPanel:
             if getattr(a.ctrl.config,'persistent_session',False):
                 try:self.session.close()
                 except Exception:log.exception('Failed closing crashed fishing capture session')
-                self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'])
+                diagnostic_folder=a.scout.folder if self.mode.get()=='101' and getattr(a,'scout',None) else None
+                self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'],diagnostic_folder=diagnostic_folder)
                 a.ctrl._rearm('Fishing capture restarted after error — still armed; waiting for Stop Fishing')
                 self.message.set('Fishing capture recovered from an error. Session stayed LIVE; see data\\orcpresser.log for details.')
                 return
@@ -190,7 +195,7 @@ class FishingPanel:
             details={'text_stamp':o.text_stamp,'active_stamp':o.active_stamp,'pull_stamp':o.pull_stamp,
                      'pull_visual_stamp':info.get('pull_visual_stamp'),'reel_stamp':info.get('reel_stamp'),
                      'active_score':info.get('active_score'),'ocr_regions':info.get('ocr_regions'),
-                     'ocr_ms':info.get('ocr_ms'),'backend':info.get('backend')},stream='vision')
+                     'ocr_ms':info.get('ocr_ms'),'backend':info.get('backend'),'diagnostic_image':info.get('diagnostic_image')},stream='vision')
         a.scout_event('controller','fishing_decision',{'state':a.ctrl.state,'held':a.ctrl.held,'running':a.ctrl.running},mono=now,
             details={'previous_state':before_state,'previous_held':before_held,'reason':a.ctrl.reason,'preview':a.ctrl.preview},stream='controller')
         stop_text='YES' if info.get('active') is True else 'NO' if info.get('active') is False else 'N/A';active_score=info.get('active_score')

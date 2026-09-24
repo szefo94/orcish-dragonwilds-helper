@@ -67,3 +67,12 @@ Scout records the new fields `pull_direction`, `pull_confidence`, left/right vis
 ## Recurring rounds and ACTIVE signal
 
 The optional **STOP** region should tightly cover the `Stop Fishing` label/icon. It is stored internally as the active-region signal for backward compatibility. With **Recurring rounds** enabled, the controller does not stop after a normal catch or recoverable failure. It releases A/D/LMB, waits for the previous ACTIVE signal to disappear, then waits for a fresh ACTIVE signal before rearming BAR/REEL handling. This clear-then-reappear handshake prevents stale end-of-round UI from immediately starting another fight. If STOP is not calibrated, the controller falls back to waiting for the BAR to disappear and return. `No fish here`, `depleted`, and bait-required states still stop the bot for manual intervention.
+
+
+### Fishing 101 diagnostics and direction handling
+
+Fishing 101 records fishing-specific Scout evidence rather than generic cursor/crosshair samples. During a Fishing 101 session, Scout stores the normal telemetry stream plus compact context screenshots around the calibrated BAR, REEL, STOP, PULL and RESULT regions and frequent BAR crops under the session's `fishing_frames/` directory. Generic 640×360 LMB/cursor sampling is disabled for the fishing sidecar.
+
+The observed `Pull Left A` and `Pull Right D` captions are treated as control-legends / fight-presence evidence, not as a live fish-direction command, because both can be visible simultaneously. Direction correction therefore uses BAR feedback: after blue has confirmed the current A/D direction, the first credible red frame immediately flips A↔D. Initial red still requires normal debounce.
+
+The old **SPOT** region / bright-ripple experiment is disabled. It remains only as legacy code for possible future research because it did not provide reliable control value for Fishing 101.
