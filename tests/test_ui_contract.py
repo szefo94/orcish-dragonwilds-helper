@@ -31,5 +31,14 @@ class UIContract(unittest.TestCase):
         self.assertNotIn("('spot','SPOT')",text)
         self.assertIn('SPOT was an early cast-location experiment',text)
 
+    def test_fishing_101_forces_mss_capture(self):
+        text=(SRC/'fishing_ui.py').read_text(encoding='utf-8')
+        self.assertIn("fishing_dxgi=False if self.mode.get()=='101'",text)
+
+    def test_fishing_normal_failed_round_is_filtered_from_attention(self):
+        text=(SRC/'app.py').read_text(encoding='utf-8')
+        self.assertIn('"round ended: failed"',text)
+        self.assertIn('"no fish was caught."',text)
+
 if __name__=='__main__':
     unittest.main()
