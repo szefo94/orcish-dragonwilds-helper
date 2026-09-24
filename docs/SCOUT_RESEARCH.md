@@ -1,5 +1,8 @@
 # Scout research: visual + process telemetry for Auto Picker and Fishing
 
+> **Status: research.** This records experiments, evidence, provisional approaches, and open questions. It is not a live-control contract; validate findings against current code/tests before implementation.
+
+
 Status: Phase A parallel logger implemented; process-memory/reflection backends remain research/design only.
 
 ## Goal
