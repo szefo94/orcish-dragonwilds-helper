@@ -146,7 +146,10 @@ class FishingPanel:
         if self.show_overlay.get():self.ensure_overlay()
         a.ctrl=FishingController(a.io.output,config);a.ctrl.start(run=='Preview',self.trial.get());a.scout_start('fishing',run)
         diagnostic_folder=a.scout.folder if self.mode.get()=='101' and getattr(a,'scout',None) else None
-        self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'],diagnostic_folder=diagnostic_folder)
+        # Fishing 101 favors stability over a few ms of capture speed. DXCam can crash
+        # the whole interpreter in native COM/DXGI code, so persistent 101 uses MSS only.
+        fishing_dxgi=False if self.mode.get()=='101' else a.opts()['dxgi']
+        self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),fishing_dxgi,diagnostic_folder=diagnostic_folder)
         a.run=run;a.last_run=run;a.armed=True;a.draw_run();a.status.set('FISHING 101 ARMED — waiting for Stop Fishing; STOP/F8 ends session' if self.mode.get()=='101' else 'FISHING ARMED — switch to the game; F8 stops')
         self.message.set('Fishing Bot 101 monitoring immediately. STOP Fishing authorizes fight inputs; Scout saves fishing-specific BAR/context frames. PULL L/R labels are treated as fight-presence UI, not live direction.' if self.mode.get()=='101' else
                          (('Recurring: waiting for your next cast; STOP confirms waiting-for-bite.' if self.recurring.get() else 'Watching fishing phase signals.')+' PULL L/R or BAR starts fight handling; Reel (Hold) overrides with LMB.'))
@@ -180,7 +183,8 @@ class FishingPanel:
                 try:self.session.close()
                 except Exception:log.exception('Failed closing crashed fishing capture session')
                 diagnostic_folder=a.scout.folder if self.mode.get()=='101' and getattr(a,'scout',None) else None
-                self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),a.opts()['dxgi'],diagnostic_folder=diagnostic_folder)
+                fishing_dxgi=False if self.mode.get()=='101' else a.opts()['dxgi']
+                self.session=FishingCapture(a.io,a.target,self.regions,a.folder,self.record.get(),fishing_dxgi,diagnostic_folder=diagnostic_folder)
                 a.ctrl._rearm('Fishing capture restarted after error — still armed; waiting for Stop Fishing')
                 self.message.set('Fishing capture recovered from an error. Session stayed LIVE; see data\\orcpresser.log for details.')
                 return
