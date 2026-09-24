@@ -36,10 +36,11 @@ class FishingConfig:
     min_stamina: float = .08
     persistent_session: bool = False
     use_pull_direction: bool = True
+    red_probe_seconds: float = .65
 
     def validate(self):
         for name,low,high in [('cast_seconds',.05,3.),('stale_seconds',.2,2.),('unknown_grace_seconds',.1,2.),('bite_timeout',3.,120.),
-                              ('fight_timeout',5.,180.),('min_stamina',0.,1.)]:
+                              ('fight_timeout',5.,180.),('min_stamina',0.,1.),('red_probe_seconds',.3,2.)]:
             v=getattr(self,name)
             if not math.isfinite(v) or not low<=v<=high:raise ValueError(f'{name} must be {low}–{high}')
         if self.first_pull not in ('A','D'):raise ValueError('First pull must be A or D')
@@ -268,9 +269,11 @@ class FishingController:
                 self.set_key(self.direction)
                 self.reason='REEL ended on blue — resumed '+self.direction;return
             if stable and o.color=='red':
-                self.direction='D' if self.direction=='A' else 'A'
+                # REEL interrupts directional feedback. Do not assume a red frame after
+                # REEL means the pre-REEL direction must be inverted; resume it briefly
+                # and let fresh BAR feedback decide.
                 self.set_key(self.direction);self.changed=now
-                self.reason='REEL ended on red — swapped and holding '+self.direction;return
+                self.reason='REEL ended on red — resumed '+self.direction+' pending fresh BAR feedback';return
             self.reason='REEL ended — waiting for reliable BAR/PULL before resuming direction';return
         if pull_command and self.state=='FIGHT':
             self.direction=pull_command;self.set_key(self.direction)
@@ -289,14 +292,20 @@ class FishingController:
             return
         if not stable:return
         if o.color=='red':
-            # Direction changes are driven by COLOR TRANSITIONS, never by a timer.
-            # First red starts first_pull. A later blue keeps that key held. When
-            # the indicator returns to red, swap A<->D once and hold it.
+            # Red is negative feedback for the current directional trial. Start with
+            # first_pull, swap immediately when confirmed blue turns red, and if a
+            # direction remains red for a bounded probe interval try the opposite key
+            # instead of holding a wrong direction for several seconds.
             if self.held is None:
                 self.set_key(self.direction);self.changed=now
             elif transitioned and previous_stable=='blue':
                 self.direction='D' if self.direction=='A' else 'A'
                 self.set_key(self.direction);self.changed=now
+            elif self.held in ('A','D') and now-self.changed>=self.config.red_probe_seconds:
+                self.direction='D' if self.direction=='A' else 'A'
+                self.set_key(self.direction);self.changed=now
+                self.reason='Sustained red — probing opposite direction '+self.direction
+                return
             self.reason='Red tension — holding '+self.direction
         elif o.color=='blue' and self.state=='FIGHT':
             # Keep the current A/D direction held. Do not pulse or alternate it.
