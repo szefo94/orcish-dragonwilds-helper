@@ -1,5 +1,8 @@
 # Aim Lab research: visual tracking + Scout fusion
 
+> **Status: research.** This records experiments, evidence, provisional approaches, and open questions. It is not a live-control contract; validate findings against current code/tests before implementation.
+
+
 Status: first observational Aim Lab implemented. It tracks user-seeded targets, draws boxes/head-candidate bands, records crosshair error and visual impact candidates, and can run the independent Scout process/memory sidecar in the same session. It does **not** move the mouse, fire, or write game memory.
 
 ## Why start with tracking rather than automatic aiming
