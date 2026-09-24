@@ -118,7 +118,12 @@ def rect_pixels(client,ratio):
 
 
 def spot_candidate(frame):
-    """A tentative bright ripple ellipse; never used as proof of cast distance."""
+    """Legacy/disabled fishing-spot experiment.
+
+    Kept only as a remnant of the earlier cast-location research. Fishing 101 no
+    longer captures or consumes a SPOT region because it did not add reliable
+    control value.
+    """
     hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
     mask=cv2.inRange(hsv,np.array([0,0,175]),np.array([179,90,255]))
     contours,_=cv2.findContours(mask,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
@@ -129,9 +134,12 @@ def spot_candidate(frame):
 
 
 class FishingCapture:
-    def __init__(self,io,target,regions,folder,record=False,dxgi=False):
-        self.io,self.target,self.regions=io,target,dict(regions)
+    def __init__(self,io,target,regions,folder,record=False,dxgi=False,diagnostic_folder=None):
+        self.io,self.target,self.regions=io,target,{k:v for k,v in dict(regions).items() if k!='spot'}
         self.record=record;self.dxgi=dxgi;self.closed=threading.Event()
+        self.diagnostic_folder=Path(diagnostic_folder) if diagnostic_folder else None
+        self.diagnostic_dir=(self.diagnostic_folder/'fishing_frames') if self.diagnostic_folder else None
+        if self.diagnostic_dir:self.diagnostic_dir.mkdir(parents=True,exist_ok=True)
         self.results=queue.Queue(maxsize=1);self.ocr_jobs=queue.Queue(maxsize=1)
         self.lock=threading.Lock();self.text='';self.text_stamp=0.;self.pull_left=False;self.pull_right=False;self.pull_stamp=0.;self.ocr_regions={};self.ocr_ms=0.;self.error=''
         self.started=time.monotonic();self.folder=None;self.bytes=0
@@ -185,7 +193,7 @@ class FishingCapture:
         try:
             from capture import Grabber
             grab=Grabber();grab.set_dxgi(self.dxgi)
-            last_text=last_save=last_spot=last_active=last_fast=0.;candidate=None;active=False;active_score=0.;active_stamp=0.
+            last_text=last_save=last_active=last_fast=last_diag=0.;active=False;active_score=0.;active_stamp=0.
             pull_direction=None;pull_confidence=0.;pull_visual_stamp=0.;left_score=right_score=0.
             reel_visible=False;reel_score=0.;reel_stamp=0.;fast_frames={}
             session_log=(self.folder/'observations.jsonl').open('w',encoding='utf-8') if self.folder else None
@@ -217,8 +225,6 @@ class FishingCapture:
                         self.ocr_jobs.put_nowait((now,images));last_text=now
                     if 'active' in self.regions and now-last_active>=.15:
                         active_frame=grab.grab(rect_pixels(client,self.regions['active']));active,active_score=active_indicator(active_frame);active_stamp=now;last_active=now
-                    if 'spot' in self.regions and now-last_spot>.25:
-                        candidate=spot_candidate(grab.grab(rect_pixels(client,self.regions['spot'])));last_spot=now
                     with self.lock:text,stamp,pull_left,pull_right,pull_stamp,ocr_regions,ocr_ms,error=self.text,self.text_stamp,self.pull_left,self.pull_right,self.pull_stamp,dict(self.ocr_regions),self.ocr_ms,self.error
                     o=Observation(now,color,text,stamp,active=active if 'active' in self.regions else None,active_stamp=active_stamp,
                                   pull_left=pull_left if 'left' in self.regions else None,pull_right=pull_right if 'right' in self.regions else None,pull_stamp=pull_stamp,
@@ -230,7 +236,25 @@ class FishingCapture:
                               pull_direction=pull_direction,pull_confidence=pull_confidence,pull_visual_stamp=pull_visual_stamp,
                               pull_left_score=left_score,pull_right_score=right_score,
                               reel_visible=reel_visible if 'prompt' in self.regions else None,reel_score=reel_score,reel_stamp=reel_stamp,
-                              ocr_regions=ocr_regions,ocr_ms=ocr_ms,backend=grab.last_backend,spot=candidate,physical=physical)
+                              ocr_regions=ocr_regions,ocr_ms=ocr_ms,backend=grab.last_backend,physical=physical)
+                    # Fishing 101 diagnostics are deliberately fishing-specific: save a compact
+                    # context around calibrated fishing UI plus the BAR at 2 Hz. This replaces
+                    # generic cursor/crosshair screenshots that are not useful for fishing.
+                    diagnostic_image=None
+                    if self.diagnostic_dir and now-last_diag>=.50:
+                        relevant=[rect_pixels(client,self.regions[k]) for k in ('bar','prompt','active','left','right','result') if k in self.regions]
+                        if relevant:
+                            x0=max(client[0],min(r['left'] for r in relevant)-24);y0=max(client[1],min(r['top'] for r in relevant)-24)
+                            x1=min(client[0]+client[2],max(r['left']+r['width'] for r in relevant)+24)
+                            y1=min(client[1]+client[3],max(r['top']+r['height'] for r in relevant)+24)
+                            context=grab.grab({'left':x0,'top':y0,'width':max(1,x1-x0),'height':max(1,y1-y0)})
+                            base=f'{now-self.started:09.3f}'
+                            context_name=base+'-context.jpg';bar_name=base+'-bar.png'
+                            cv2.imwrite(str(self.diagnostic_dir/context_name),context,[int(cv2.IMWRITE_JPEG_QUALITY),82])
+                            cv2.imwrite(str(self.diagnostic_dir/bar_name),bar)
+                            diagnostic_image=str(Path('fishing_frames')/context_name)
+                            last_diag=now
+                    info['diagnostic_image']=diagnostic_image
                     if error:raise RuntimeError(error)
                     if session_log and now-self.started<300 and self.bytes<100*1024*1024:
                         line=json.dumps(dict(observation=asdict(o),**info))+'\n';session_log.write(line);self.bytes+=len(line)
