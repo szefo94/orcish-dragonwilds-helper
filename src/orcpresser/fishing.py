@@ -153,10 +153,17 @@ class FishingController:
         pull_direction_confirmed=self.pull_visual_dir if self.pull_visual_count>=2 else None
         pull_command=(pull_direction_confirmed or pull_ocr_direction) if self.config.use_pull_direction else None
         if o.reel_stamp!=self.reel_seen:
-            if o.reel_visible and o.reel_score>=.55:
+            if o.reel_visible is not None and o.reel_score>=.44:
+                # Two strong-enough fast frames enter REEL. Night-session evidence
+                # places many clear prompts in the 0.44-0.54 range.
                 self.reel_count+=1;self.reel_absent_count=0
-            else:
+            elif o.reel_visible is not None and o.reel_score<=.30:
+                # Require genuinely weak evidence before declaring disappearance.
                 self.reel_count=0;self.reel_absent_count+=1
+            else:
+                # Hysteresis band: do not manufacture an absence from one dim,
+                # partially occluded, or anti-aliased prompt frame.
+                self.reel_count=0;self.reel_absent_count=0
             self.reel_seen=o.reel_stamp
         reel_visual_confirmed=self.reel_count>=2
         reel_visual_absent_confirmed=self.reel_absent_count>=2
