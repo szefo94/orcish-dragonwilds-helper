@@ -35,6 +35,7 @@ class FishingConfig:
     fight_timeout: float = 90.
     min_stamina: float = .08
     persistent_session: bool = False
+    use_pull_direction: bool = True
 
     def validate(self):
         for name,low,high in [('cast_seconds',.05,3.),('stale_seconds',.2,2.),('unknown_grace_seconds',.1,2.),('bite_timeout',3.,120.),
@@ -149,7 +150,7 @@ class FishingController:
                 self.pull_visual_count=0;self.pull_visual_dir=None
             self.pull_visual_seen=o.pull_visual_stamp
         pull_direction_confirmed=self.pull_visual_dir if self.pull_visual_count>=2 else None
-        pull_command=pull_direction_confirmed or pull_ocr_direction
+        pull_command=(pull_direction_confirmed or pull_ocr_direction) if self.config.use_pull_direction else None
         if o.reel_stamp!=self.reel_seen:
             if o.reel_visible and o.reel_score>=.55:
                 self.reel_count+=1;self.reel_absent_count=0
@@ -275,6 +276,17 @@ class FishingController:
             self.direction=pull_command;self.set_key(self.direction)
             self.reason=('Fast PULL command confirmed — holding ' if pull_direction_confirmed else
                          'OCR PULL command confirmed — holding ')+self.direction;return
+
+        # Once blue has confirmed that the current A/D direction is effective, the first
+        # credible red frame means that direction has stopped working. React immediately
+        # instead of waiting for red to stabilize across multiple capture cycles; initial
+        # fight red still uses the normal debounce below.
+        if self.state=='FIGHT' and o.color=='red' and getattr(self,'stable_color','unknown')=='blue':
+            self.previous_stable_color='blue';self.stable_color='red'
+            self.direction='D' if self.direction=='A' else 'A'
+            self.set_key(self.direction);self.changed=now
+            self.reason='Red after confirmed blue — immediate direction swap to '+self.direction
+            return
         if not stable:return
         if o.color=='red':
             # Direction changes are driven by COLOR TRANSITIONS, never by a timer.
