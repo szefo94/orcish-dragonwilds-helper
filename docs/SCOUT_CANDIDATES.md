@@ -1,5 +1,8 @@
 # Scout semantic memory candidates
 
+> **Status: research evidence.** Candidate meanings and thresholds here are hypotheses until they pass the documented promotion criteria. Do not wire a candidate into live control solely because it appears in this file.
+
+
 Scout can attach **names and intended meanings** to read-only memory locations instead of treating every address as an anonymous watch. These candidates are research evidence only: the current controllers remain visual-first/fallback-capable, and a candidate is not promoted into control logic merely because it correlates once.
 
 A semantic candidate has four fields:
