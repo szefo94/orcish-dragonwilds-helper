@@ -1,8 +1,10 @@
 # Orc Presser Framework — reusable features and how to derive other games
 
+> **Status: architecture reference / partially historical.** This document preserves reusable design patterns and older framework rationale. For current repository structure and implemented behavior, verify against `src/orcpresser/`, `tests/`, `AGENTS.md`, and `docs/README.md`.
+
 **Entry point for new projects.** Orc Presser is split into a generic base and one game-specific profile. A new game is a new profile ("Dog") derived from the generic base ("Animal"). Only what differs gets overridden. Everything else in this document is inherited as-is.
 
-Framework version: **2.2** (matches Orc Presser 2.2). This file is updated with every release; see [Feature log](#feature-log) at the end.
+Framework baseline: **2.2-era architecture notes**. The project has evolved beyond this snapshot; the feature log remains useful historical context, but concrete version/layout claims below should be checked against the current tree.
 
 Legend for **Reuse** below:
 - **Drop-in**: no changes needed for another game.
@@ -13,7 +15,7 @@ Legend for **Reuse** below:
 
 ## 1. Architecture at a glance
 
-**Folder layout** (2.0+): the root holds only `Setup.cmd`, `Run.cmd`, `Update.cmd` and `README.md`.
+**Folder layout** (2.0+ baseline): the runtime split still centers on root launch/update scripts, `src/`, `data/`, `docs/`, and `tests/`. The current repository also contains project-governance, publication, website, roadmap, and agent-guidance files/directories; do not treat the older "four root files" convention as a current invariant.
 
 | Folder | Contents | Shipped in updates? |
 |---|---|---|
