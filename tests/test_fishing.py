@@ -205,6 +205,26 @@ class Fishing(unittest.TestCase):
         self.see(10.8,'red',active=False,pull_left=True,pull_right=True)
         self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
 
+    def test_night_reel_scores_enter_at_observed_lower_range(self):
+        self.fight();self.assertEqual(self.c.held,'A')
+        self.see(10.1,'blue',reel_visible=True,reel_score=.46)
+        self.assertEqual(self.c.state,'FIGHT')
+        self.see(10.2,'blue',reel_visible=True,reel_score=.45)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+
+    def test_reel_hysteresis_does_not_drop_lmb_on_mid_score_frames(self):
+        self.fight()
+        self.see(10.1,'blue',reel_visible=True,reel_score=.48)
+        self.see(10.2,'blue',reel_visible=True,reel_score=.47)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.see(10.3,'blue',reel_visible=False,reel_score=.38)
+        self.see(10.4,'blue',reel_visible=False,reel_score=.36)
+        self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
+        self.see(10.5,'blue',reel_visible=False,reel_score=.20)
+        self.assertEqual(self.c.state,'REEL')
+        self.see(10.6,'blue',reel_visible=False,reel_score=.18)
+        self.assertEqual(self.c.state,'FIGHT');self.assertEqual(self.c.held,'A')
+
     def test_fast_visual_reel_overrides_direction(self):
         self.fight();self.assertEqual(self.c.held,'A')
         self.see(10.1,'blue',reel_visible=True,reel_score=.8)
