@@ -20,9 +20,9 @@ class Fishing(unittest.TestCase):
     def test_preview_never_outputs(self):
         self.c.start(preview=True);self.fight();self.c.stop()
         self.assertEqual(self.events,[])
-    def test_red_holds_same_direction_without_pulsing(self):
+    def test_sustained_red_eventually_probes_other_direction(self):
         self.fight();self.see(10.4,'red');self.see(11.0,'red')
-        self.assertEqual(self.events,[('A',True)])
+        self.assertEqual(self.events,[('A',True),('A',False),('D',True)])
     def test_blue_keeps_direction_then_next_red_swaps_once(self):
         self.fight();self.see(10.1,'blue');self.see(10.15,'blue')
         self.assertEqual(self.c.held,'A');self.assertEqual(self.events,[('A',True)])
@@ -35,7 +35,9 @@ class Fishing(unittest.TestCase):
         self.see(10.6,'red','Reel (Hold)',10.55);self.see(10.65,'red','Reel (Hold)',10.55)
         self.assertEqual(self.c.state,'REEL');self.assertEqual(self.c.held,'LMB')
         self.see(11.0,'red','',11.0);self.see(11.1,'red','',11.1)
-        self.assertEqual(self.events[-2:],[('LMB',False),('D',True)])
+        # REEL ending no longer blindly inverts direction; resume the pre-REEL
+        # direction and let fresh BAR feedback decide whether to swap.
+        self.assertEqual(self.events[-2:],[('LMB',False),('A',True)])
     def test_cached_ocr_is_not_second_confirmation(self):
         self.c.config.auto_cast=True
         self.see(10,text='Cast (Hold)',stamp=10);self.see(10.1,text='Cast (Hold)',stamp=10)
@@ -118,6 +120,32 @@ class Fishing(unittest.TestCase):
     def test_sustained_unknown_releases_after_grace(self):
         self.fight();self.see(10.1);self.see(10.15);self.see(10.56)
         self.assertTrue(self.c.running);self.assertIsNone(self.c.held);self.assertEqual(self.events,[('A',True),('A',False)])
+    def test_sustained_initial_red_probes_opposite_direction(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=False,use_pull_direction=False,red_probe_seconds=.65))
+        self.c.start(False)
+        self.see(10,'red');self.see(10.1,'red')
+        self.assertEqual(self.c.held,'A')
+        self.see(10.8,'red')
+        self.assertEqual(self.c.held,'D')
+        self.assertIn('probing opposite direction',self.c.reason)
+
+    def test_reel_end_red_resumes_previous_direction_before_feedback_probe(self):
+        self.c=FishingController(lambda k,d:self.events.append((k,d)),
+            FishingConfig(require_active=False,use_pull_direction=False,red_probe_seconds=.65))
+        self.c.start(False)
+        self.see(10,'red');self.see(10.1,'red')
+        self.see(10.2,'blue');self.see(10.3,'blue')
+        self.see(10.4,'red')  # swaps A -> D
+        self.assertEqual(self.c.held,'D')
+        self.see(10.5,'red',reel_visible=True,reel_score=.9)
+        self.see(10.6,'red',reel_visible=True,reel_score=.9)
+        self.assertEqual(self.c.held,'LMB')
+        self.see(10.7,'red',reel_visible=False,reel_score=.1)
+        self.see(10.8,'red',reel_visible=False,reel_score=.1)
+        self.assertEqual(self.c.held,'D')
+        self.assertIn('resumed D',self.c.reason)
+
     def test_red_after_confirmed_blue_swaps_on_first_red_frame(self):
         self.c=FishingController(lambda k,d:self.events.append((k,d)),
             FishingConfig(require_active=False,use_pull_direction=False))
@@ -292,12 +320,18 @@ class Fishing(unittest.TestCase):
     def test_dragonwilds_pastel_blue_reference(self):
         frame=np.full((16,59,3),(230,223,181),dtype=np.uint8)  # RGB 181/223/230 in BGR order
         self.assertEqual(indicator(frame)[0],'blue')
-    def test_thin_red_burndown_edge_over_blue_fill(self):
-        frame=np.full((16,300,3),(12,13,16),dtype=np.uint8)
-        frame[:,1:63]=(230,223,181)     # sampled Dragonwilds blue
-        frame[:,63:65]=(50,68,208)      # sampled 2 px red live edge
+    def test_thin_red_burndown_edge_does_not_override_blue_fill(self):
+        frame=np.zeros((20,256,3),dtype=np.uint8)
+        frame[:,1:63]=(230,223,181)     # sampled Dragonwilds blue remaining fill
+        frame[:,63:65]=(50,68,208)      # sampled 2 px moving burn edge
         color,red,blue=indicator(frame)
-        self.assertEqual(color,'red');self.assertLess(red,.01);self.assertGreater(blue,.15)
+        self.assertEqual(color,'blue');self.assertLess(red,.01);self.assertGreater(blue,.15)
+
+    def test_left_anchored_red_fill_survives_large_burned_tail(self):
+        frame=np.zeros((20,256,3),dtype=np.uint8)
+        frame[:,1:42]=(50,68,208)
+        self.assertEqual(indicator(frame)[0],'red')
+
     def test_active_indicator_white_label_and_icon(self):
         frame=np.full((80,160,3),(110,30,120),dtype=np.uint8)
         frame[12:20,18:142]=(245,245,245)

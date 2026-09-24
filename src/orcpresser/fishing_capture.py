@@ -19,12 +19,13 @@ def _longest_run(mask):
 
 
 def indicator(frame):
-    """Classify the burn-down fishing bar.
+    """Classify the remaining left-anchored fill of the Dragonwilds fishing bar.
 
-    The active fill shrinks into black/grey. A red state can therefore be only a
-    very thin vertical strip at the live edge, so whole-ROI colour percentage is
-    not enough. Detect coherent coloured columns instead and give a narrow,
-    full-height red edge priority over the older blue fill behind it.
+    The bar burns down from right to left. The thin red line at the moving
+    burn boundary is therefore *not* the current state by itself; recordings
+    show that it can sit on the right edge of an otherwise blue bar. Classify
+    the coloured run that is anchored at the left side and ignore boundary
+    colour farther right.
     """
     hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
     # Reference colours sampled from Dragonwilds captures:
@@ -35,17 +36,26 @@ def indicator(frame):
     red=float(np.mean(red_mask));blue=float(np.mean(blue_mask))
     red_cols=np.mean(red_mask,axis=0)>=.55
     blue_cols=np.mean(blue_mask,axis=0)>=.55
-    red_run=_longest_run(red_cols);blue_run=_longest_run(blue_cols)
-    min_edge=max(2,int(np.ceil(w*.004)))
-    broad=max(3,int(np.ceil(w*.03)))
-    red_edge=(red_run>=min_edge and red_run<=max(4,int(np.ceil(w*.05))) and
-              float(np.max(np.mean(red_mask,axis=0),initial=0))>=.70)
-    red_broad=red_run>=broad;blue_broad=blue_run>=broad
-    if red_edge and blue_broad:color='red'
-    elif red_broad and not blue_broad:color='red'
-    elif blue_broad and not red_broad:color='blue'
-    elif red_broad and blue_broad:
-        color='red' if red_run>blue_run*1.4 else 'blue' if blue_run>red_run*1.4 else 'unknown'
+
+    # Allow a tiny decorative/border offset, then require a coherent coloured
+    # run extending from the left side. This remains valid as the active fill
+    # shrinks and prevents the moving red burn-edge from overriding blue fill.
+    lead_limit=max(2,int(np.ceil(w*.04)))
+    def leading_run(cols):
+        idx=np.flatnonzero(cols[:lead_limit+1])
+        if not len(idx):return 0
+        start=int(idx[0]);run=0
+        for value in cols[start:]:
+            if value:run+=1
+            else:break
+        return run
+
+    red_lead=leading_run(red_cols);blue_lead=leading_run(blue_cols)
+    minimum=max(2,int(np.ceil(w*.008)))
+    if red_lead>=minimum and blue_lead<minimum:color='red'
+    elif blue_lead>=minimum and red_lead<minimum:color='blue'
+    elif red_lead>=minimum and blue_lead>=minimum:
+        color='red' if red_lead>blue_lead*1.35 else 'blue' if blue_lead>red_lead*1.35 else 'unknown'
     else:color='unknown'
     return color,red,blue
 
