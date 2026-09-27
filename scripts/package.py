@@ -4,7 +4,7 @@ import sys, zipfile
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'/'orcpresser'))
 from version import VERSION
-FILES=('README.md','Setup.cmd','Run.cmd','Update.cmd','.gitignore','.gitattributes','.editorconfig','AGENTS.md','CONTRIBUTING.md','SECURITY.md','RIGHTS.md')
+FILES=('README.md','Setup.cmd','Run.cmd','Update.cmd','CHANNEL','.gitignore','.gitattributes','.editorconfig','AGENTS.md','CONTRIBUTING.md','SECURITY.md','RIGHTS.md')
 DIRS=('src','tests','docs','.github','scripts')
 
 def build():

@@ -63,7 +63,11 @@ rem Keep the GPU runtime if it was chosen before (requirements reinstall the CPU
 if exist "data\runtime-gpu.flag" call :use_gpu
 if errorlevel 1 goto failed
 "%PY%" src\orcpresser\maintenance.py migrate
+if errorlevel 1 goto failed
 "%PY%" src\orcpresser\maintenance.py runtime
+if errorlevel 1 goto failed
+if not exist "data" mkdir "data"
+echo ready>"data\setup-ready.flag"
 echo.
 echo   Ready. Start Orcish Dragonwilds Helper with Run.cmd.
 goto end_ok

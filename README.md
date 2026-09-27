@@ -4,6 +4,8 @@
 
 Development version **2.5.0-dev** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
 
+**Experimental edition:** this branch contains the research toolkit and game telemetry POC. For the everyday edition, use the [`main` branch](https://github.com/szefo94/orcish-dragonwilds-helper/tree/main). Install each edition in a separate folder; their update ZIPs are intentionally incompatible.
+
 Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can read an interaction prompt such as **Collect [E]**, check whether the action is allowed, and press the displayed key. You control where your character stands and looks. Repeat and Hold modes also work as configurable key and mouse-button controls.
 
 The interface uses an Orcish-inspired theme, mode buttons, capture previews, detection feedback, and CPU/RAM charts. Recognition runs locally; the application does not send gameplay frames to a cloud service or use an LLM during play.
@@ -64,8 +66,9 @@ Existing OrcPresser installation data and internal `src/orcpresser` paths are re
    ```
 
 2. Open the extracted or cloned project folder.
-3. Run **Setup.cmd** and choose **1** to install or repair dependencies in the local `.venv`.
-4. Run **Run.cmd** to open the helper.
+3. Double-click **Run.cmd**. On first launch it creates the local `.venv` and installs dependencies, then opens the helper. A terminal stays open during the initial download.
+
+Use **Setup.cmd** for repairs and advanced options. Python 3.12 64-bit with the Python launcher and Tcl/Tk is still required; [download it from python.org](https://www.python.org/downloads/). Keep the experimental copy in its own folder.
 
 Keep the entire project folder together. You do not need to copy individual Python modules or install packages globally.
 
