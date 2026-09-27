@@ -12,7 +12,7 @@ When sources disagree, use this order unless the task explicitly says otherwise:
 4. **`roadmap.md`** — intended future direction and explicitly planned work.
 5. **Feature docs** such as `docs/FISHING.md` — behavior rationale, state semantics, calibration rules, and known limitations.
 6. **`README.md`** — public/user-facing setup and capability description.
-7. **Research docs** (`*_RESEARCH.md`, `SCOUT_CANDIDATES.md`, `INTERNAL_TELEMETRY.md`) — hypotheses, experiments, evidence, and validation notes; not implementation contracts.
+7. **Research docs** (`*_RESEARCH.md`, `SCOUT_CANDIDATES.md`) — hypotheses, experiments, evidence, and validation notes; not implementation contracts.
 8. **`docs/CHANGELOG.md` and historical framework notes** — history and rationale.
 
 If documentation conflicts with current code/tests, treat code/tests as current behavior and either update the stale documentation in the same focused change or call out the mismatch. Do not silently change working behavior merely to match an older document.

@@ -11,9 +11,7 @@ For repository-wide coding rules and the source-of-truth hierarchy, start with [
 | [CHANGELOG.md](CHANGELOG.md) | **Historical record** | Release history, past behavior changes, verification notes |
 | [FRAMEWORK.md](FRAMEWORK.md) | **Architecture reference / partially historical** | Reusable architectural patterns and design rationale; verify concrete layout/version claims against current code |
 | [AIM_RESEARCH.md](AIM_RESEARCH.md) | **Research** | Aim/target-tracking experiments, evidence and candidate approaches |
-| [SCOUT_RESEARCH.md](SCOUT_RESEARCH.md) | **Research** | Scout visual/process-telemetry investigation and design |
 | [SCOUT_CANDIDATES.md](SCOUT_CANDIDATES.md) | **Research evidence** | Semantic memory candidates and promotion/validation criteria |
-| [INTERNAL_TELEMETRY.md](INTERNAL_TELEMETRY.md) | **Experimental research** | UE4SS/Frida/internal telemetry setup, observations and recovery experiments |
 | [PUBLICATION_REVIEW.md](PUBLICATION_REVIEW.md) | **Project/release review** | Public-repository publication checks |
 | [THIRD_PARTY.md](THIRD_PARTY.md) | **Reference** | Third-party components and related notes |
 

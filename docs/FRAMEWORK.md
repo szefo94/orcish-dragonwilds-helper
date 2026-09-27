@@ -352,7 +352,6 @@ Run all from the root with `python -m unittest discover -s tests -t .`, or Setup
 
 ## 6. Faster alternative: reading game data
 
-For Unreal Engine games, a UE4SS Lua mod can publish the interaction target directly, so no OCR is needed. The plan and data-collection checklist are in the Google Doc *"Orc Presser — plan: odczyt danych z gry przez UE4SS (opcja 11)"* in the Dragonwilds Drive folder. When implemented, it will be listed here as a feature source with the highest priority, with OCR as the fallback.
 
 ---
 

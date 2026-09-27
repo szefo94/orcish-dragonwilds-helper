@@ -125,7 +125,6 @@ All options are **off by default**; enable them one at a time in PREVIEW and wat
 
 Preview colours: green = OCR, blue = learned, red = excluded. `[M]`/`[T]` in the reads mark memory/template results.
 
-Option 11 (game data via a UE4SS mod) is a separate plan document in the Dragonwilds Google Drive folder.
 
 ## Version 1.4
 

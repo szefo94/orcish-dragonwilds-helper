@@ -35,3 +35,11 @@ class UpdateSecurity(unittest.TestCase):
             zp=make_zip(r/'OrcPresser_2.3.zip','2.3',{'../outside':'bad'})
             with self.assertRaises(ValueError):updater.apply(zp,r,log=lambda *_:None)
             self.assertEqual((r/'src/orcpresser/app.py').read_text(),'original')
+    def test_other_edition_cannot_replace_installation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r=Path(tmp);tree(r,{'CHANNEL':'stable\n','src/orcpresser/app.py':'original'})
+            zp=make_zip(r/'orcish-dragonwilds-helper-experimental.zip','2.6',{'OrcPresser/CHANNEL':'experimental\n'})
+            self.assertEqual(updater.find_zips(r),[])
+            with self.assertRaisesRegex(ValueError,'experimental'):
+                updater.apply(zp,r,log=lambda *_:None)
+            self.assertEqual((r/'src/orcpresser/app.py').read_text(),'original')

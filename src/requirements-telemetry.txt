@@ -1,3 +1,0 @@
-# Optional research dependency; not required for normal Orcish operation.
-# Install only when using Scout's Frida native-function telemetry provider.
-frida>=17,<18

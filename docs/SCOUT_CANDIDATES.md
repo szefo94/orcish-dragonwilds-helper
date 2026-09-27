@@ -98,7 +98,6 @@ That is the kind of signal worth validating across more sessions.
 - Domain filtering is implemented for Fishing and Auto Presser research.
 - Analyzer correlation is implemented.
 - Automatic promotion into controller decisions is **not** implemented; promotion remains a manual engineering decision after validation.
-- Optional UE4SS/Frida events can be correlated through the separate internal-telemetry path documented in `INTERNAL_TELEMETRY.md`.
 
 ## Candidate promotion rules
 

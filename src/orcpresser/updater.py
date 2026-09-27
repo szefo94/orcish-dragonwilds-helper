@@ -17,7 +17,7 @@ sys.path.insert(0, str(HERE))
 from paths import ROOT, DATA, ensure_data, migrate_data, cleanup_old_code   # noqa: E402
 
 MIRRORED = ('src', 'docs', 'tests', '.github', 'scripts')
-ROOT_FILES = ('Setup.cmd', 'Run.cmd', 'Update.cmd', 'README.md', '.gitignore', '.gitattributes', '.editorconfig', 'CONTRIBUTING.md', 'SECURITY.md', 'RIGHTS.md', 'AGENTS.md')
+ROOT_FILES = ('Setup.cmd', 'Run.cmd', 'Update.cmd', 'README.md', 'CHANNEL', '.gitignore', '.gitattributes', '.editorconfig', 'CONTRIBUTING.md', 'SECURITY.md', 'RIGHTS.md', 'AGENTS.md')
 _VER = re.compile(r"""VERSION\s*=\s*['"]([\d.]+)['"]""")
 
 
@@ -47,13 +47,21 @@ def is_github_snapshot(path):
     return Path(path).name.lower().startswith('orcish-dragonwilds-helper-')
 
 
+def zip_channel(path):
+    with zipfile.ZipFile(path) as z:
+        markers = [name for name in z.namelist() if name.endswith('/CHANNEL')]
+        if len(markers) > 1: raise ValueError('Ambiguous edition marker')
+        return z.read(markers[0]).decode('utf-8').strip().lower() if markers else 'stable'
+
+
 def find_zips(root=ROOT):
     """Find packaged updates plus GitHub's Download ZIP name for this repository."""
     patterns=('OrcPresser_*.zip','OrcishDragonwildsHelper_*.zip','orcish-dragonwilds-helper-*.zip')
     paths=set()
     for pattern in patterns:paths.update(Path(root).glob(pattern))
     found=[(zip_version(p),p) for p in sorted(paths)]
-    return sorted([(v,p) for v,p in found if v],key=lambda vp:vtuple(vp[0]))
+    found=[(v,p) for v,p in found if v and zip_channel(p)==update_channel(root)]
+    return sorted(found,key=lambda vp:vtuple(vp[0]))
 
 
 def _package_root(extracted):
@@ -61,6 +69,12 @@ def _package_root(extracted):
     for p in [extracted] + [d for d in Path(extracted).iterdir() if d.is_dir()]:
         if (p / 'src' / 'orcpresser' / 'app.py').exists(): return p
     raise RuntimeError('zip does not contain the OrcPresser 2.x layout')
+
+
+def update_channel(package_root):
+    """A missing marker is an old snapshot of the standard branch."""
+    marker = Path(package_root) / 'CHANNEL'
+    return marker.read_text(encoding='utf-8').strip().lower() if marker.exists() else 'stable'
 
 
 def validate_archive(z):
@@ -93,6 +107,10 @@ def apply(zip_path, root=ROOT, data=None, log=print):
             validate_archive(z)
             z.extractall(tmp)
         pkg = _package_root(Path(tmp))
+        installed_channel = update_channel(root)
+        incoming_channel = update_channel(pkg)
+        if installed_channel != incoming_channel:
+            raise ValueError(f'Update belongs to {incoming_channel}, but this installation is {installed_channel}. Extract the other edition into a separate folder.')
         removed = replaced = 0
         for d in MIRRORED:
             src, dst = pkg / d, root / d
@@ -151,6 +169,14 @@ def main(argv):
         if not zips: print('No update found. Put orcish-dragonwilds-helper-main.zip (GitHub Download ZIP) or OrcishDragonwildsHelper_<version>.zip into this folder and run Update.cmd again.'); return 1
         v, zp = zips[-1]
     print(f'Installed: {cur}    Update file: {zp.name} (version {v})')
+    with tempfile.TemporaryDirectory(prefix='orcpresser_check_') as tmp:
+        with zipfile.ZipFile(zp) as archive:
+            validate_archive(archive)
+            archive.extractall(tmp)
+        incoming = update_channel(_package_root(Path(tmp)))
+    if incoming != update_channel(ROOT):
+        print(f'Wrong edition: update is {incoming}; installed edition is {update_channel(ROOT)}. Keep editions in separate folders.')
+        return 1
     if vtuple(v) < vtuple(cur) and not force:
         print('Archive is older than the installed build (use Update.cmd --force only for intentional rollback).'); return 0
     if vtuple(v) == vtuple(cur) and not force and not is_github_snapshot(zp):

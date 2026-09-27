@@ -25,33 +25,9 @@ This roadmap describes the state of `main`. Items under **Completed foundation**
 - F7 / **NEW SPOT / REACQUIRE** for manual movement between spots.
 - Manual cast bracket calibration (SHORT/MID/LONG + SHORT/LONG/HIT feedback).
 
-### Scout / internal telemetry research
-- Scout semantic read-only memory candidates for Fishing, Auto Picker, and general signals.
-- Candidate transition recording and correlation against visual/controller landmarks.
-- Optional external JSONL bridge for UE4SS or another local producer.
-- Optional Frida native-function entry telemetry.
-- Guided telemetry toolkit installer/status checks.
-- WinGDK-aware Dragonwilds targeting.
-- Experimental **Setup option 9** UE4SS recovery path with backup/rollback and post-launch status diagnostics.
-
-## Priority 1 — validate one reliable WinGDK internal telemetry path
-
-The immediate research gate is narrow:
-
-```text
-Dragonwilds (WinGDK)
--> UE4SS starts without PS-scan timeout
--> OrcishScout Lua reaches bridge_start / bridge_ready
--> data\ue4ss\orcish_scout_ue4ss.jsonl receives events
-```
-
-Do not expand controller dependence on game-internal signals until this path survives repeated launches and a Dragonwilds update. Visual control remains the fallback.
-
-After the bridge is stable:
-- discover real Fishing UFunction/property candidates;
-- correlate them with STOP/BITE/PULL/REEL/result landmarks;
-- validate candidates across multiple launches and areas;
-- promote only signals with enough evidence and graceful invalidation.
+### Scout diagnostics
+- Scout records visual/controller evidence and optional read-only memory candidates.
+- Experimental tooling is maintained in the separate research branch.
 
 ## Priority 2 — automatic calibration and clearer first-run UX
 
@@ -67,11 +43,11 @@ After the bridge is stable:
 2. Keep optional research/acceleration dependencies outside the normal runtime path.
 3. Produce a self-contained Windows build so normal users do not need Python or pip.
 4. Add signed/versioned release artifacts and stronger upgrade verification.
-5. Test install/update/recovery on clean Windows 10/11 machines, including Steam-style and WinGDK packaging where supported.
+5. Test install/update/recovery on clean Windows 10/11 machines, with clean installs and updates.
 
 ## Priority 4 — Advanced Fishing
 
-Advanced mode remains separate from Bot 101. Add automation only when recordings or internal telemetry provide repeatable evidence:
+Advanced mode remains separate from Bot 101. Add automation only when recordings provide repeatable evidence:
 
 - reliable pool/ripple candidate detection and confidence scoring;
 - automatic target selection among multiple visible pools;

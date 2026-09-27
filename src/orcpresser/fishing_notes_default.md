@@ -108,7 +108,7 @@ Optional future measurements should include **player stamina** and, if a reliabl
 - world/camera geometry for automatic targeting;
 - game-internal Fishing phase, pull direction, reel availability, and result state.
 
-Scout can correlate visual/controller events with read-only semantic memory candidates and optional UE4SS/Frida telemetry. See `docs/SCOUT_CANDIDATES.md` and `docs/INTERNAL_TELEMETRY.md`.
+Scout can correlate visual/controller events with read-only semantic memory candidates. See `docs/SCOUT_CANDIDATES.md`.
 
 ## 7. Safety and validation rules
 

@@ -2,7 +2,9 @@
 
 **A Windows companion for RuneScape: Dragonwilds with local OCR interaction automation, repeat and hold controls, performance diagnostics, and experimental fishing assistance.**
 
-Development version **2.5.0-dev** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
+Stable edition **2.5.0** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
+
+**This is the everyday edition.** The separate [experimental branch](https://github.com/szefo94/orcish-dragonwilds-helper/tree/experimental) contains the research POC. Download each branch into a separate folder; update ZIPs cannot be mixed.
 
 Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can read an interaction prompt such as **Collect [E]**, check whether the action is allowed, and press the displayed key. You control where your character stands and looks. Repeat and Hold modes also work as configurable key and mouse-button controls.
 
@@ -43,7 +45,7 @@ The interactive source is in [`site/index.html`](site/index.html). GitHub Pages 
 | **Auto Presser** | React to recognized resource interactions | Reads action text and the displayed key; supports allowlists, exclusions, hold prompts, Preview, and Live execution. |
 | **Fishing · EXP** | Develop and test fishing assistance | Persistent BAR/REEL/STOP/PULL/RESULT calibration, manual recordings, cast calibration, recurring supervised rounds, and fast visual fight cues. |
 | **Aim Lab · EXP** | Experimental target tracking and aim-assist research | Acquires a target with F6 and records/uses visual target geometry under explicit user control. |
-| **Scout Lab** | Record and correlate diagnostics | Captures vision/controller events, semantic read-only memory candidates, and optional UE4SS/Frida telemetry for research. |
+| **Scout Lab** | Record and correlate diagnostics | Captures vision/controller events and optional read-only memory observations for research. |
 | **Stats** | Compare recognition settings on your PC | Benchmarks configurations, displays charts and a comparison table, and suggests options based on measured results. |
 
 Existing OrcPresser installation data and internal `src/orcpresser` paths are retained for compatibility.
@@ -64,8 +66,9 @@ Existing OrcPresser installation data and internal `src/orcpresser` paths are re
    ```
 
 2. Open the extracted or cloned project folder.
-3. Run **Setup.cmd** and choose **1** to install or repair dependencies in the local `.venv`.
-4. Run **Run.cmd** to open the helper.
+3. Double-click **Run.cmd**. On first launch it creates the local `.venv` and installs dependencies, then opens the helper. A terminal stays open during the initial download.
+
+Use **Setup.cmd** for repairs and advanced options. Python 3.12 64-bit with the Python launcher and Tcl/Tk is still required; [download it from python.org](https://www.python.org/downloads/). Keep the experimental copy in its own folder.
 
 Keep the entire project folder together. You do not need to copy individual Python modules or install packages globally.
 
@@ -79,9 +82,7 @@ Keep the entire project folder together. You do not need to copy individual Pyth
 | **4** | Safe start with default window settings and without loading learned recognition data. |
 | **5** | Run automated self-tests. |
 | **6** | Review and clean old backups, archives, and caches. |
-| **7** | Install/check the optional telemetry research toolkit: Frida, UE4SS bridge, x64dbg, ReClass.NET, Cheat Engine installer, and Windows Performance Toolkit. |
-| **8** | Check telemetry-tool status without installing anything. |
-| **9** | Recover UE4SS for the WinGDK/Microsoft Store build using the current experimental UE4SS package, with backup/rollback handling. |
+
 
 ## Controls and window behavior
 
@@ -330,7 +331,7 @@ No general open-source license has been selected. See [RIGHTS.md](RIGHTS.md) for
 
 ## Scout research
 
-Research/design for parallel visual + process/Unreal telemetry across Auto Picker and Fishing is documented in [docs/SCOUT_RESEARCH.md](docs/SCOUT_RESEARCH.md). Scout sessions are recorded under data/scout_sessions/ and are treated as immutable raw evidence.
+Scout sessions from Auto Presser, Fishing, and Aim Lab are recorded under `data/scout_sessions/` and are treated as immutable raw evidence.
 
 Analyze the newest session with:
 
@@ -343,28 +344,3 @@ Analyze every Auto Picker, Fishing, and Scout Lab session and build a combined s
 `--all` refreshes the individual per-session reports and additionally writes `data/scout_reports/ALL_SESSIONS.json` and `ALL_SESSIONS.md`, with cross-session timing and per-domain summaries. The analyzer never edits, truncates, moves, or deletes the original Scout session files; every per-session report includes SHA-256 hashes of the raw files used.
 
 The **SCOUT LAB** tab is an observational research workspace. After binding the game, it can record cursor and screen-center/crosshair visual probes, OS process telemetry, optional 96×64 cursor crops, and explicitly configured **read-only** memory watches. A watch uses `MODULE+0xOFFSET:type` (preferred across ASLR) or an absolute `0xADDRESS:type`, where type is `u8`, `u16`, `u32`, `i32`, `f32`, or `f64`. Enable **Run independent Scout probes alongside Auto / Fishing / Aim** to put those probes in the same session/timeline as the active feature. With **LMB sample burst** enabled, each left-click in the bound game saves a short screenshot burst at approximately 0/250/600/1000/1500 ms plus a user-editable `labels.csv`; this is the preferred way to label `target`, `head`, `item_pickup`, `hit`, `crit`, `miss`, `inventory`, or other observations after the session without leaving the game. Aim sessions always capture around the screen-centre crosshair. Standalone/other Scout sessions use the free cursor only when it has moved recently away from centre; otherwise they fall back to the crosshair, which avoids stale hidden-cursor coordinates. At t+0, `sample_context/` now gets a downscaled copy of the **original full game screen** with the exact saved 640×360 probe area outlined in yellow and the focus point marked. This replaces the earlier top-right/bottom-left collage, which was a misunderstanding of the intended diagnostic. Memory watches continue sampling during the burst. The Lab does not write game memory or move/aim the mouse.
-
-### Optional game-internal telemetry
-
-Scout can now ingest **named Unreal/native function events** on the same timeline as vision and controller decisions. Two optional adapters are included: a local JSONL bridge intended for UE4SS or another external producer, and an opt-in Frida function-entry provider for already-discovered module-relative native function addresses. Neither is required for normal operation; Frida is deliberately kept out of the default requirements.
-
-See `docs/INTERNAL_TELEMETRY.md` for installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry toolkit** and **8 · Telemetry toolkit status**, backed by `scripts/Install-TelemetryToolkit.ps1`. Normal Orcish operation still has no dependency on these research tools; the installer fetches/places them only when explicitly requested.
-
-### Semantic memory candidates for Fishing / Auto Picker
-
-Scout Lab can now save **named read-only memory candidates** instead of only anonymous address watches. Each candidate has a name, domain, semantic role and address/type specification. Fishing roles include phase, hooked, reel-allowed, pull-direction, tension/progress, spot state and individual widget states. Auto Picker roles include focused actor, interaction action, can-interact, distance/range, prompt state and item/inventory candidates.
-
-When the independent Scout sidecar runs with Fishing or Auto Picker, only candidates for that domain (plus general candidates) are sampled. Value changes are logged separately as candidate transitions. The standard analyzer correlates those transitions with nearby Fishing state/vision changes or Auto Picker prompt transitions using the existing causal window (candidate may lead by 500 ms or lag by 150 ms).
-
-See `docs/SCOUT_CANDIDATES.md` for the recommended candidate names/roles and validation workflow.
-### Scout Review · analyze first, ask the user second
-
-Captured samples can be processed by the separate offline reviewer:
-
-    .venv\Scripts\python.exe src\orcpresser\scout_review.py --latest
-
-It reads only rows in `labels.csv` whose `analysis_status` is still empty, proposes a label/reason from timing, visual change and residual motion, and then opens a local review queue asking **What do you see?**. Automatic analysis and human confirmation are separate: `analysis_status` tracks whether the program proposed something, while `review_status` tracks `confirmed` / `skipped`. Existing analyzed rows are not recalculated unless `--reanalyze` is used. `--analyze-only` performs the automatic pass without opening the UI. Raw screenshots and Scout JSONL logs are never changed; only the deliberately user-editable `labels.csv` gains review columns.
-
-Captured gameplay shows another useful Dragonwilds signal: **nearby enemies that are actually under the crosshair expose a target HUD with name, level diamond and HP bar**, while farther/background enemies can remain visible without that HUD. Aim Lab now treats the green HP-bar geometry as strong `target_hud` evidence and draws it in magenta with an explanation. This is a confirmation signal, not a body box: distant targets still depend on motion/tracking/learned visual detection. Scout Review uses the same evidence to propose `close_aimed_target` for human refinement (for example `deer_head` or `goblin_body`).
-
-The **AIM LAB · EXP** tab is a research tracker rather than an automatic aimer. Start tracking and press **F6 while still in the game** to seed a visible target at the screen-centre crosshair; you no longer need to click back into the helper to acquire it. The tracker now rejects weak/HUD-edge template matches instead of drawing drifting rectangles. For motion proposals it first estimates dominant camera pan/rotation with sparse optical flow and an affine transform, subtracts that global motion, then draws dashed cyan rectangles only around residual localized motion. This allows moderate view rotation/panning to be analyzed instead of requiring the camera to be almost perfectly still; top/bottom HUD areas remain excluded. Every rectangle has a small reason caption under it (for example template confidence or localized-motion evidence). Manual mark buttons remain optional, but the preferred training workflow is the synchronized LMB screenshot burst + `labels.csv`, because labels can be added after gameplay. Transient center-region visual changes are logged as impact candidates for later damage/critical-indicator classification. See [`docs/AIM_RESEARCH.md`](docs/AIM_RESEARCH.md).

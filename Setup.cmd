@@ -17,9 +17,6 @@ echo   3  Back to CPU runtime           undo 2
 echo   4  Start once in SAFE mode       defaults, learned data not loaded
 echo   5  Run self-tests
 echo   6  Clean up old files            backups, old zips, caches - shows what first
-echo   7  Install telemetry toolkit      Frida + UE4SS + research tools
-echo   8  Telemetry toolkit status       check everything without installing
-echo   9  Recover UE4SS for WinGDK        install current experimental UE4SS safely
 echo   Q  Quit
 echo.
 set "ACTION="
@@ -30,9 +27,6 @@ if "%ACTION%"=="3" set "ACTION=cpu"
 if "%ACTION%"=="4" set "ACTION=safe"
 if "%ACTION%"=="5" set "ACTION=test"
 if "%ACTION%"=="6" set "ACTION=clean"
-if "%ACTION%"=="7" set "ACTION=telemetry"
-if "%ACTION%"=="8" set "ACTION=telemetry-check"
-if "%ACTION%"=="9" set "ACTION=ue4ss-experimental"
 if /i "%ACTION%"=="q" exit /b 0
 
 :dispatch
@@ -42,10 +36,7 @@ if /i "%ACTION%"=="cpu" goto cpu
 if /i "%ACTION%"=="safe" goto safe
 if /i "%ACTION%"=="test" goto test
 if /i "%ACTION%"=="clean" goto clean
-if /i "%ACTION%"=="telemetry" goto telemetry
-if /i "%ACTION%"=="telemetry-check" goto telemetry_check
-if /i "%ACTION%"=="ue4ss-experimental" goto ue4ss_experimental
-echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean^|telemetry^|telemetry-check^|ue4ss-experimental]
+echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean]
 goto end_fail
 
 :install
@@ -63,7 +54,11 @@ rem Keep the GPU runtime if it was chosen before (requirements reinstall the CPU
 if exist "data\runtime-gpu.flag" call :use_gpu
 if errorlevel 1 goto failed
 "%PY%" src\orcpresser\maintenance.py migrate
+if errorlevel 1 goto failed
 "%PY%" src\orcpresser\maintenance.py runtime
+if errorlevel 1 goto failed
+if not exist "data" mkdir "data"
+echo ready>"data\setup-ready.flag"
 echo.
 echo   Ready. Start Orcish Dragonwilds Helper with Run.cmd.
 goto end_ok
@@ -109,39 +104,6 @@ goto end_ok
 :clean
 if not exist "%PY%" goto noinstall
 "%PY%" src\orcpresser\maintenance.py clean
-goto end_ok
-
-:telemetry
-if not exist "%PY%" goto noinstall
-echo.
-echo   Starting guided telemetry toolkit installer...
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\Install-TelemetryToolkit.ps1" -Install -All
-if errorlevel 1 goto failed
-goto end_ok
-
-:telemetry_check
-if not exist "%PY%" goto noinstall
-echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\Install-TelemetryToolkit.ps1" -CheckOnly
-if errorlevel 1 goto failed
-goto end_ok
-
-:ue4ss_experimental
-if not exist "%PY%" goto noinstall
-echo.
-echo   Starting WinGDK UE4SS recovery...
-echo   Dragonwilds must be fully closed.
-echo   A Windows Administrator prompt may appear.
-echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\Install-ExperimentalUE4SS.ps1"
-set "RC=%ERRORLEVEL%"
-echo.
-if not "%RC%"=="0" (
-  echo   UE4SS recovery exited with code %RC%.
-  echo   Read the messages above; nothing should be left half-installed because the script rolls back on failure.
-  goto end_fail
-)
-echo   UE4SS recovery finished successfully.
 goto end_ok
 
 :nopython
