@@ -1,10 +1,25 @@
 # Orcish Dragonwilds Helper
 
+## Download and start on Windows
+
+Choose the edition you want. These links **download the correct ZIP directly**; you do not need to switch GitHub branches or use the green Code button.
+
+| Edition | Choose this if… | Download |
+|---|---|---|
+| **Standard · recommended** | You want the everyday helper without external research integrations. Fishing and Aim Lab still have experimental features. | **[Download Standard ZIP](https://github.com/szefo94/orcish-dragonwilds-helper/archive/refs/heads/main.zip)** |
+| **Research POC** | You want to work with the optional game telemetry and research tools. | **[Download Research POC ZIP](https://github.com/szefo94/orcish-dragonwilds-helper/archive/refs/heads/experimental.zip)** |
+
+1. Install [Python 3.12 for Windows (64-bit)](https://www.python.org/downloads/) with the **Python launcher** and **Tcl/Tk** selected.
+2. Extract the chosen ZIP into its own folder. If you want both editions, keep both extracted folders.
+3. Double-click **Run.cmd** in that folder. The first run installs Python packages automatically; later runs open the app directly.
+
+**No `.exe` is supplied yet.** Leave the terminal open during the first setup. Your settings and recordings stay inside the folder you launched. `Setup.cmd` is for repairs and advanced options.
+
 **A Windows companion for RuneScape: Dragonwilds with local OCR interaction automation, repeat and hold controls, performance diagnostics, and experimental fishing assistance.**
 
 Stable edition **2.5.0** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
 
-**This is the everyday edition.** The separate [experimental branch](https://github.com/szefo94/orcish-dragonwilds-helper/tree/experimental) contains the research POC. Download each branch into a separate folder; update ZIPs cannot be mixed.
+**You are viewing the Standard edition.** The table above also links directly to the Research POC. Updates cannot be mixed between editions.
 
 Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can read an interaction prompt such as **Collect [E]**, check whether the action is allowed, and press the displayed key. You control where your character stands and looks. Repeat and Hold modes also work as configurable key and mouse-button controls.
 
@@ -59,7 +74,7 @@ Existing OrcPresser installation data and internal `src/orcpresser` paths are re
 
 ### Install from GitHub
 
-1. Download **Code → Download ZIP** and extract it, or clone the repository:
+1. Use the **Standard ZIP** link at the top of this page and extract it. Developers can clone the default branch instead:
 
    ```sh
    git clone https://github.com/szefo94/orcish-dragonwilds-helper.git
@@ -68,7 +83,7 @@ Existing OrcPresser installation data and internal `src/orcpresser` paths are re
 2. Open the extracted or cloned project folder.
 3. Double-click **Run.cmd**. On first launch it creates the local `.venv` and installs dependencies, then opens the helper. A terminal stays open during the initial download.
 
-Use **Setup.cmd** for repairs and advanced options. Python 3.12 64-bit with the Python launcher and Tcl/Tk is still required; [download it from python.org](https://www.python.org/downloads/). Keep the experimental copy in its own folder.
+Use **Setup.cmd** for repairs and advanced options. Keep the Research POC copy in its own folder.
 
 Keep the entire project folder together. You do not need to copy individual Python modules or install packages globally.
 
@@ -243,7 +258,7 @@ To build a versioned package from a checkout instead, run:
 python scripts/package.py
 ```
 
-The package is written to `dist/OrcPresser_<version>.zip` (the version in `src/orcpresser/version.py`, currently 2.4) and excludes user data and virtual environments. Only use update archives from a source you trust; archives are not signed and updates are not transactional.
+The package is written to `dist/OrcPresser_<version>.zip` (the version in `src/orcpresser/version.py`) and excludes user data and virtual environments. Only use update archives from a source you trust; archives are not signed and updates are not transactional.
 
 ### Git checkout
 
