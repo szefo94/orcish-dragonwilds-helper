@@ -1,10 +1,25 @@
 # Orcish Dragonwilds Helper
 
+## Download and start on Windows
+
+Choose the edition you want. These links **download the correct ZIP directly**; you do not need to switch GitHub branches or use the green Code button.
+
+| Edition | Choose this if… | Download |
+|---|---|---|
+| **Standard · recommended** | You want the everyday helper without external research integrations. Fishing and Aim Lab still have experimental features. | **[Download Standard ZIP](https://github.com/szefo94/orcish-dragonwilds-helper/archive/refs/heads/main.zip)** |
+| **Research POC** | You want to work with the optional game telemetry and research tools. | **[Download Research POC ZIP](https://github.com/szefo94/orcish-dragonwilds-helper/archive/refs/heads/experimental.zip)** |
+
+1. Install [Python 3.12 for Windows (64-bit)](https://www.python.org/downloads/) with the **Python launcher** and **Tcl/Tk** selected.
+2. Extract the chosen ZIP into its own folder. If you want both editions, keep both extracted folders.
+3. Double-click **Run.cmd** in that folder. The first run installs Python packages automatically; later runs open the app directly.
+
+**No `.exe` is supplied yet.** Leave the terminal open during the first setup. Your settings and recordings stay inside the folder you launched. `Setup.cmd` is for repairs and advanced options.
+
 **A Windows companion for RuneScape: Dragonwilds with local OCR interaction automation, repeat and hold controls, performance diagnostics, and experimental fishing assistance.**
 
 Development version **2.5.0-dev** · Previously **OrcPresser** · Python 3.12 · Windows 10/11
 
-**Experimental edition:** this branch contains the research toolkit and game telemetry POC. For the everyday edition, use the [`main` branch](https://github.com/szefo94/orcish-dragonwilds-helper/tree/main). Install each edition in a separate folder; their update ZIPs are intentionally incompatible.
+**You are viewing the Research POC.** For the everyday helper, choose Standard from the table above. Updates cannot be mixed between editions.
 
 Orcish Dragonwilds Helper reduces repetitive keyboard and mouse input. It can read an interaction prompt such as **Collect [E]**, check whether the action is allowed, and press the displayed key. You control where your character stands and looks. Repeat and Hold modes also work as configurable key and mouse-button controls.
 
@@ -59,16 +74,16 @@ Existing OrcPresser installation data and internal `src/orcpresser` paths are re
 
 ### Install from GitHub
 
-1. Download **Code → Download ZIP** and extract it, or clone the repository:
+1. Use the **Research POC ZIP** link at the top of this page and extract it. Developers can clone this branch instead:
 
    ```sh
-   git clone https://github.com/szefo94/orcish-dragonwilds-helper.git
+   git clone -b experimental https://github.com/szefo94/orcish-dragonwilds-helper.git
    ```
 
 2. Open the extracted or cloned project folder.
 3. Double-click **Run.cmd**. On first launch it creates the local `.venv` and installs dependencies, then opens the helper. A terminal stays open during the initial download.
 
-Use **Setup.cmd** for repairs and advanced options. Python 3.12 64-bit with the Python launcher and Tcl/Tk is still required; [download it from python.org](https://www.python.org/downloads/). Keep the experimental copy in its own folder.
+Use **Setup.cmd** for repairs and advanced options. Keep the Standard copy in its own folder.
 
 Keep the entire project folder together. You do not need to copy individual Python modules or install packages globally.
 
@@ -228,16 +243,7 @@ Application shutdown additionally joins Fishing capture/OCR, Aim tracking, Scout
 
 ## Updates
 
-### Existing OrcPresser 2.2 installation
-
-1. Close the application.
-2. Put a prepared **`OrcPresser_2.3.zip`** update archive in the existing installation folder without extracting it.
-3. Run **Update.cmd** and confirm.
-4. Start **Run.cmd**.
-
-The legacy archive name is intentional: the 2.2 updater recognizes it. User settings, learned data, fishing notes, and the virtual environment remain in place. A full reinstall is normally unnecessary.
-
-The updater accepts packaged `OrcPresser_*.zip` / `OrcishDragonwildsHelper_*.zip` files **and GitHub's `orcish-dragonwilds-helper-main.zip` Download ZIP directly**. Put the downloaded ZIP beside `Update.cmd` and run it without extracting. For a GitHub main snapshot, a same public version is still applied because `main` can contain newer commits between version bumps. Older-version archives are rejected unless `--force` is explicitly used.
+Close the helper, download a fresh **Research POC ZIP** using the link above, and extract it into its own folder. To update an existing Research POC installation, place the new `orcish-dragonwilds-helper-experimental.zip` next to `Update.cmd` **without extracting it**, then run `Update.cmd`. Keep `data/` and `.venv/` in that same installation folder. The updater rejects a Standard ZIP, even when both editions have the same version number.
 
 To build a versioned package from a checkout instead, run:
 
@@ -245,7 +251,7 @@ To build a versioned package from a checkout instead, run:
 python scripts/package.py
 ```
 
-The package is written to `dist/OrcPresser_<version>.zip` (the version in `src/orcpresser/version.py`, currently 2.4) and excludes user data and virtual environments. Only use update archives from a source you trust; archives are not signed and updates are not transactional.
+The package is written to `dist/OrcPresser_<version>.zip` (the version in `src/orcpresser/version.py`) and excludes user data and virtual environments. Only use update archives from a source you trust; archives are not signed and updates are not transactional.
 
 ### Git checkout
 
