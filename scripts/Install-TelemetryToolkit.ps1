@@ -448,6 +448,23 @@ function Show-Status {
         if (Test-Ue4ssBinaryZip $z.FullName) { Write-Ok "UE4SS binary ZIP: $($z.Name)" }
         else { Write-Warn "UE4SS source/non-runtime ZIP: $($z.Name)" }
     }
+
+    if (Test-Path $Py) { & $Py (Join-Path $RepoRoot "src\orcpresser\research_setup.py") status }
+}
+
+function Initialize-ResearchFiles {
+    Write-Section "Research data files"
+    if (-not (Test-Path $Py)) { throw "Run Setup.cmd option 1 first." }
+    & $Py (Join-Path $RepoRoot "src\orcpresser\research_setup.py") prepare
+    if ($LASTEXITCODE -ne 0) { throw "research_setup.py prepare returned $LASTEXITCODE" }
+}
+
+function Show-NextSteps {
+    Write-Section "Collect data"
+    Write-Host "  1. Start Dragonwilds, then open data\cheat-engine\OrcishScout.CT in Cheat Engine and allow"
+    Write-Host "     its Lua script. It attaches to the game and streams every address you add to the table."
+    Write-Host "  2. Run.cmd -> bind the game -> SCOUT LAB (or Fishing with Scout probes on) -> record."
+    Write-Host "  3. Setup.cmd option 8 shows whether the Cheat Engine stream is writing data."
 }
 
 $script:HadWarnings = $false
@@ -458,6 +475,7 @@ if ($CheckOnly -or -not $Install) {
     exit 0
 }
 
+Invoke-Step "Research data files" { Initialize-ResearchFiles }
 Invoke-Step "Frida" { Install-Frida }
 $game = $null
 try {
@@ -475,6 +493,7 @@ if (-not $SkipCheatEngine) { Invoke-Step "Cheat Engine" { Install-CheatEngine } 
 if (-not $SkipWPT) { Invoke-Step "Windows Performance Toolkit" { Install-WPT } }
 
 Show-Status
+Show-NextSteps
 Write-Host ""
 if ($script:HadWarnings) {
     Write-Warn "Toolkit pass completed with one or more warnings; successful tools were kept installed."

@@ -2,6 +2,30 @@
 
 > **Status: experimental research.** Tooling paths and observations here may be build-specific or provisional. Confirm current implementation and validation status before making runtime behavior depend on them.
 
+## Current focus: Cheat Engine discovery → Scout validation → Orcish read-only watches
+
+The goal is a second signal layer next to OCR/vision: game state that Orcish reads itself at runtime, validated against visual landmarks and with vision as the fallback. The research path is deliberately narrow:
+
+```text
+Cheat Engine finds candidate addresses (value/pointer scans) while you fish
+-> the Cheat Engine bridge streams their values onto the Scout timeline
+-> scout_analysis.py correlates value changes with STOP/BITE/PULL/REEL/result landmarks
+-> candidates that survive several launches become Scout semantic candidates Orcish reads without Cheat Engine
+```
+
+Quick start:
+
+```text
+Setup.cmd -> 7   toolkit + data\cheat-engine\OrcishScout.CT (created once, never overwritten)
+                 start Dragonwilds, open OrcishScout.CT in Cheat Engine, allow its Lua script
+Run.cmd          bind the game -> SCOUT LAB -> START (or Fishing with Scout probes on)
+Setup.cmd -> 8   shows whether the Cheat Engine stream is writing data
+```
+
+SCOUT LAB reads `data\telemetry\cheat_engine.jsonl` (and the UE4SS file below) by default; **Read JSONL bridges** is on and its path field takes several paths separated by `;`.
+
+**Parked:** UE4SS (on the Microsoft Store / Game Pass WinGDK build it currently fails its startup scan, `Failed to find GUObjectArray … Scan failed` / `PS scan timed out`, and loads no mods), Frida hooks, and Windows Performance Recorder capture. The sections below remain for reference; a fuller UE4SS configuration (hooks file, in-game name scan, automatic WinGDK install) is kept on the `research-ue4ss-wpr-parked` branch until a UE4SS build supports this game build.
+
 
 ## Microsoft Store / Xbox App (WinGDK) builds
 
@@ -236,7 +260,9 @@ Any local producer can use the same bridge. One JSON object per line:
 {"provider":"custom","signal":"property_change","value":2,"property":"PullDirection","details":{"from":1,"to":2}}
 ```
 
-Fields `provider`, `signal` and `value` are recommended. `function`, `object`, `property`, `args`, `producer_time` and `producer_seq` are preserved in event details.
+Fields `provider`, `signal` and `value` are recommended. Every other top-level field (for example `function`, `object`, `property`, `label`, `args`, `error`, `producer_time`) is kept in event details, merged with `details`. When a line has no `provider`, the bridge file name (without extension) is used.
+
+The bridge opens an existing file at its current end, so old events are not replayed; a file created during a recording is read from its first line.
 
 ## B. Frida native function telemetry
 
@@ -275,6 +301,28 @@ For every configured function entry Scout records:
 
 The provider does not intentionally modify function arguments or return values. However, Frida `Interceptor` is **invasive instrumentation** inside the target process; it is not equivalent to a read-only `ReadProcessMemory` watch. Keep it optional and use it only in an environment where you are comfortable attaching a debugger/instrumentation tool.
 
+## C. Cheat Engine bridge
+
+Cheat Engine is the practical way to find addresses by value scanning and to follow pointer chains; the bridge puts what you find on the Scout timeline without re-entering it in Orcish.
+
+```text
+tools\cheat-engine\orcish_scout_ce.lua   bridge script (updated with Orcish)
+data\cheat-engine\OrcishScout.CT         your table; created once by Setup option 7
+data\telemetry\cheat_engine.jsonl        output read by Scout
+```
+
+The table's Lua script contains only a marked loader block that sets the output path and runs the bridge script. Setup option 7 refreshes that block (paths change when the folder is re-extracted) and leaves your addresses and any Lua you add below the block untouched. A table without the block is never modified.
+
+1. Open `OrcishScout.CT` in Cheat Engine and answer **Yes** when it asks to execute the table's Lua script.
+2. The bridge attaches to `RSDragonwilds-WinGDK-Shipping.exe` or `RSDragonwilds-Win64-Shipping.exe` when Cheat Engine has no live target, and re-attaches after the game restarts. If Cheat Engine is attached to another process it logs `wrong_process` and waits.
+3. Find addresses as usual and add them to the table. Name them descriptively: the description becomes the event's `property`, so `fishing phase` is easier to correlate than `No description`.
+4. Every 100 ms the bridge reads the displayed value of each record and writes `property_change` when it changes (`value` is a number when it parses as one, `null` when unreadable; `details` has address, resolved address, type, from/to). New records produce `record_added`; a `heartbeat` every 5 s shows it is alive.
+5. Save the table in Cheat Engine as usual.
+
+Records whose description starts with `-`, group headers and Auto Assembler script entries are skipped. The bridge never writes memory, activates scripts or freezes values; it reads what Cheat Engine already shows. In the Lua console, `OrcishScoutCE.stop()`, `OrcishScoutCE.start()` and `OrcishScoutCE.mark("text")` control it.
+
+A candidate that stays correct across restarts moves to a SCOUT LAB semantic candidate, which Orcish reads by itself without Cheat Engine.
+
 ## Recommended Fishing discovery workflow
 
 Use the visible/controller session as the reference timeline, then search for internal events corresponding to:
@@ -311,7 +359,7 @@ Normal Orcish remains unchanged: no Frida or UE4SS dependency.
 
 - UE4SS runs externally and writes a local JSONL file.
 - Frida is an optional Python package loaded lazily only when enabled.
-- Cheat Engine, ReClass.NET and x64dbg remain external discovery tools and are not runtime dependencies.
+- Cheat Engine, ReClass.NET and x64dbg remain external discovery tools and are not runtime dependencies. The Cheat Engine bridge runs inside Cheat Engine and only writes a local JSONL file.
 - Existing read-only memory candidates use only Windows APIs already available to Orcish.
 
 ## Notes on current APIs

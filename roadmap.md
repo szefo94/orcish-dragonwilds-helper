@@ -28,30 +28,30 @@ This roadmap describes the state of `main`. Items under **Completed foundation**
 ### Scout / internal telemetry research
 - Scout semantic read-only memory candidates for Fishing, Auto Picker, and general signals.
 - Candidate transition recording and correlation against visual/controller landmarks.
-- Optional external JSONL bridge for UE4SS or another local producer.
+- Optional external JSONL bridges (several files) for Cheat Engine, UE4SS or another local producer.
+- Cheat Engine bridge and starter table streaming cheat-table values into Scout.
 - Optional Frida native-function entry telemetry.
 - Guided telemetry toolkit installer/status checks.
 - WinGDK-aware Dragonwilds targeting.
 - Experimental **Setup option 9** UE4SS recovery path with backup/rollback and post-launch status diagnostics.
 
-## Priority 1 — validate one reliable WinGDK internal telemetry path
+## Priority 1 — one validated memory signal for Fishing, next to vision
 
-The immediate research gate is narrow:
+Goal: a second signal layer that Orcish reads itself (read-only, no external tool at runtime), cross-checked against the visual controller, with vision as the fallback. Scope is one domain (Fishing) and one or two signals (phase, then pull direction).
 
 ```text
-Dragonwilds (WinGDK)
--> UE4SS starts without PS-scan timeout
--> OrcishScout Lua reaches bridge_start / bridge_ready
--> data\ue4ss\orcish_scout_ue4ss.jsonl receives events
+Cheat Engine value/pointer scans while fishing
+-> Cheat Engine bridge streams candidate values onto the Scout timeline
+-> scout_analysis.py correlates them with STOP/BITE/PULL/REEL/result landmarks
+-> pointer-chain read-only watches let Orcish read the survivors without Cheat Engine
+-> validate across multiple launches, areas and a Dragonwilds update
 ```
 
-Do not expand controller dependence on game-internal signals until this path survives repeated launches and a Dragonwilds update. Visual control remains the fallback.
+Next implementation step: pointer-chain memory watches (`[[MODULE+0xOFFSET]+0xA]+0xB:type`, Cheat Engine notation), because Fishing state is expected to live in heap objects that move every launch.
 
-After the bridge is stable:
-- discover real Fishing UFunction/property candidates;
-- correlate them with STOP/BITE/PULL/REEL/result landmarks;
-- validate candidates across multiple launches and areas;
-- promote only signals with enough evidence and graceful invalidation.
+Do not expand controller dependence on game-internal signals until a candidate survives repeated launches and a Dragonwilds update. Promote only signals with enough evidence and graceful invalidation.
+
+Parked: the UE4SS path (on WinGDK the runtime fails its startup scan and loads no mods; fuller mod kept on `research-ue4ss-wpr-parked`), Frida hooks, and performance tracing.
 
 ## Priority 2 — automatic calibration and clearer first-run UX
 
