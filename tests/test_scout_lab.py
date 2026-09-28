@@ -1,4 +1,4 @@
-import csv, tempfile, unittest
+import csv, ctypes, os, sys, tempfile, unittest
 from pathlib import Path
 import numpy as np
 from scout_lab import ScoutLabSession, parse_watch, parse_candidate, visual_features
@@ -75,5 +75,16 @@ class ScoutLabTests(unittest.TestCase):
         # Mirror constructor filtering without starting the capture thread.
         active="fishing";filtered=[x for x in parsed if not active or x["domain"] in (active,"general")]
         self.assertEqual([x["name"] for x in filtered],["phase","state"])
+
+@unittest.skipUnless(sys.platform=="win32","ReadProcessMemory is Windows-only")
+class ReadOnlyMemoryTests(unittest.TestCase):
+    def test_reads_own_process_value(self):
+        from scout_lab import ReadOnlyMemory
+        value=ctypes.c_int32(-1234)
+        m=ReadOnlyMemory(os.getpid())
+        try:
+            r=m.read(parse_watch(f"0x{ctypes.addressof(value):X}:i32"))
+            self.assertEqual((r["ok"],r["value"]),(True,-1234))
+        finally:m.close()
 
 if __name__=="__main__":unittest.main()
