@@ -13,6 +13,8 @@ Cheat Engine finds candidate addresses (value/pointer scans) while you fish
 -> candidates that survive several launches become Scout semantic candidates Orcish reads without Cheat Engine
 ```
 
+The full hands-on procedure (scan steps, pointer scans, recording, reading reports) is in [RESEARCH_DATA_GUIDE.md](RESEARCH_DATA_GUIDE.md).
+
 Quick start:
 
 ```text
