@@ -72,7 +72,7 @@ class ReadOnlyMemory:
         self.w=w;self.k=ctypes.windll.kernel32;self.pid=int(pid)
         self.k.OpenProcess.argtypes=[w.DWORD,w.BOOL,w.DWORD];self.k.OpenProcess.restype=w.HANDLE
         self.k.CloseHandle.argtypes=[w.HANDLE];self.k.CloseHandle.restype=w.BOOL
-        self.k.ReadProcessMemory.argtypes=[w.HANDLE,w.LPCVOID,w.LPVOID,w.SIZE_T,ctypes.POINTER(w.SIZE_T)];self.k.ReadProcessMemory.restype=w.BOOL
+        self.k.ReadProcessMemory.argtypes=[w.HANDLE,w.LPCVOID,w.LPVOID,ctypes.c_size_t,ctypes.POINTER(ctypes.c_size_t)];self.k.ReadProcessMemory.restype=w.BOOL
         self.k.CreateToolhelp32Snapshot.argtypes=[w.DWORD,w.DWORD];self.k.CreateToolhelp32Snapshot.restype=w.HANDLE
         self.handle=self.k.OpenProcess(self.PROCESS_VM_READ|self.PROCESS_QUERY_INFORMATION,False,self.pid)
         if not self.handle:raise OSError(ctypes.get_last_error(),"OpenProcess failed")
@@ -111,7 +111,7 @@ class ReadOnlyMemory:
     def read(self,watch):
         address=self.resolve(watch)
         if not address:return {"ok":False,"error":"module_not_found"}
-        fmt,size=WATCH_TYPES[watch["type"]];buf=(ctypes.c_ubyte*size)();got=self.w.SIZE_T()
+        fmt,size=WATCH_TYPES[watch["type"]];buf=(ctypes.c_ubyte*size)();got=ctypes.c_size_t()
         ok=self.k.ReadProcessMemory(self.handle,ctypes.c_void_p(address),ctypes.byref(buf),size,ctypes.byref(got))
         if not ok or got.value!=size:return {"ok":False,"address":address,"error":"read_failed"}
         value=struct.unpack("<"+fmt,bytes(buf))[0]
