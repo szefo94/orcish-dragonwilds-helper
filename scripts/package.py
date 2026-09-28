@@ -5,12 +5,12 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'/'orcpresser'))
 from version import VERSION
 FILES=('README.md','Setup.cmd','Run.cmd','Update.cmd','CHANNEL','.gitignore','.gitattributes','.editorconfig','AGENTS.md','CONTRIBUTING.md','SECURITY.md','RIGHTS.md')
-DIRS=('src','tests','docs','.github','scripts')
+DIRS=('src','tests','docs','.github','scripts','tools')
 
 def build():
     out=ROOT/'dist'/f'OrcPresser_{VERSION}.zip';out.parent.mkdir(exist_ok=True)
     paths=[ROOT/n for n in FILES]
-    paths += [p for d in DIRS for p in (ROOT/d).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix not in ('.pyc','.log','.onnx','.npz')]
+    paths += [p for d in DIRS for p in (ROOT/d).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.relative_to(ROOT).parts[:2]!=('tools','external') and p.suffix not in ('.pyc','.log','.onnx','.npz')]
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
         for p in sorted(paths):z.write(p,Path('orcish-dragonwilds-helper')/p.relative_to(ROOT))
     print(out)

@@ -2,7 +2,7 @@
 
 Usage (Update.cmd calls this):  updater.py [zip-path] [--force] [--yes]
 - Picks the NEWEST zip by the version stored inside it (src/orcpresser/version.py), not by file name.
-- Mirrors src/, docs/, tests/ (files removed in the new version are moved to data/old_versions/<old>/),
+- Mirrors src/, docs/, tests/, scripts/, tools/ except tools/external/ (files removed in the new version are moved to data/old_versions/<old>/),
   overwrites the root scripts, never touches data/ or .venv/.
 - Reinstalls Python packages only if src/requirements.txt changed (keeps the GPU runtime choice).
 - Migrates user data, then moves the applied zip (and older ones) to data/old_versions/ and keeps
@@ -16,7 +16,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from paths import ROOT, DATA, ensure_data, migrate_data, cleanup_old_code   # noqa: E402
 
-MIRRORED = ('src', 'docs', 'tests', '.github', 'scripts')
+MIRRORED = ('src', 'docs', 'tests', '.github', 'scripts', 'tools')
+# Local downloads inside a mirrored folder (research toolkit installs); never moved on update.
+PRESERVED = (('tools', 'external'),)
 ROOT_FILES = ('Setup.cmd', 'Run.cmd', 'Update.cmd', 'README.md', 'CHANNEL', '.gitignore', '.gitattributes', '.editorconfig', 'CONTRIBUTING.md', 'SECURITY.md', 'RIGHTS.md', 'AGENTS.md')
 _VER = re.compile(r"""VERSION\s*=\s*['"]([\d.]+)['"]""")
 
@@ -119,7 +121,7 @@ def apply(zip_path, root=ROOT, data=None, log=print):
             if dst.exists():                    # stale files would shadow modules or confuse tests
                 for p in [p for p in dst.rglob('*') if p.is_file()]:
                     rel = p.relative_to(dst)
-                    if '__pycache__' in rel.parts: continue
+                    if '__pycache__' in rel.parts or any((d,) + rel.parts[:len(k) - 1] == k for k in PRESERVED): continue
                     if rel not in new_files:
                         target = backup / d / rel; target.parent.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(p), str(target)); removed += 1
