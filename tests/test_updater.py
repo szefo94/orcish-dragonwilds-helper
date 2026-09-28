@@ -38,6 +38,14 @@ class Updater(unittest.TestCase):
         self.assertTrue((r/'data/old_versions/2.0/src/orcpresser/old_module.py').exists())
         self.assertEqual((r/'data/settings.json').read_text(),'{"mine":1}');self.assertTrue((r/'.venv/marker').exists())
         self.assertEqual(updater.current_version(r),'2.1')
+    def test_tools_mirrored_but_local_downloads_kept(self):
+        r=self.install();tree(r,{'tools/ue4ss/OrcishScout/scripts/main.lua':'-- v1','tools/old/stale.lua':'x',
+                                 'tools/external/ReClass.NET/ReClass.NET.exe':'local download'})
+        z=make_zip(r/'OrcPresser_2.1.zip','2.1',extra={'OrcPresser/tools/ue4ss/OrcishScout/scripts/main.lua':'-- v2'})
+        updater.apply(z,r,r/'data',log=lambda *_:None)
+        self.assertEqual((r/'tools/ue4ss/OrcishScout/scripts/main.lua').read_text(),'-- v2')
+        self.assertFalse((r/'tools/old/stale.lua').exists())
+        self.assertEqual((r/'tools/external/ReClass.NET/ReClass.NET.exe').read_text(),'local download')
     def test_requirements_change_detected(self):
         r=self.install();z=make_zip(r/'OrcPresser_2.2.zip','2.2',req='numpy\ndxcam\n')
         self.assertTrue(updater.apply(z,r,r/'data',log=lambda *_:None)[2])

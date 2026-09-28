@@ -1,5 +1,7 @@
 # User data must never be committed.
 data/
+# Research toolkit downloads (ReClass.NET, archives).
+tools/external/
 .venv/
 venv/
 __pycache__/
