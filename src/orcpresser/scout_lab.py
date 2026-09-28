@@ -10,6 +10,8 @@ import ctypes, csv, json, math, os, queue, struct, sys, threading, time
 import numpy as np
 from internal_telemetry import InternalTelemetryHub, parse_function_hook, parse_bridge_paths, FridaFunctionProvider
 from research_setup import default_bridge_paths
+from pointer_chain import is_pointer_expr, parse_pointer_expr, resolve_ops
+from ce_table import parse_cheat_table
 
 WATCH_TYPES={"u8":("B",1),"u16":("H",2),"u32":("I",4),"i32":("i",4),"u64":("Q",8),"i64":("q",8),"ptr":("Q",8),"f32":("f",4),"f64":("d",8)}
 CANDIDATE_ROLES={
@@ -33,13 +35,33 @@ def parse_candidate(value):
     return {"name":name,"domain":domain,"role":role,"spec":spec,**watch}
 
 
+def merge_ce_candidates(existing,records,domain):
+    """Add Cheat Engine records as candidates of one domain; same domain+name is replaced.
+
+    The role is taken from the description when it names a known role for the domain
+    (e.g. 'pull_direction' or 'pull direction'), otherwise 'unknown'. Returns (candidates, added).
+    """
+    roles=CANDIDATE_ROLES.get(domain,CANDIDATE_ROLES["general"])
+    out=list(existing);added=0
+    for r in records:
+        key=r["name"].strip().lower().replace(" ","_").replace("-","_")
+        role=next((x for x in sorted(roles,key=len,reverse=True) if x in key),"unknown")
+        value={"name":r["name"],"domain":domain,"role":role,"spec":r["spec"]}
+        try:parse_candidate(value)
+        except ValueError:continue
+        out=[x for x in out if not (x.get("domain")==domain and x.get("name")==r["name"])]
+        out.append(value);added+=1
+    return out,added
+
 def parse_watch(spec):
-    """Parse MODULE+0xOFFSET:TYPE or 0xABSOLUTE:TYPE into a normalized watch."""
+    """Parse MODULE+0xOFFSET:TYPE, 0xABSOLUTE:TYPE or a [pointer]+0xOFFSET chain into a normalized watch."""
     s=(spec or "").strip()
-    if ":" not in s:raise ValueError("Use MODULE+0xOFFSET:type or 0xADDRESS:type")
+    if ":" not in s:raise ValueError("Use MODULE+0xOFFSET:type, [[MODULE+0xOFFSET]+0x10]+0x8:type or 0xADDRESS:type")
     addr,typ=[x.strip() for x in s.rsplit(":",1)]
     typ=typ.lower()
     if typ not in WATCH_TYPES:raise ValueError("Type must be one of: "+", ".join(WATCH_TYPES))
+    if is_pointer_expr(addr):
+        return {"spec":s,"module":None,"offset":None,"address":None,"type":typ,"chain":parse_pointer_expr(addr)}
     if "+" in addr:
         module,off=[x.strip() for x in addr.rsplit("+",1)]
         if not module:raise ValueError("Module name is empty")
@@ -49,6 +71,10 @@ def parse_watch(spec):
     absolute=int(addr,0)
     if absolute<=0:raise ValueError("Address must be positive")
     return {"spec":s,"module":None,"offset":None,"address":absolute,"type":typ}
+
+def format_trail(trail):
+    """'0xAT->0xPOINTER' per pointer level ('?' where the read failed) for failure diagnostics."""
+    return [f"0x{x['at']:X}->"+("?" if x["pointer"] is None else f"0x{x['pointer']:X}") for x in trail]
 
 def visual_features(frame):
     """Small numeric descriptor for a cursor/crosshair patch; suitable for JSONL."""
@@ -110,13 +136,33 @@ class ReadOnlyMemory:
         if not m:return None
         return int(m["base"])+int(watch["offset"])
 
-    def read(self,watch):
-        address=self.resolve(watch)
-        if not address:return {"ok":False,"error":"module_not_found"}
-        fmt,size=WATCH_TYPES[watch["type"]];buf=(ctypes.c_ubyte*size)();got=ctypes.c_size_t()
+    def _module_base(self,name):
+        m=self.modules.get(name)
+        return int(m["base"]) if m else None
+
+    def _read_raw(self,address,size):
+        buf=(ctypes.c_ubyte*size)();got=ctypes.c_size_t()
         ok=self.k.ReadProcessMemory(self.handle,ctypes.c_void_p(address),ctypes.byref(buf),size,ctypes.byref(got))
-        if not ok or got.value!=size:return {"ok":False,"address":address,"error":"read_failed"}
-        value=struct.unpack("<"+fmt,bytes(buf))[0]
+        return bytes(buf) if ok and got.value==size else None
+
+    def _read_pointer(self,address):
+        raw=self._read_raw(address,8) if address and address>0 else None
+        return struct.unpack("<Q",raw)[0] if raw else None
+
+    def read(self,watch):
+        chain=watch.get("chain")
+        if chain:
+            # Re-walked on every read: the objects behind a pointer chain move when the game rebuilds them.
+            r=resolve_ops(chain,self._module_base,self._read_pointer)
+            if not r["ok"]:return {"ok":False,"error":r["error"],"chain":format_trail(r["trail"])}
+            address=r["address"]
+        else:
+            address=self.resolve(watch)
+            if not address:return {"ok":False,"error":"module_not_found"}
+        fmt,size=WATCH_TYPES[watch["type"]]
+        raw=self._read_raw(address,size)
+        if raw is None:return {"ok":False,"address":address,"error":"read_failed"}
+        value=struct.unpack("<"+fmt,raw)[0]
         if isinstance(value,float) and not math.isfinite(value):value=str(value)
         return {"ok":True,"address":address,"value":value}
 
@@ -387,7 +433,7 @@ class ScoutLabPanel:
         tk.Checkbutton(p,text="Run independent Scout probes alongside Auto / Fishing / Aim",variable=self.background,
                        command=lambda:self.app.persist("scout_background_probes",self.background.get()),
                        bg=c["PANEL"],fg=c["GREEN"],selectcolor="#15200e",activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
-        tk.Label(p,text="Memory watch · MODULE+0xOFFSET:type or 0xADDRESS:type",bg=c["PANEL"],fg=c["GOLD"],anchor="w").pack(fill="x",pady=(10,2))
+        tk.Label(p,text="Memory watch · MODULE+0xOFFSET:type · [[MODULE+0xOFFSET]+0x10]+0x8:type · 0xADDRESS:type",bg=c["PANEL"],fg=c["GOLD"],anchor="w",wraplength=410,justify="left").pack(fill="x",pady=(10,2))
         entry=tk.Entry(p,textvariable=self.watch_var,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"],relief="flat");entry.pack(fill="x")
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=4)
         tk.Button(row,text="ADD WATCH",command=self.add_watch).pack(side="left")
@@ -405,6 +451,7 @@ class ScoutLabPanel:
         row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
         tk.Button(row,text="ADD CANDIDATE",command=self.add_candidate).pack(side="left")
         tk.Button(row,text="CLEAR CANDIDATES",command=self.clear_candidates).pack(side="left",padx=6)
+        tk.Button(row,text="IMPORT CE TABLE",command=self.import_ce_table).pack(side="left")
         self.candidate_text=tk.StringVar();tk.Label(p,textvariable=self.candidate_text,bg=c["PANEL"],fg=c["MUTED"],justify="left",anchor="w",wraplength=410,font=("Consolas",8)).pack(fill="x")
         self._refresh_candidates()
         self.candidate_domain.trace_add("write",lambda *_:self._sync_roles())
@@ -477,6 +524,20 @@ class ScoutLabPanel:
         self.candidates.append(value);self.app.persist("scout_memory_candidates",self.candidates)
         self.candidate_name.set("");self.candidate_spec.set("");self._refresh_candidates()
         self.status.set("Candidate saved. Restart recording/feature to apply it.")
+
+    def import_ce_table(self):
+        from tkinter import filedialog
+        start=Path(__file__).resolve().parents[2]/"data"/"cheat-engine"
+        path=filedialog.askopenfilename(title="Import Cheat Engine table",filetypes=[("Cheat Engine table","*.CT"),("All files","*.*")],
+                                        initialdir=str(start if start.is_dir() else start.parent))
+        if not path:return
+        try:
+            with open(path,encoding="utf-8",errors="replace") as f:records,skipped=parse_cheat_table(f.read())
+        except Exception as e:self.status.set("Import failed: "+str(e));return
+        self.candidates,added=merge_ce_candidates(self.candidates,records,self.candidate_domain.get())
+        self.app.persist("scout_memory_candidates",self.candidates);self._refresh_candidates()
+        note=f" Skipped {len(skipped)}: "+"; ".join(f"{s['name']} ({s['reason']})" for s in skipped[:3]) if skipped else ""
+        self.status.set(f"Imported {added} Cheat Engine record(s) as {self.candidate_domain.get()} candidates. Restart recording to apply.{note}")
 
     def clear_candidates(self):
         self.candidates=[];self.app.persist("scout_memory_candidates",[]);self._refresh_candidates()
