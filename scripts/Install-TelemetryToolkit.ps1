@@ -138,11 +138,34 @@ function Get-InstalledBridgeInfo([string]$ExePath) {
             ModsPath         = $mods
             Enabled          = $enabled
             Output           = $output
+            Version          = (Get-BridgeVersion $text)
             HasStartupEvents = ($text -match 'bridge_start' -and $text -match 'bridge_ready')
         }
     }
 
     return $null
+}
+
+function Get-BridgeVersion([string]$Text) {
+    if ($Text -match 'local BRIDGE_VERSION = (\d+)') { return [int]$Matches[1] }
+    return 1
+}
+
+function Get-RepoBridgeVersion {
+    $lua = Join-Path $RepoRoot "tools\ue4ss\OrcishScout\scripts\main.lua"
+    if (-not (Test-Path $lua)) { return 0 }
+    return Get-BridgeVersion (Get-Content -Raw $lua)
+}
+
+function Test-BridgeOutputHere($Bridge) {
+    # The mod keeps the path patched in by whichever Orcish folder installed it last.
+    $expected = Join-Path $TelemetryDir "orcish_scout_ue4ss.jsonl"
+    return $Bridge -and $Bridge.Output -and ($Bridge.Output -ieq $expected)
+}
+
+function Test-Ue4ssRuntime([string]$ExePath) {
+    $dir = Split-Path -Parent $ExePath
+    return (Test-Path (Join-Path $dir "UE4SS.dll")) -or (Test-Path (Join-Path $dir "ue4ss\UE4SS.dll"))
 }
 
 function Find-MistakenEosInstall {
@@ -187,9 +210,30 @@ function Install-UE4SS {
 
     $gameDir = Split-Path -Parent $ExePath
     $isWindowsApps = $ExePath -like (Join-Path $env:ProgramFiles "WindowsApps\*")
+    $isWinGdk = [IO.Path]::GetFileName($ExePath) -ieq "RSDragonwilds-WinGDK-Shipping.exe"
+    if ($isWinGdk -and -not $AllowWindowsAppsInstall) {
+        # The Microsoft Store / Game Pass build needs the newer UE4SS layout (stable v3.0.1 times out in
+        # its startup scan) and elevation for WindowsApps; the dedicated recovery installer does both,
+        # with backup and rollback.
+        $bridge = Get-InstalledBridgeInfo $ExePath
+        $repoVersion = Get-RepoBridgeVersion
+        if ((Test-Ue4ssRuntime $ExePath) -and $bridge -and $bridge.Enabled -and $bridge.Version -ge $repoVersion -and
+            (Test-BridgeOutputHere $bridge)) {
+            Write-Ok "WinGDK UE4SS runtime and OrcishScout v$($bridge.Version) already installed."
+            return
+        }
+        if (Get-Process -Name "RSDragonwilds-WinGDK-Shipping" -ErrorAction SilentlyContinue) {
+            throw "Dragonwilds is running. Close it completely and run option 7 again to install UE4SS for the WinGDK build."
+        }
+        Write-Host "Microsoft Store / Game Pass (WinGDK) build detected: running the WinGDK UE4SS installer (same as option 9)."
+        Write-Host "A Windows Administrator prompt will appear; the installer window waits for Enter when done."
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "Install-ExperimentalUE4SS.ps1") -GameExe $ExePath
+        if ($LASTEXITCODE -ne 0) { throw "WinGDK UE4SS installer exited with code $LASTEXITCODE" }
+        Write-Ok "WinGDK UE4SS installer finished."
+        return
+    }
     if ($isWindowsApps -and -not $AllowWindowsAppsInstall) {
-        Write-Warn "Detected Microsoft Store/Xbox WinGDK build under WindowsApps."
-        Write-Warn "Status/detection is supported, but automatic UE4SS file injection into WindowsApps is disabled by default."
+        Write-Warn "Detected a Dragonwilds build under WindowsApps that is not the WinGDK executable."
         Write-Warn "Rerun with -AllowWindowsAppsInstall only if you explicitly want the script to attempt writing into the package directory."
         return
     }
@@ -400,10 +444,16 @@ function Show-Status {
             Write-Ok "OrcishScout bridge found: $($bridgeInfo.LuaPath)"
             if ($bridgeInfo.Enabled) { Write-Ok "OrcishScout enabled in mods.txt" } else { Write-Bad "OrcishScout not enabled in mods.txt" }
             if ($bridgeInfo.HasStartupEvents) { Write-Ok "Bridge contains startup heartbeat events" } else { Write-Warn "Installed bridge is older: no bridge_start/bridge_ready events. Re-run option 7 or option 9 for WinGDK recovery." }
+            $repoVersion = Get-RepoBridgeVersion
+            if ($bridgeInfo.Version -ge $repoVersion) { Write-Ok "OrcishScout bridge v$($bridgeInfo.Version) (current)" }
+            else { Write-Warn "OrcishScout bridge v$($bridgeInfo.Version) is older than v$repoVersion in this folder: run option 7 to update it (hooks file support, Ctrl+F10 scan)." }
             if ($bridgeInfo.Output) {
                 Write-Ok "Bridge output path: $($bridgeInfo.Output)"
                 $outDir = Split-Path -Parent $bridgeInfo.Output
                 if (Test-Path $outDir) { Write-Ok "Bridge output directory exists" } else { Write-Bad "Bridge output directory missing: $outDir" }
+                if (-not (Test-BridgeOutputHere $bridgeInfo)) {
+                    Write-Warn "The bridge writes to another Orcish folder, so Scout in this folder will not see its events. Run option 7 here to repoint it."
+                }
             } else { Write-Bad "Bridge OUTPUT path not found in installed main.lua" }
             $logCandidates = @(
                 (Join-Path $dir "ue4ss\UE4SS.log"),
@@ -448,6 +498,29 @@ function Show-Status {
         if (Test-Ue4ssBinaryZip $z.FullName) { Write-Ok "UE4SS binary ZIP: $($z.Name)" }
         else { Write-Warn "UE4SS source/non-runtime ZIP: $($z.Name)" }
     }
+
+    if (Test-Path $Py) { & $Py (Join-Path $RepoRoot "src\orcpresser\research_setup.py") status }
+}
+
+function Initialize-ResearchFiles {
+    Write-Section "Research data files"
+    if (-not (Test-Path $Py)) { throw "Run Setup.cmd option 1 first." }
+    & $Py (Join-Path $RepoRoot "src\orcpresser\research_setup.py") prepare
+    if ($LASTEXITCODE -ne 0) { throw "research_setup.py prepare returned $LASTEXITCODE" }
+}
+
+function Show-NextSteps {
+    Write-Section "Collect data"
+    Write-Host "  UE4SS:        start Dragonwilds. OrcishScout writes data\ue4ss\orcish_scout_ue4ss.jsonl."
+    Write-Host "                In game press Ctrl+F10 to scan Fish/Reel/Bait/Rod names, then run 'Setup.cmd scans'"
+    Write-Host "                and paste the hooks you want into data\ue4ss\orcish_hooks.txt (restart the game)."
+    Write-Host "  Cheat Engine: open data\cheat-engine\OrcishScout.CT and allow its Lua script. It attaches to"
+    Write-Host "                Dragonwilds and streams every address you add to the table (found by scanning)."
+    Write-Host "  Frida/x64dbg/ReClass.NET: find native functions/offsets, then add them in SCOUT LAB as"
+    Write-Host "                Frida hooks or memory watches."
+    Write-Host "  Performance:  Setup.cmd option 10 records a Windows Performance Recorder trace."
+    Write-Host "  Then:         Run.cmd -> bind the game -> SCOUT LAB (or Fishing with Scout probes) -> record."
+    Write-Host "                Setup.cmd option 8 shows whether each source is writing data."
 }
 
 $script:HadWarnings = $false
@@ -458,6 +531,7 @@ if ($CheckOnly -or -not $Install) {
     exit 0
 }
 
+Invoke-Step "Research data files" { Initialize-ResearchFiles }
 Invoke-Step "Frida" { Install-Frida }
 $game = $null
 try {
@@ -475,6 +549,7 @@ if (-not $SkipCheatEngine) { Invoke-Step "Cheat Engine" { Install-CheatEngine } 
 if (-not $SkipWPT) { Invoke-Step "Windows Performance Toolkit" { Install-WPT } }
 
 Show-Status
+Show-NextSteps
 Write-Host ""
 if ($script:HadWarnings) {
     Write-Warn "Toolkit pass completed with one or more warnings; successful tools were kept installed."

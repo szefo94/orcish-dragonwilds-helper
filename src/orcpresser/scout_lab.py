@@ -8,7 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 import ctypes, csv, json, math, os, queue, struct, sys, threading, time
 import numpy as np
-from internal_telemetry import InternalTelemetryHub, parse_function_hook, FridaFunctionProvider
+from internal_telemetry import InternalTelemetryHub, parse_function_hook, parse_bridge_paths, FridaFunctionProvider
+from research_setup import default_bridge_paths
 
 WATCH_TYPES={"u8":("B",1),"u16":("H",2),"u32":("I",4),"i32":("i",4),"u64":("Q",8),"i64":("q",8),"ptr":("Q",8),"f32":("f",4),"f64":("d",8)}
 CANDIDATE_ROLES={
@@ -360,8 +361,9 @@ class ScoutLabPanel:
         self.save_crops=tk.BooleanVar(value=bool(app.settings.get("scout_save_cursor_crops",False)))
         self.capture_lmb=tk.BooleanVar(value=bool(app.settings.get("scout_capture_lmb_samples",True)))
         self.background=tk.BooleanVar(value=bool(app.settings.get("scout_background_probes",True)))
-        self.bridge_enabled=tk.BooleanVar(value=bool(app.settings.get("scout_internal_bridge_enabled",False)))
-        self.bridge_path=tk.StringVar(value=str(app.settings.get("scout_internal_bridge_path","")))
+        # Research edition: read the UE4SS and Cheat Engine JSONL files unless the user chose otherwise.
+        self.bridge_enabled=tk.BooleanVar(value=bool(app.settings.get("scout_internal_bridge_enabled",True)))
+        self.bridge_path=tk.StringVar(value=str(app.settings.get("scout_internal_bridge_path","") or "; ".join(default_bridge_paths())))
         self.frida_enabled=tk.BooleanVar(value=bool(app.settings.get("scout_frida_enabled",False)))
         self.frida_hook_var=tk.StringVar(value="")
         self.frida_hooks=list(app.settings.get("scout_frida_hooks",[]) or [])
@@ -407,7 +409,7 @@ class ScoutLabPanel:
         self._refresh_candidates()
         self.candidate_domain.trace_add("write",lambda *_:self._sync_roles())
         tk.Label(p,text="Game-internal telemetry · optional",bg=c["PANEL"],fg=c["GOLD"],anchor="w").pack(fill="x",pady=(10,2))
-        tk.Checkbutton(p,text="Read external JSONL bridge (UE4SS / other producer)",variable=self.bridge_enabled,
+        tk.Checkbutton(p,text="Read JSONL bridges (UE4SS + Cheat Engine; separate paths with ;)",variable=self.bridge_enabled,
                        command=self._persist_internal,bg=c["PANEL"],fg=c["BONE"],selectcolor="#15200e",
                        activebackground=c["PANEL"],activeforeground=c["GREEN"],anchor="w").pack(fill="x")
         tk.Entry(p,textvariable=self.bridge_path,bg="#12170f",fg=c["BONE"],insertbackground=c["GREEN"],relief="flat").pack(fill="x",pady=2)
@@ -446,7 +448,8 @@ class ScoutLabPanel:
 
     def _internal_config(self):
         self._persist_internal()
-        return {"bridge_enabled":self.bridge_enabled.get(),"bridge_path":self.bridge_path.get().strip(),
+        paths=parse_bridge_paths(self.bridge_path.get()) or default_bridge_paths()
+        return {"bridge_enabled":self.bridge_enabled.get(),"bridge_paths":paths,
                 "frida_enabled":self.frida_enabled.get(),"frida_hooks":list(self.frida_hooks)}
 
     def _refresh_frida(self):
@@ -561,7 +564,7 @@ class ScoutLabPanel:
                f"memory reads={len(mem)} · candidates={len(self.candidates)}",
                f"LMB sample frames={latest.get('sample_frames',0)}  pending={latest.get('pending_sample_frames',0)}"]
         internal=latest.get("internal") or {}
-        if internal:lines.append(f"internal providers={','.join(internal.get('providers',[])) or 'none'} · events={internal.get('events',0)} · errors={len(internal.get('errors',[]))}")
+        if internal:lines.append(f"internal sources={', '.join(internal.get('providers',[])) or 'none'} · events={internal.get('events',0)} · errors={len(internal.get('errors',[]))}")
         for m in mem[:4]:
             lines.append(f"  {m.get('spec')}: {m.get('value') if m.get('ok') else m.get('error')}")
         self.live.set("\n".join(lines))

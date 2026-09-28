@@ -2,6 +2,36 @@
 
 > **Status: experimental research.** Tooling paths and observations here may be build-specific or provisional. Confirm current implementation and validation status before making runtime behavior depend on them.
 
+## Quick start (Research POC)
+
+```text
+Setup.cmd -> 1   install Orcish (first time only; Run.cmd also does this)
+Setup.cmd -> 7   install the toolkit and create the research files (Dragonwilds closed)
+Run.cmd          bind the game -> SCOUT LAB -> START (or Fishing with Scout probes on)
+Setup.cmd -> 8   check which sources are actually writing data
+```
+
+Option 7 installs Frida, UE4SS + the OrcishScout mod (on the Microsoft Store / Game Pass WinGDK build it runs the option 9 installer, with an Administrator prompt), x64dbg, ReClass.NET, Cheat Engine (opens the official download page if missing) and the Windows Performance Toolkit. It also creates, without overwriting anything you edited:
+
+| File | Used by |
+|---|---|
+| `data\ue4ss\orcish_hooks.txt` | UE4SS mod: which UFunctions to log, which properties to poll, scan filters |
+| `data\ue4ss\orcish_scout_ue4ss.jsonl` | written by the UE4SS mod, read by Scout |
+| `data\cheat-engine\OrcishScout.CT` | starter Cheat Engine table that loads the Orcish bridge |
+| `data\telemetry\cheat_engine.jsonl` | written by the Cheat Engine bridge, read by Scout |
+
+Scout Lab reads both JSONL files by default (**Read JSONL bridges** is on; the path field takes several paths separated by `;`). Every source lands on the same session timeline as vision and controller events, and `scout_analysis.py --latest` correlates them with Fishing/Auto landmarks.
+
+| Source | How to get data |
+|---|---|
+| **UE4SS** | Start the game. In game, **Ctrl+F10** scans live object/function names matching the `scan` filters into `data\ue4ss\scans\`. `Setup.cmd scans` prints them as ready-to-paste `function` lines for `orcish_hooks.txt`; restart the game to apply. |
+| **Cheat Engine** | Open `OrcishScout.CT`, allow its Lua script. It attaches to Dragonwilds and streams every address in the table (add them by scanning as usual); each value change becomes a `property_change` event. |
+| **Frida** | Native functions found with x64dbg/ReClass.NET → SCOUT LAB → Frida hook `label=MODULE+0xOFFSET`. |
+| **Read-only memory watches** | SCOUT LAB → memory watch / semantic candidate (`MODULE+0xOFFSET:type`). |
+| **Windows Performance Recorder** | `Setup.cmd` → **10** records an ETW trace to `data\traces\` for WPA. |
+
+**Current blocker on the WinGDK build:** a UE4SS runtime that fails its startup scan (`PS scan timed out` or repeated `Failed to find GUObjectArray … Scan failed` in `UE4SS.log`) never loads any mod, so the UE4SS source stays empty until a UE4SS build supports this game build. Cheat Engine, Frida and memory watches do not depend on UE4SS.
+
 
 ## Microsoft Store / Xbox App (WinGDK) builds
 
@@ -53,7 +83,7 @@ C:\Program Files\WindowsApps\JagexLimited.Dominion_*\RSDragonwilds\Binaries\WinG
 
 The toolkit now auto-detects this executable as a valid Dragonwilds target. This is distinct from the Steam-style `RSDragonwilds-Win64-Shipping.exe`.
 
-Because `WindowsApps` is package-managed and ACL-protected, the general telemetry installer (Setup option 7 / `Install-TelemetryToolkit.ps1`) does **not** write UE4SS into that directory unless the user explicitly opts in. The dedicated **Setup option 9** recovery path is different: it is specifically for the WinGDK build, requests elevation, installs the current experimental UE4SS layout beside the detected WinGDK executable, and creates a backup/rollback record. For a manual general-installer attempt, run PowerShell as Administrator and pass:
+Because `WindowsApps` is package-managed and ACL-protected, the general telemetry installer (Setup option 7 / `Install-TelemetryToolkit.ps1`) does **not** extract UE4SS into that directory itself. For the WinGDK executable it hands over to the option 9 installer instead (skipped when the current runtime and an up-to-date OrcishScout pointing at this folder are already installed, refused while the game is running). The dedicated **Setup option 9** recovery path is different: it is specifically for the WinGDK build, requests elevation, installs the current experimental UE4SS layout beside the detected WinGDK executable, and creates a backup/rollback record. For a manual general-installer attempt, run PowerShell as Administrator and pass:
 
 ```powershell
 -AllowWindowsAppsInstall
@@ -188,44 +218,31 @@ The included template is:
 tools\ue4ss\OrcishScout\scripts\main.lua
 ```
 
-UE4SS expects a Lua mod below its `Mods\<ModName>\scripts\main.lua` directory. Copy the supplied `OrcishScout` folder into UE4SS's `Mods` folder and enable:
+Setup option 7 (or 9 on WinGDK) copies the `OrcishScout` folder into UE4SS's `Mods` folder, enables `OrcishScout : 1` in `Mods\mods.txt` and patches `OUTPUT` in `main.lua` to this folder's `data\ue4ss\orcish_scout_ue4ss.jsonl`. `main.lua` is not edited by hand: the mod reads its configuration at game start from `orcish_hooks.txt` next to `OUTPUT`, which reinstalls and updates never touch.
 
 ```text
-OrcishScout : 1
+# data\ue4ss\orcish_hooks.txt
+function fish_bite = /Game/Path/BP_Fishing.BP_Fishing_C:OnFishBite   # log each call (function_call)
+property fishing_state = BP_FishingComponent_C.FishingState          # poll first live instance, log changes (property_change)
+scan Fish                                                            # Ctrl+F10 scan name filter (case-insensitive)
+poll_ms 250                                                          # property poll interval
 ```
 
-in `Mods\mods.txt`.
+Names are build-specific and must be discovered on your game build; the file ships only commented placeholders plus `scan` filters. Discovery loop:
 
-Then edit two things in `main.lua`:
+1. In game press **Ctrl+F10**. The mod writes every live object/UFunction whose full name contains a `scan` filter to `data\ue4ss\scans\scan_<time>.jsonl` (up to 5000 entries) and logs `object_scan_done`. The game can pause for a few seconds while it checks every object.
+2. Run `Setup.cmd scans` to print the UFunctions from the newest scan as `function <label> = <path>` lines.
+3. Paste the ones you want into `orcish_hooks.txt` and restart the game.
 
-1. `OUTPUT` — an absolute writable path, for example:
+UE4SS `RegisterHook` requires the UFunction to exist in memory when registered. Blueprint classes often load with the world rather than the menu, so hooks that fail at startup are logged as `hook_pending` and retried every 5 s for about ten minutes (`hook_ready` on success, `hook_error` when giving up).
 
-```lua
-local OUTPUT = [[C:\\Temp\\orcish_scout_ue4ss.jsonl]]
-```
+Property polling runs `FindFirstOf(<Class>)` on the game thread each interval and reads the property; values are logged only when they change (`<no instance>` while no object of that class exists). It reads only.
 
-2. `HOOKS` — full UFunction names discovered using UE4SS Live Property Viewer / dumps:
+Events the mod writes: `bridge_start`, `bridge_ready` (with counts of configured hooks/properties), `config_missing`, `hook_ready`, `hook_pending`, `hook_error`, `function_call`, `property_change`, `object_scan_done`, `object_scan_error`, `keybind_error`. `Setup.cmd` option 8 reports the installed mod version and warns when it writes to a different Orcish folder than the one you are checking from.
 
-```lua
-local HOOKS = {
-    { label = "fish_bite", fn = "/Game/...:OnFishBite" },
-    { label = "reel_available", fn = "/Game/...:OnReelAvailable" },
-}
-```
+In Orcish, SCOUT LAB reads this file by default. Enable **Run independent Scout probes alongside Auto / Fishing / Aim** to get Fishing/Auto controller events in the same session, record, then run `scout_analysis.py --latest`.
 
-The placeholder names in the repository are intentionally disabled; Dragonwilds-specific function names must be discovered on the user's game build. UE4SS `RegisterHook` requires the UFunction to exist in memory when registered.
-
-In Orcish:
-
-1. Open **SCOUT LAB**.
-2. Enable **Read external JSONL bridge**.
-3. Put exactly the same absolute path in the bridge path field.
-4. Enable **Run independent Scout probes alongside Auto / Fishing / Aim** if you want Fishing/Auto controller events in the same session.
-5. Start Fishing/Auto/Scout normally.
-6. Fish or interact normally and stop the session.
-7. Run `scout_analysis.py --latest`.
-
-The bridge opens the file at its current end, so old events from previous sessions are not replayed.
+The bridge opens an existing file at its current end, so old events from previous sessions are not replayed; a file created during a recording is read from its first line.
 
 ### Generic external event format
 
@@ -236,7 +253,7 @@ Any local producer can use the same bridge. One JSON object per line:
 {"provider":"custom","signal":"property_change","value":2,"property":"PullDirection","details":{"from":1,"to":2}}
 ```
 
-Fields `provider`, `signal` and `value` are recommended. `function`, `object`, `property`, `args`, `producer_time` and `producer_seq` are preserved in event details.
+Fields `provider`, `signal` and `value` are recommended. Every other top-level field (for example `function`, `object`, `property`, `label`, `args`, `error`, `producer_time`) is kept in event details, merged with `details`. When a line has no `provider`, the bridge file name (without extension) is used.
 
 ## B. Frida native function telemetry
 
@@ -275,6 +292,36 @@ For every configured function entry Scout records:
 
 The provider does not intentionally modify function arguments or return values. However, Frida `Interceptor` is **invasive instrumentation** inside the target process; it is not equivalent to a read-only `ReadProcessMemory` watch. Keep it optional and use it only in an environment where you are comfortable attaching a debugger/instrumentation tool.
 
+## C. Cheat Engine bridge
+
+Cheat Engine is the practical way to find addresses by value scanning and to follow pointer chains; the bridge puts what you find on the Scout timeline without re-entering it in Orcish.
+
+Files:
+
+```text
+tools\cheat-engine\orcish_scout_ce.lua   bridge script (updated with Orcish)
+data\cheat-engine\OrcishScout.CT         your table; created once by Setup option 7
+data\telemetry\cheat_engine.jsonl        output read by Scout
+```
+
+The table's Lua script contains only a marked loader block that sets the output path and runs the bridge script. Setup option 7 refreshes that block (paths change when the folder is re-extracted) and leaves your addresses and any Lua you add below the block untouched. A table without the block is never modified.
+
+Use:
+
+1. Open `OrcishScout.CT` in Cheat Engine and answer **Yes** when it asks to execute the table's Lua script.
+2. The bridge attaches to `RSDragonwilds-WinGDK-Shipping.exe` or `RSDragonwilds-Win64-Shipping.exe` when Cheat Engine has no live target, and re-attaches after the game restarts. If Cheat Engine is attached to another process it logs `wrong_process` and waits.
+3. Find addresses as usual (value scans, pointer scans) and add them to the table. Name them descriptively; the description becomes the event's `property`, so `fishing phase` is easier to correlate than `No description`.
+4. Every 100 ms the bridge reads the displayed value of each record and writes `property_change` when it changes (`value` is a number when it parses as one, `null` when unreadable; `details` has address, resolved address, type, from/to). New records produce `record_added`; a `heartbeat` every 5 s shows it is alive.
+5. Save the table in Cheat Engine as usual.
+
+Records whose description starts with `-`, group headers and Auto Assembler script entries are skipped. The bridge never writes memory, activates scripts or freezes values; it reads what Cheat Engine already shows. In the Lua console, `OrcishScoutCE.stop()`, `OrcishScoutCE.start()` and `OrcishScoutCE.mark("text")` control it.
+
+Once a Cheat Engine address proves stable across restarts as a module-relative offset, it can move to a SCOUT LAB semantic candidate (`MODULE+0xOFFSET:type`), which Orcish reads by itself without Cheat Engine. Pointer chains stay in Cheat Engine.
+
+## D. Windows Performance Recorder
+
+`Setup.cmd` option **10** runs `scripts\Record-PerformanceTrace.ps1`: it asks for Administrator access, starts WPR with the `GeneralProfile` and `CPU` profiles, waits for Enter and saves `data\traces\orcish_<time>.etl` for Windows Performance Analyzer. A trace that fails to stop is cancelled so no kernel session is left running.
+
 ## Recommended Fishing discovery workflow
 
 Use the visible/controller session as the reference timeline, then search for internal events corresponding to:
@@ -311,7 +358,7 @@ Normal Orcish remains unchanged: no Frida or UE4SS dependency.
 
 - UE4SS runs externally and writes a local JSONL file.
 - Frida is an optional Python package loaded lazily only when enabled.
-- Cheat Engine, ReClass.NET and x64dbg remain external discovery tools and are not runtime dependencies.
+- Cheat Engine, ReClass.NET and x64dbg remain external discovery tools and are not runtime dependencies. The Cheat Engine bridge runs inside Cheat Engine and only writes a local JSONL file.
 - Existing read-only memory candidates use only Windows APIs already available to Orcish.
 
 ## Notes on current APIs

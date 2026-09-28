@@ -97,9 +97,12 @@ Keep the entire project folder together. You do not need to copy individual Pyth
 | **4** | Safe start with default window settings and without loading learned recognition data. |
 | **5** | Run automated self-tests. |
 | **6** | Review and clean old backups, archives, and caches. |
-| **7** | Install/check the optional telemetry research toolkit: Frida, UE4SS bridge, x64dbg, ReClass.NET, Cheat Engine installer, and Windows Performance Toolkit. |
-| **8** | Check telemetry-tool status without installing anything. |
+| **7** | Install the research toolkit (Frida, UE4SS + OrcishScout mod, x64dbg, ReClass.NET, Cheat Engine, Windows Performance Toolkit) and create the research files: UE4SS hooks file and a starter Cheat Engine table. On the Microsoft Store / Game Pass build it runs option 9 for UE4SS. |
+| **8** | Check tool status and whether UE4SS and Cheat Engine are actually writing data, without installing anything. |
 | **9** | Recover UE4SS for the WinGDK/Microsoft Store build using the current experimental UE4SS package, with backup/rollback handling. |
+| **10** | Record a Windows Performance Recorder trace to `data\traces` (asks for Administrator). |
+
+`Setup.cmd scans` lists UFunction names from the latest in-game UE4SS scan (Ctrl+F10) as lines to paste into `data\ue4ss\orcish_hooks.txt`.
 
 ## Controls and window behavior
 
@@ -355,9 +358,13 @@ The **SCOUT LAB** tab is an observational research workspace. After binding the 
 
 ### Optional game-internal telemetry
 
-Scout can now ingest **named Unreal/native function events** on the same timeline as vision and controller decisions. Two optional adapters are included: a local JSONL bridge intended for UE4SS or another external producer, and an opt-in Frida function-entry provider for already-discovered module-relative native function addresses. Neither is required for normal operation; Frida is deliberately kept out of the default requirements.
+Scout can ingest **game-internal events** on the same timeline as vision and controller decisions:
 
-See `docs/INTERNAL_TELEMETRY.md` for installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry toolkit** and **8 · Telemetry toolkit status**, backed by `scripts/Install-TelemetryToolkit.ps1`. Normal Orcish operation still has no dependency on these research tools; the installer fetches/places them only when explicitly requested.
+- **UE4SS** — the OrcishScout mod logs configured UFunction calls and property changes, and scans object names on Ctrl+F10. Configure it in `data\ue4ss\orcish_hooks.txt`, not in Lua.
+- **Cheat Engine** — open `data\cheat-engine\OrcishScout.CT`; every address in the table streams its value changes to Scout.
+- **Frida** — opt-in function-entry hooks for module-relative native functions found with x64dbg/ReClass.NET.
+
+SCOUT LAB reads the UE4SS and Cheat Engine JSONL files by default. Quick start: `Setup.cmd` → **7**, then `Run.cmd` → SCOUT LAB, then `Setup.cmd` → **8** to see which sources write data. See `docs/INTERNAL_TELEMETRY.md` for the discovery workflow, event format and the current UE4SS status on the WinGDK build. Normal Orcish operation has no dependency on these research tools; the installer fetches/places them only when explicitly requested.
 
 ### Semantic memory candidates for Fishing / Auto Picker
 

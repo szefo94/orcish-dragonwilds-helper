@@ -24,6 +24,17 @@ def parse_function_hook(spec):
     return {"spec":s,"label":(label or f"{module}+0x{offset:X}").strip(),"module":module,"offset":offset}
 
 
+def parse_bridge_paths(value):
+    """Accept one path, a ';'/newline separated string or a list; return unique non-empty paths in order."""
+    if value is None:return []
+    items=value if isinstance(value,(list,tuple)) else str(value).replace("\n",";").split(";")
+    out=[]
+    for item in items:
+        s=str(item or "").strip().strip('"')
+        if s and s not in out:out.append(s)
+    return out
+
+
 class JsonlBridgeProvider:
     """Tail newline-delimited JSON emitted by an external telemetry producer."""
 
@@ -35,6 +46,9 @@ class JsonlBridgeProvider:
     def start(self):
         if self.thread:return
         existed=self.path.exists()
+        # A file created after recording started is new data: read it from the beginning so the
+        # producer's first lines (for example UE4SS bridge_start) are not skipped.
+        self.from_end=self.from_end and existed
         self.thread=threading.Thread(target=self._run,daemon=True,name="scout-jsonl-bridge");self.thread.start()
         if existed:self.ready.wait(.5)
 
@@ -49,8 +63,9 @@ class JsonlBridgeProvider:
         signal=str(obj.get("signal") or "event")
         value=obj.get("value")
         details=dict(obj.get("details") or {})
-        for key in ("function","object","property","args","producer_time","producer_seq"):
-            if key in obj and key not in details:details[key]=obj[key]
+        # Keep every producer field (function, property, label, error, path, ...) for the analyzer.
+        for key,v in obj.items():
+            if key not in ("provider","signal","value","details") and key not in details:details[key]=v
         details["provider"]=provider;details["bridge_path"]=str(self.path)
         self.event_cb("game_internal",signal,value,mono=now,details=details,stream="process")
         self.events+=1
@@ -154,12 +169,15 @@ class InternalTelemetryHub:
         self.pid=int(pid);self.event_cb=event_cb;self.config=dict(config or {});self.providers=[];self.errors=[]
 
     def start(self):
-        if self.config.get("bridge_enabled") and self.config.get("bridge_path"):
-            p=JsonlBridgeProvider(self.config["bridge_path"],self.event_cb,provider="ue4ss_bridge",from_end=True)
-            p.start();self.providers.append(p)
-            self.event_cb("game_internal","provider_started",
-                          {"provider":"ue4ss_bridge","path":str(self.config["bridge_path"])},
-                          mono=time.monotonic(),stream="process")
+        paths=parse_bridge_paths(self.config.get("bridge_paths") or self.config.get("bridge_path"))
+        if self.config.get("bridge_enabled"):
+            for path in paths:
+                # Producers normally name themselves in each line; the file stem is only a fallback.
+                name=Path(path).stem or "external_bridge"
+                p=JsonlBridgeProvider(path,self.event_cb,provider=name,from_end=True)
+                p.start();self.providers.append(p)
+                self.event_cb("game_internal","provider_started",{"provider":name,"path":str(path)},
+                              mono=time.monotonic(),stream="process")
         if self.config.get("frida_enabled") and self.config.get("frida_hooks"):
             try:
                 p=FridaFunctionProvider(self.pid,self.config["frida_hooks"],self.event_cb);p.start();self.providers.append(p)
@@ -176,6 +194,9 @@ class InternalTelemetryHub:
         self.providers=[]
 
     def status(self):
-        return {"providers":[type(p).__name__ for p in self.providers],
+        names=[]
+        for p in self.providers:
+            names.append(f"{p.provider}:{p.events}" if isinstance(p,JsonlBridgeProvider) else f"frida:{p.events}")
+        return {"providers":names,
                 "events":sum(int(getattr(p,"events",0)) for p in self.providers),
-                "errors":list(self.errors)}
+                "errors":list(self.errors)+[p.error for p in self.providers if getattr(p,"error",None)]}
