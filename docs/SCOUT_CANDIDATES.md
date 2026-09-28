@@ -10,13 +10,35 @@ A semantic candidate has four fields:
 - **name** — your stable project-side identifier, e.g. `reel_flag_01`;
 - **domain** — `fishing`, `auto_picker`, or `general`; `auto_picker` is the internal Scout domain name for Auto Presser interaction research;
 - **role** — what we suspect the value represents;
-- **spec** — read-only address definition: `MODULE+0xOFFSET:type` or `0xADDRESS:type`.
+- **spec** — read-only address definition: `MODULE+0xOFFSET:type`, `0xADDRESS:type`, or a pointer chain in Cheat Engine bracket notation.
 
 Supported primitive types:
 
 `u8 u16 u32 i32 u64 i64 ptr f32 f64`
 
-`ptr` currently means "read a pointer-sized raw integer". Scout does not automatically dereference pointer chains.
+`ptr` means "read a pointer-sized raw integer" at the final address.
+
+## Pointer chains
+
+Game objects such as a fishing component live on the heap and move every launch, so a stable address is usually a chain from a module-relative base:
+
+```text
+[[RSDragonwilds-WinGDK-Shipping.exe+0x4A1230]+0x10]+0x88:u32
+```
+
+`[x]` reads the 8-byte pointer stored at `x`; `+`/`-` add an offset. The base is a module (name ending in `.exe`/`.dll`, optionally in double quotes) or an absolute `0x` address; at most 12 levels. **Every number must have `0x`**: Cheat Engine shows offsets in hex, and a bare `10` is rejected instead of being silently read as decimal.
+
+The chain is walked again on every read, so it follows the object when the game rebuilds it. A broken chain is recorded as `pointer_read_failed` or `null_pointer` with a `chain` trail (`0xAT->0xPOINTER` per level) showing which level failed; while the object does not exist (for example outside fishing) that is expected, and a transition from failure to a value is itself logged as `candidate_transition`.
+
+## Importing a Cheat Engine table
+
+SCOUT LAB → **IMPORT CE TABLE** reads a `.CT` file and adds every convertible record as a candidate of the domain selected in the candidate row. The record description becomes the name, and the role is taken from it when it contains a known role for that domain (`fishing phase` → `phase`, `pull direction` → `pull_direction`), otherwise `unknown`. A candidate with the same domain and name is replaced. Byte/2/4/8-byte (signed when *Show as signed*), float and double records with a module-relative or absolute hex address and hex offsets are converted; scripts, strings, byte arrays and symbol/AOB-based addresses are reported as skipped.
+
+Cheat Engine stores pointer offsets with the offset applied last first; the importer reverses them. To check a converted chain, compare the value Scout records with the value Cheat Engine shows for the same record. Without the UI:
+
+```bat
+.\.venv\Scripts\python.exe src\orcpresser\ce_table.py data\cheat-engine\OrcishScout.CT
+```
 
 ## Recommended Fishing roles
 
