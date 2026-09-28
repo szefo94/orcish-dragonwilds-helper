@@ -359,7 +359,7 @@ Scout can now ingest **named Unreal/native function events** on the same timelin
 
 The current research focus is **Cheat Engine**: open `data\cheat-engine\OrcishScout.CT` (created by Setup option 7) and every address in the table streams its value changes into Scout, which SCOUT LAB records by default next to vision and controller events. UE4SS is parked because it does not start on the Game Pass build.
 
-See `docs/INTERNAL_TELEMETRY.md` for the discovery workflow, installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry toolkit** and **8 · Telemetry toolkit status**, backed by `scripts/Install-TelemetryToolkit.ps1`. Normal Orcish operation still has no dependency on these research tools; the installer fetches/places them only when explicitly requested.
+Step-by-step instructions for collecting Fishing and Cheat Engine data are in `docs/RESEARCH_DATA_GUIDE.md`. See `docs/INTERNAL_TELEMETRY.md` for the discovery workflow, installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry toolkit** and **8 · Telemetry toolkit status**, backed by `scripts/Install-TelemetryToolkit.ps1`. Normal Orcish operation still has no dependency on these research tools; the installer fetches/places them only when explicitly requested.
 
 ### Semantic memory candidates for Fishing / Auto Picker
 
