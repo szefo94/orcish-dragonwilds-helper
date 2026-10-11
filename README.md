@@ -99,6 +99,8 @@ Keep the entire project folder together. You do not need to copy individual Pyth
 | **6** | Review and clean old backups, archives, and caches. |
 | **7** | Install/check the optional telemetry research toolkit (Frida, UE4SS bridge, x64dbg, ReClass.NET, Cheat Engine installer, Windows Performance Toolkit) and create the starter Cheat Engine table `data\cheat-engine\OrcishScout.CT`. |
 | **8** | Check telemetry-tool status and whether the Cheat Engine stream is writing data, without installing anything. |
+| **D** | Research data check, no downloads: creates `data\cheat-engine\OrcishScout.CT` if missing, checks the Cheat Engine stream, saved candidates and the latest Scout session, and prints the next step. |
+| **R** | Analyze the latest Scout session into `data\scout_reports\` (same as SCOUT LAB → ANALYZE LATEST SESSION). |
 | **9** | Recover UE4SS for the WinGDK/Microsoft Store build using the current experimental UE4SS package, with backup/rollback handling. |
 
 ## Controls and window behavior
@@ -304,6 +306,7 @@ The project separates perception, control, and UI so work on one feature can be 
 | `src/orcpresser/fishing.py` | Fishing state machine and cast calibration. |
 | `src/orcpresser/fishing_capture.py` | Fishing color detection, OCR workers, and local recording. |
 | `src/orcpresser/fishing_ui.py` / `fishing_overlay.py` | Fishing controls and overlay. |
+| `src/orcpresser/ui_theme.py` | Shared look for the shell and every feature panel: palette, fonts, chamfered RuneButtons, panels, cards, ttk styles. |
 | `src/orcpresser/scout.py` / `scout_lab.py` | Immutable Scout recording plus supervised visual/process/read-only-memory research probes. |
 | `src/orcpresser/aim_lab.py` | Experimental visual target tracking, head-candidate/crosshair geometry, impact evidence and overlay. |
 | `src/orcpresser/scout_analysis.py` | Per-session and cross-session Scout analysis across Auto Picker, Fishing, Aim and Scout Lab. |
@@ -357,7 +360,7 @@ The **SCOUT LAB** tab is an observational research workspace. After binding the 
 
 Scout can now ingest **named Unreal/native function events** on the same timeline as vision and controller decisions. Two optional adapters are included: a local JSONL bridge intended for UE4SS or another external producer, and an opt-in Frida function-entry provider for already-discovered module-relative native function addresses. Neither is required for normal operation; Frida is deliberately kept out of the default requirements.
 
-The current research focus is **Cheat Engine**: open `data\cheat-engine\OrcishScout.CT` (created by Setup option 7) and every address in the table streams its value changes into Scout, which SCOUT LAB records by default next to vision and controller events. UE4SS is parked because it does not start on the Game Pass build.
+The current research focus is **Cheat Engine**: open `data\cheat-engine\OrcishScout.CT` (created by Setup option 7 or D) and every address in the table streams its value changes into Scout, which SCOUT LAB records by default next to vision and controller events. A table saved in Cheat Engine is imported automatically when the next session starts, every Fishing decision carries the latest memory / Cheat Engine values for the analyzer's shadow-agreement report, and the experimental **scan assistant** can run Cheat Engine's first / changed / unchanged scans from the Fishing state timeline so finding the phase address no longer needs hand-driven scans (see `docs/RESEARCH_DATA_GUIDE.md`, Part C0, and `docs/GAME_SIGNALS.md`). UE4SS is parked because it does not start on the Game Pass build.
 
 Step-by-step instructions for collecting Fishing and Cheat Engine data are in `docs/RESEARCH_DATA_GUIDE.md`. See `docs/INTERNAL_TELEMETRY.md` for the discovery workflow, installation, UE4SS mod placement, event format, Frida hook syntax and the Fishing research workflow. `Setup.cmd` now includes **7 · Install telemetry toolkit** and **8 · Telemetry toolkit status**, backed by `scripts/Install-TelemetryToolkit.ps1`. Normal Orcish operation still has no dependency on these research tools; the installer fetches/places them only when explicitly requested.
 

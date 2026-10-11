@@ -20,7 +20,7 @@ Label the landing WAS SHORT / LONG / HIT manually. Short and long feedback choos
 
 ## Supervised fight loop
 
-Start LIVE after a manual cast, or enable Automatic cast to begin with the saved duration. During the fight, calibrated **PULL L / PULL R UI cues are the preferred A/D command source** and may change several times within one escape phase. Repeated confirmation of the same PULL command keeps the same key held; a confirmed opposite command switches immediately. BAR colour is secondary feedback/fallback: blue means the current counter-pull appears effective, while a stable blue→red transition may swap A↔D only when no reliable PULL command is available.
+Start LIVE after a manual cast, or enable Automatic cast to begin with the saved duration. In **Advanced · EXP** mode, calibrated **PULL L / PULL R UI cues are the preferred A/D command source** during the fight and may change several times within one escape phase. (**Fishing Bot 101** deliberately does not use them as a direction command; see *Fishing 101 diagnostics and direction handling* below.) Repeated confirmation of the same PULL command keeps the same key held; a confirmed opposite command switches immediately. BAR colour is secondary feedback/fallback: blue means the current counter-pull appears effective, while a stable blue→red transition may swap A↔D only when no reliable PULL command is available.
 
 **REEL has highest priority regardless of BAR colour.** Two consistent fast REEL visual samples, or two distinct OCR confirmations of `Reel (Hold)`, immediately release A/D and hold LMB. When REEL ends, LMB is released and a fresh PULL command is preferred for resuming A/D. BAR colour is used only as fallback when no reliable PULL command is available.
 
@@ -30,7 +30,7 @@ Color capture targets 20 Hz. In addition, calibrated REEL / PULL L / PULL R regi
 
 Prompt OCR remains queued about every 400 ms, subject to actual OCR runtime. Exclusive OCR PULL L/R results can also command A/D when the faster visual region winner is unavailable. Raw OCR text per calibrated region is recorded in Scout telemetry so mis-calibrated or overlapping PULL regions can be diagnosed. Cropped capture and OCR run on separate workers with bounded queues.
 
-Fishing telemetry records timestamps, BAR red/blue scores, a diagnostic normalized BAR fill estimate, PULL/REEL evidence, OCR latency, controller decisions and physical A/D/LMB states in JSON/JSONL streams. These measurements are intended for replay and fine-tuning. Player stamina and any separate fish/catch-progress value remain optional future measurements and are not currently used as live control inputs.
+Fishing telemetry records timestamps, BAR red/blue scores, a diagnostic normalized BAR fill estimate, PULL/REEL evidence, OCR latency, controller decisions and physical A/D/LMB states in JSON/JSONL streams. These measurements are intended for replay and fine-tuning. When the Scout sidecar runs, every `fishing_decision` also carries the latest memory / Cheat Engine signals (`details.signals`) for the analyzer's shadow-agreement report; the controller never reads them (see `docs/GAME_SIGNALS.md`). Player stamina and any separate fish/catch-progress value remain optional future measurements and are not currently used as live control inputs.
 
 ## Remaining work after a real recording
 
@@ -50,7 +50,7 @@ Advanced automatic pool detection, positioning and travel are intentionally sepa
 
 ## Mode split
 
-**Fishing Bot 101** is a persistent supervised mode. Configure **BAR, REEL and STOP**; PULL L/R is strongly recommended for reliable fight control. Pressing LIVE arms the helper indefinitely, but it does not aid the fight until `Stop Fishing` is confirmed on screen. That prompt is the ready/set/go gate for each manually cast round. Alt-tab, temporary capture loss, catch/failure/depletion messages and ordinary timeouts release helper-owned inputs and return to the armed waiting state instead of ending the Fishing 101 session. Explicit STOP (or F8 panic) ends the session. During an active round, confirmed PULL commands drive A/D continuously through direction changes, BAR provides validation/fallback, and confirmed `Reel (Hold)` overrides A/D with LMB.
+**Fishing Bot 101** is a persistent supervised mode. Configure **BAR, REEL and STOP**; PULL L/R is strongly recommended for reliable fight control. Pressing LIVE arms the helper indefinitely, but it does not aid the fight until `Stop Fishing` is confirmed on screen. That prompt is the ready/set/go gate for each manually cast round. Alt-tab, temporary capture loss, catch/failure/depletion messages and ordinary timeouts release helper-owned inputs and return to the armed waiting state instead of ending the Fishing 101 session. Explicit STOP (or F8 panic) ends the session. During an active round, BAR red/blue feedback drives A/D (PULL L/R captions count as fight-presence evidence only, because both can be visible at once), and confirmed `Reel (Hold)` overrides A/D with LMB. Advanced mode keeps PULL L/R as the preferred direction command.
 
 **Advanced · EXP** enables automatic cast timing/calibration and the SPOT diagnostic. It is deliberately not presented as autonomous navigation: pool selection, camera steering, walking, and unattended multi-spot cycles are still pending.
 

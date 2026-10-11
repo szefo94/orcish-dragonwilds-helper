@@ -22,7 +22,8 @@ import keys as keymap
 from tkinter import ttk
 
 SCAN_GAP=.12  # min seconds between scan starts; one scan in flight at a time
-BG='#171b14'; PANEL='#24281d'; GOLD='#b49758'; BONE='#e6d8b0'; GREEN='#98c657'; MUTED='#9ba087'
+import ui_theme as T
+from ui_theme import BG, PANEL, INSET, EDGE, GOLD, BONE, GREEN, MUTED, RuneButton
 
 class WinIO:
     def __init__(self):
@@ -106,25 +107,6 @@ class WinIO:
         t=getattr(self,'watchdog_thread',None)
         if t and t is not threading.current_thread() and t.is_alive():t.join(timeout=.5)
 
-class RuneButton(tk.Canvas):
-    def __init__(self,parent,text,command,width=140,height=46):
-        super().__init__(parent,width=width,height=height,bg=BG,highlightthickness=0,cursor='hand2')
-        self.label=text;self.command=command;self.active=False;self.hover=False;self.enabled=True;self.w=width;self.h=height
-        self.bind('<Button-1>',lambda e:self.invoke())
-        self.bind('<Enter>',lambda e:self.set_hover(True));self.bind('<Leave>',lambda e:self.set_hover(False))
-        self.bind('<Return>',lambda e:self.invoke());self.configure(takefocus=True)
-        self.draw()
-    def invoke(self):
-        if self.enabled:self.command()
-    def set_hover(self,v):self.hover=v;self.draw()
-    def draw(self):
-        self.delete('all');w,h=self.w,self.h
-        edge=GREEN if self.active else (GOLD if self.enabled else '#5a513c')
-        self.create_polygon(8,1,w-8,1,w-1,8,w-1,h-8,w-8,h-1,8,h-1,1,h-8,1,8,fill='#384829' if self.active else '#302c22',outline=edge,width=2)
-        self.create_line(10,5,w-10,5,fill='#748752' if self.hover or self.active else '#63563b')
-        for x in (8,w-8):self.create_oval(x-2,h/2-2,x+2,h/2+2,fill=GOLD,outline='')
-        self.create_text(w/2,h/2,text=self.label,fill=GREEN if self.active else (BONE if self.enabled else '#77705c'),font=('Georgia',10,'bold'))
-
 class App:
     def __init__(self,root,visual=False):
         self.root=root;self.visual=visual;self.io=None if visual else WinIO()
@@ -166,148 +148,156 @@ class App:
         if self.safe:self.status.set('SAFE START — defaults, learned data not loaded. Normal start next time.')
         root.after(25,self.tick);root.after(1000,self.metrics)
     def text(self,parent,text,size=10,color=BONE):
-        return tk.Label(parent,text=text,bg=parent['bg'],fg=color,font=('Segoe UI',size),anchor='w')
+        return T.label(parent,text,color,('Segoe UI',size))
+    TOOL_TITLES={'Repeat':'REPEAT SETTINGS','Hold':'HOLD SETTINGS','Auto':'AUTO PRESSER SETTINGS','Fishing':'FISHING · EXPERIMENTAL',
+                 'Aim':'AIM LAB · EXPERIMENTAL','Scout':'SCOUT LAB · DATA ACQUISITION','Stats':'STATS · AUTOMATED TEST'}
     def build(self):
-        header=tk.Canvas(self.root,height=82,bg=BG,highlightthickness=0);header.pack(fill='x',padx=20,pady=(10,0))
-        header.create_polygon(6,70,20,13,34,48,48,8,62,48,76,13,90,70,fill='#405831',outline=GOLD,width=2)
-        header.create_text(110,32,text='ORCISH HELPER',anchor='w',fill=BONE,font=('Georgia',25,'bold'))
-        header.create_text(112,62,text='DRAGONWILDS  /  ASHENFALL COMMAND POST',anchor='w',fill=GREEN,font=('Segoe UI',10,'bold'))
-        # Original tusk-and-iron ornament, drawn locally (no game assets).
-        for cx,flip in [(710,1),(815,-1)]:
-            header.create_polygon(cx,65,cx+flip*8,26,cx+flip*22,8,cx+flip*14,39,cx+flip*15,65,fill=BONE,outline=GOLD)
-        header.create_polygon(743,20,782,20,797,37,788,67,762,76,736,59,731,36,fill='#455536',outline=GOLD,width=2)
-        header.create_polygon(741,38,757,43,751,48,fill='#cc5933')
-        header.create_polygon(785,38,769,43,775,48,fill='#cc5933')
-        header.create_line(751,59,775,59,fill='#11160f',width=4)
-        header.create_line(0,80,4000,80,fill=GOLD,width=2)
-        modes=tk.Frame(self.root,bg=BG);modes.pack(fill='x',padx=24,pady=12)
+        """Shell layout (mirrors site/index.html): header, tool tabs, settings panel (two columns when wide),
+        COMMAND CENTER / TOOL OUTPUT / WINDOW / RESOURCES on the right, then the global GAME & CAPTURE and
+        CONTROL bars. Each tab adds only its own settings; shared state is shown once."""
+        T.init_styles(self.root)
+        header=tk.Canvas(self.root,height=86,bg=BG,highlightthickness=0);header.pack(fill='x',padx=20,pady=(10,0))
+        # Crest and orc portrait are original art drawn with canvas polygons (no game assets).
+        T.draw_crest(header,4,2,.9)
+        header.create_text(112,32,text='ORCISH HELPER',anchor='w',fill=BONE,font=T.FONT_TITLE)
+        header.create_text(114,62,text='DRAGONWILDS  /  ASHENFALL COMMAND POST',anchor='w',fill=GREEN,font=('Segoe UI',10,'bold'))
+        T.draw_orc(header,770,40,.86)
+        def header_rule(e=None):
+            header.delete('rule');w=max(200,header.winfo_width())
+            header.create_line(0,81,w,81,fill=GOLD,width=2,tags='rule')
+            for x in (w*.5,):header.create_polygon(x-9,81,x,75,x+9,81,x,86,fill=GOLD,outline='',tags='rule')
+            for x in (12,w-12):header.create_oval(x-3,78,x+3,84,fill=GOLD,outline='',tags='rule')
+        header.bind('<Configure>',header_rule);header_rule()
+        modes=tk.Frame(self.root,bg=BG);modes.pack(fill='x',padx=24,pady=(10,8))
         self.modebuttons={}
         for mode,title in [('Repeat','REPEAT'),('Hold','HOLD'),('Auto','AUTO PRESSER'),('Fishing','FISHING · EXP'),('Aim','AIM LAB · EXP'),('Scout','SCOUT LAB'),('Stats','STATS')]:
-            b=RuneButton(modes,title,lambda m=mode:self.choose_mode(m),125,48);b.pack(side='left',padx=(0,6));self.modebuttons[mode]=b
+            b=RuneButton(modes,title,lambda m=mode:self.choose_mode(m),width=118,height=44,kind='tab');b.pack(side='left',padx=(0,6));self.modebuttons[mode]=b
         self.modebuttons['Auto'].active=True;self.modebuttons['Auto'].draw()
         body=tk.Frame(self.root,bg=BG);body.pack(fill='both',expand=True,padx=24)
-        settings=tk.Frame(body,bg=PANEL);settings.pack(side='left',fill='both',expand=True,padx=(0,12))
-        scroll=tk.Scrollbar(settings,orient='vertical');scroll.pack(side='right',fill='y')
+        settings_outer,settings,self.tool_title=T.panel(body,'AUTO PRESSER SETTINGS',pad=(14,10));settings_outer.pack(side='left',fill='both',expand=True,padx=(0,12))
+        scroll=ttk.Scrollbar(settings,orient='vertical',style='Orc.Vertical.TScrollbar');scroll.pack(side='right',fill='y')
         settings_canvas=tk.Canvas(settings,bg=PANEL,highlightthickness=0,width=400,yscrollcommand=scroll.set)
         settings_canvas.pack(side='left',fill='both',expand=True);scroll.configure(command=settings_canvas.yview)
-        inner=tk.Frame(settings_canvas,bg=PANEL,padx=14,pady=12)
+        inner=tk.Frame(settings_canvas,bg=PANEL)
         settings_window=settings_canvas.create_window(0,0,window=inner,anchor='nw')
-        self.cols=(tk.Frame(inner,bg=PANEL),tk.Frame(inner,bg=PANEL));self.inner=inner;self.twocol=None
+        self.cols=(tk.Frame(inner,bg=PANEL),tk.Frame(inner,bg=PANEL));self.inner=inner;self.twocol=None;self.col2_used=True
         self.scrollbar=scroll;self.settings_canvas=settings_canvas;self.settings_window=settings_window
         inner.bind('<Configure>',lambda e:self.fit_settings())
         settings_canvas.bind('<Configure>',lambda e:self.fit_settings())
         settings_canvas.bind_all('<MouseWheel>',self.wheel,add='+')
-        left=self.cols[0]
-        right=tk.Frame(body,bg=PANEL,padx=14,pady=12,width=370);right.pack(side='right',fill='both');right.pack_propagate(False)
+        right_outer,right_host,_=T.panel(body,'COMMAND CENTER',width=396,pad=(14,10));right_outer.pack(side='right',fill='both')
+        rscroll=ttk.Scrollbar(right_host,orient='vertical',style='Orc.Vertical.TScrollbar')
+        right_canvas=tk.Canvas(right_host,bg=PANEL,highlightthickness=0,yscrollcommand=rscroll.set);right_canvas.pack(side='left',fill='both',expand=True)
+        rscroll.configure(command=right_canvas.yview)
+        right=tk.Frame(right_canvas,bg=PANEL);right_window=right_canvas.create_window(0,0,window=right,anchor='nw')
+        self.right_canvas=right_canvas;self.right_scrollbar=rscroll;self.right_window=right_window
+        right.bind('<Configure>',lambda e:self.fit_right());right_canvas.bind('<Configure>',lambda e:self.fit_right())
         self.vis={}      # widget -> modes where it is shown (or a callable(mode)->bool); others always shown
         def show(w,modes):self.vis[w]=modes;return w
-        MAN=('Repeat','Hold','Auto');TARGET=()  # target/capture controls live in the global command bar
-        show(self.text(left,'01  /  ORDERS',12,GOLD),MAN).pack(fill='x')
+        col1,col2=self.cols
+        # ---- column 1 · Repeat / Hold / Auto orders
+        show(T.heading(col1,'ORDERS',pady=(0,4)),('Repeat','Hold','Auto')).pack(fill='x')
         self.key=tk.StringVar(value=self.settings.get('key','LMB'));self.interval=tk.StringVar(value=str(self.settings.get('interval_ms',100)));self.duration=tk.StringVar(value=str(self.settings.get('duration_ms',50)))
         self.timed=tk.BooleanVar(value=bool(self.settings.get('timed',False)))
-        ttk.Style(self.root).theme_use('clam')
-        ttk.Style(self.root).configure('Orc.TCombobox',fieldbackground='#12170f',background=PANEL,foreground=BONE,arrowcolor=GOLD,bordercolor='#4c5035')
-        row=show(tk.Frame(left,bg=PANEL),('Repeat','Hold'));row.pack(fill='x',pady=4)
-        self.text(row,'Key · pick or type').pack(side='left')
-        self.keybox=ttk.Combobox(row,textvariable=self.key,values=keymap.dropdown(),width=14,style='Orc.TCombobox',font=('Segoe UI',11))
-        self.keybox.pack(side='right')
+        row=show(tk.Frame(col1,bg=PANEL),('Repeat','Hold'));row.pack(fill='x',pady=4)
+        T.label(row,'Key · pick or type').pack(side='left')
+        self.keybox=T.combo(row,self.key,keymap.dropdown(),width=14,state='normal',font=('Segoe UI',11));self.keybox.pack(side='right')
         self.key.trace_add('write',lambda *_:(self.stop('Key changed'),self.persist('key',self.key.get())))
-        tb=show(tk.Checkbutton(left,text='Timed hold · release after Hold duration',variable=self.timed,
-            command=lambda:(self.stop('Hold type changed'),self.persist('timed',self.timed.get()),self.apply_visibility()),
-            bg=PANEL,fg=GREEN,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,anchor='w',font=('Segoe UI',9)),('Hold',))
-        tb.pack(fill='x',pady=(2,2))
+        tb=show(T.check(col1,'Timed hold · release after Hold duration',self.timed,
+            lambda:(self.stop('Hold type changed'),self.persist('timed',self.timed.get()),self.apply_visibility()),accent=True),('Hold',))
+        tb.pack(fill='x',pady=2)
         self.fieldlabels={}
         for name,title,var,vmodes in [('interval','Repeat interval · ms',self.interval,('Repeat','Auto')),
                                      ('duration','Hold duration · ms',self.duration,lambda m:m in ('Repeat','Auto') or (m=='Hold' and self.timed.get()))]:
-            row=show(tk.Frame(left,bg=PANEL),vmodes);row.pack(fill='x',pady=4)
-            self.fieldlabels[name]=self.text(row,title);self.fieldlabels[name].pack(side='left')
-            tk.Entry(row,textvariable=var,width=12,bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',11)).pack(side='right')
+            row=show(tk.Frame(col1,bg=PANEL),vmodes);row.pack(fill='x',pady=4)
+            self.fieldlabels[name]=T.label(row,title);self.fieldlabels[name].pack(side='left')
+            T.entry(row,var,12).pack(side='right')
             setting_key='interval_ms' if name=='interval' else 'duration_ms'
             var.trace_add('write',lambda *_,v=var,k=setting_key:(self.stop('Settings changed'),self.persist(k,v.get())))
         self.repeat=tk.BooleanVar(value=bool(self.settings.get('repeat_prompts',False)))
-        self.repeatbox=show(tk.Checkbutton(left,text='Repeat persistent tap prompts (uses interval + tap length above)',variable=self.repeat,command=lambda:(self.stop('Options changed'),self.persist('repeat_prompts',self.repeat.get())),bg=PANEL,fg=GREEN,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,disabledforeground='#737765',anchor='w',font=('Segoe UI',9)),('Auto',))
+        self.repeatbox=show(T.check(col1,'Repeat persistent tap prompts (uses interval + tap length above)',self.repeat,
+            lambda:(self.stop('Options changed'),self.persist('repeat_prompts',self.repeat.get())),accent=True,wrap=400),('Auto',))
         self.repeatbox.pack(fill='x',pady=(2,0))
-        show(self.text(left,'Allowed actions · priority from top to bottom',10,GOLD),('Auto',)).pack(fill='x',pady=(12,4))
+        show(T.heading(col1,'ALLOWED ACTIONS · priority from the top'),('Auto',)).pack(fill='x',pady=(12,4))
         self.allowed={};saved_allowed=self.settings.get('allowed_actions',{})
         if not isinstance(saved_allowed,dict):saved_allowed={}
         for name in getattr(PROFILE,'ui_order',PROFILE.action_names):
             default=name in PROFILE.default_allowed and name not in PROFILE.opt_in
             v=tk.BooleanVar(value=bool(saved_allowed.get(name,default)));self.allowed[name]=v
-            show(tk.Checkbutton(left,text=name+(' (opt in)' if name in PROFILE.opt_in else ''),variable=v,command=lambda n=name,v=v:(self.stop('Action selection changed'),self.persist('allowed_actions',{k:x.get() for k,x in self.allowed.items()})),bg=PANEL,fg=BONE,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,font=('Segoe UI',10),anchor='w'),('Auto',)).pack(fill='x')
-        show(self.text(left,'Exclude · comma separated, e.g. Stone,Cabbage',10,GOLD),('Auto',)).pack(fill='x',pady=(10,2))
+            show(T.check(col1,name+(' (opt in)' if name in PROFILE.opt_in else ''),v,
+                lambda n=name,v=v:(self.stop('Action selection changed'),self.persist('allowed_actions',{k:x.get() for k,x in self.allowed.items()})),font=T.FONT_UI),('Auto',)).pack(fill='x')
+        show(T.heading(col1,'EXCLUSIONS'),('Auto',)).pack(fill='x',pady=(12,4))
+        show(T.caption(col1,'Comma separated object names, e.g. Stone, Cabbage'),('Auto',)).pack(fill='x',pady=(0,3))
         self.exclude=tk.StringVar(value=self.settings.get('exclude',''))
-        ex=show(tk.Entry(left,textvariable=self.exclude,bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',11)),('Auto',));ex.pack(fill='x')
+        ex=show(T.entry(col1,self.exclude),('Auto',));ex.pack(fill='x')
         for k in ('<Return>','<Escape>','<KP_Enter>'):ex.bind(k,lambda e:self.root.focus_set())
         self.exclude.trace_add('write',lambda *_:(self.stop('Exclusions changed'),self.persist('exclude',self.exclude.get())))
-        self.build_fishing(left,show)
-        self.build_aim_lab(left,show)
-        self.build_scout_lab(left,show)
-        self.build_stats_controls(left,show)
-        left=self.cols[1]
-        # Shared target state is presented once in the command bar / command center.
-        # Feature pages must not duplicate game binding or generic readiness instructions.
-        self.bindrow=tk.Frame(left,bg=PANEL)
-        self.targettext=tk.StringVar(value='No game bound.')
-        self.text(left,'UI BEHAVIOUR',12,GOLD).pack(fill='x',pady=(0,5))
-        self.text(left,'Unfocused opacity · 0 = minimize on focus loss',10,GOLD).pack(fill='x',pady=(4,0))
-        self.opacity=tk.IntVar(value=int(self.settings.get('opacity',60)))
-        tk.Scale(left,from_=0,to=100,orient='horizontal',variable=self.opacity,command=lambda *_:self.persist('opacity',self.opacity.get()),bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
-        before=set(left.pack_slaves());self.build_speed(left)
-        for w in left.pack_slaves():
-            if w not in before:self.vis[w]=('Auto',)
-        self.build_stats_charts(left,show)
-        # One shared source of truth for game detection, readiness and instructions.
-        self.text(right,'COMMAND CENTER',12,GOLD).pack(fill='x')
+        # ---- right panel · command center cards, then one TOOL OUTPUT area, WINDOW and RESOURCES
         self.common_game=tk.StringVar(value='GAME  · not bound')
         self.common_require=tk.StringVar(value='REQUIRES  · bind Dragonwilds')
         self.common_next=tk.StringVar(value='NEXT  · bind the game, then configure this tool')
-        tk.Label(right,textvariable=self.common_game,bg='#10150e',fg=GREEN,justify='left',anchor='w',wraplength=330,font=('Consolas',10,'bold')).pack(fill='x',pady=(6,2))
-        tk.Label(right,textvariable=self.common_require,bg='#10150e',fg=BONE,justify='left',anchor='w',wraplength=330,font=('Consolas',9)).pack(fill='x',pady=2)
-        tk.Label(right,textvariable=self.common_next,bg='#10150e',fg=GOLD,justify='left',anchor='w',wraplength=330,font=('Consolas',9,'bold')).pack(fill='x',pady=(2,10))
-        before=set(right.pack_slaves())
-        self.text(right,'TOOL OUTPUT',12,GOLD).pack(fill='x')
-        self.previewbox=tk.Label(right,text='Capture preview appears here\nGold = keycap · Green = OCR\nBlue = learned · Red = excluded',bg='#10150e',fg=MUTED,width=42,height=7,font=('Segoe UI',10));self.previewbox.pack(fill='x',pady=8)
+        T.card_text(right,self.common_game,GREEN,T.FONT_MONO_B,wrap=330).pack(fill='x',pady=(0,4))
+        T.card_text(right,self.common_require,BONE,T.FONT_MONO,wrap=330).pack(fill='x',pady=(0,4))
+        T.card_text(right,self.common_next,GOLD,('Consolas',9,'bold'),wrap=330).pack(fill='x')
+        T.heading(right,'TOOL OUTPUT').pack(fill='x',pady=(12,4))
+        self.output=tk.Frame(right,bg=PANEL);self.output.pack(fill='x')
+        out_auto=show(tk.Frame(self.output,bg=PANEL),('Auto',));out_auto.pack(fill='x')
+        self.previewbox=tk.Label(out_auto,text='Capture preview appears here\nGold = keycap · Green = OCR\nBlue = learned · Red = excluded',bg=INSET,fg=MUTED,width=42,height=5,font=T.FONT_UI,highlightthickness=1,highlightbackground=EDGE);self.previewbox.pack(fill='x',pady=(0,6))
         self.detected=tk.StringVar(value='Loading local recognition engine…')
-        tk.Label(right,textvariable=self.detected,bg=PANEL,fg=GREEN,wraplength=330,justify='left',anchor='w',font=('Segoe UI',11,'bold'),height=2).pack(fill='x')
+        T.label(out_auto,var=self.detected,color=GREEN,font=('Segoe UI',11,'bold'),wrap=330).pack(fill='x')
         self.raw=tk.StringVar(value='Only English prompts with a visible keycap are eligible.')
-        tk.Label(right,textvariable=self.raw,bg=PANEL,fg=MUTED,wraplength=330,justify='left',anchor='nw',height=2,font=('Segoe UI',9)).pack(fill='x')
-        self.text(right,'Last 5 reads · newest first · ▶ = key sent',9,GOLD).pack(fill='x',pady=(6,0))
+        rl=T.label(out_auto,var=self.raw,color=MUTED,font=T.FONT_SMALL,wrap=330,anchor='nw');rl.configure(height=2);rl.pack(fill='x')
+        T.caption(out_auto,'Last 5 reads · newest first · ▶ = key sent',color=GOLD).pack(fill='x',pady=(6,0))
         self.readtext=tk.StringVar(value='—')
-        tk.Label(right,textvariable=self.readtext,bg='#10150e',fg=BONE,justify='left',anchor='nw',height=5,font=('Consolas',9)).pack(fill='x')
-        self.text(right,'Action timing · first seen → key sent',9,GOLD).pack(fill='x',pady=(6,0))
+        T.card_text(out_auto,self.readtext,height=4).pack(fill='x')
+        T.caption(out_auto,'Action timing · first seen → key sent',color=GOLD).pack(fill='x',pady=(6,0))
         self.timetext=tk.StringVar(value='No action yet')
-        tk.Label(right,textvariable=self.timetext,bg='#10150e',fg=GREEN,justify='left',anchor='nw',height=2,font=('Consolas',9)).pack(fill='x')
-        for w in right.pack_slaves():
-            if w not in before:self.vis[w]=('Auto',)
-        show(self.text(right,'04  /  OUTPUT',12,GOLD),('Repeat','Hold')).pack(fill='x')
+        T.card_text(out_auto,self.timetext,GREEN,height=2).pack(fill='x')
+        out_manual=show(tk.Frame(self.output,bg=PANEL),('Repeat','Hold'));out_manual.pack(fill='x')
         self.outtext=tk.StringVar(value='Idle')
-        self.outlabel=show(tk.Label(right,textvariable=self.outtext,bg='#10150e',fg=GREEN,justify='left',anchor='nw',height=4,wraplength=330,font=('Consolas',11)),('Repeat','Hold'))
-        self.outlabel.pack(fill='x',pady=6)
-        show(self.text(right,'04  /  FISHING BOT',12,GOLD),('Fishing',)).pack(fill='x')
+        self.outlabel=T.card_text(out_manual,self.outtext,GREEN,('Consolas',11),height=4);self.outlabel.pack(fill='x')
+        out_fishing=show(tk.Frame(self.output,bg=PANEL),('Fishing',));out_fishing.pack(fill='x')
+        out_aim=show(tk.Frame(self.output,bg=PANEL),('Aim',));out_aim.pack(fill='x')
+        out_scout=show(tk.Frame(self.output,bg=PANEL),('Scout',));out_scout.pack(fill='x')
+        out_stats=show(tk.Frame(self.output,bg=PANEL),('Stats',));out_stats.pack(fill='x')
         self.modehelp=tk.StringVar()
-        show(tk.Label(right,textvariable=self.modehelp,bg=PANEL,fg=MUTED,justify='left',anchor='nw',wraplength=330,font=('Segoe UI',9)),('Repeat','Hold','Fishing')).pack(fill='x',pady=(4,0))
-        self.build_stats_sets(right,show)
-        self.text(right,'05  /  RESOURCE CONSUMPTION',12,GOLD).pack(fill='x',pady=(12,4))
+        show(T.caption(self.output,'',var=self.modehelp,wrap=330),('Repeat','Hold')).pack(fill='x',pady=(6,0))
+        T.heading(right,'RESOURCES').pack(fill='x',pady=(6,2))
         self.metrictext=tk.StringVar(value='Measuring this app: CPU, RAM, scan time')
-        tk.Label(right,textvariable=self.metrictext,bg=PANEL,fg=BONE,justify='left',anchor='w',font=('Consolas',10)).pack(fill='x')
-        self.chart=tk.Canvas(right,height=90,bg='#10150e',highlightthickness=1,highlightbackground='#4c5035');self.chart.pack(fill='x',pady=6)
-        self.text(right,'CPU %  /  RAM MiB · separate scales · last 90 s',8,MUTED).pack(fill='x')
-        targetbar=tk.Frame(self.root,bg=BG);targetbar.pack(fill='x',padx=24,pady=(8,2))
-        tk.Label(targetbar,text='GAME & CAPTURE',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
-        self.global_bind=RuneButton(targetbar,'BIND DRAGONWILDS · 3s',self.bind_game,165,36);self.global_bind.pack(side='left',padx=(0,7))
-        self.global_region=RuneButton(targetbar,'SELECT REGION',self.select_region,165,36);self.global_region.pack(side='left',padx=(0,10))
-        tk.Label(targetbar,textvariable=self.targettext,bg=BG,fg=MUTED,anchor='w',justify='left',wraplength=520,font=('Segoe UI',8)).pack(side='left',fill='x',expand=True)
-
-        footer=tk.Frame(self.root,bg=BG);footer.pack(fill='x',padx=24,pady=(4,10))
-        tk.Label(footer,text='CONTROL',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
+        T.label(right,var=self.metrictext,font=T.FONT_MONO).pack(fill='x')
+        self.chart=tk.Canvas(right,height=72,bg=INSET,highlightthickness=1,highlightbackground=EDGE);self.chart.pack(fill='x',pady=(4,2))
+        T.label(right,'CPU %  /  RAM MiB · separate scales · last 90 s',MUTED,T.FONT_TINY).pack(fill='x')
+        # ---- feature panels: each receives column 1, column 2 (where used) and its TOOL OUTPUT slot
+        self.build_fishing(col1,col2,out_fishing,show)
+        self.build_aim_lab(col1,out_aim,show)
+        self.build_scout_lab(col1,col2,out_scout,show)
+        self.build_stats_controls(col1,show)
+        before=set(col2.pack_slaves());self.build_speed(col2)
+        for w in col2.pack_slaves():
+            if w not in before:self.vis[w]=('Auto',)
+        self.build_stats_charts(col2,show)
+        self.build_stats_sets(out_stats,show)
+        # ---- global bars: the only place with game binding and start/stop
+        targetbar=tk.Frame(self.root,bg=BG);targetbar.pack(fill='x',padx=24,pady=(10,2))
+        T.label(targetbar,'GAME & CAPTURE',GOLD,('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
+        self.targettext=tk.StringVar(value='No game bound.')
+        self.global_bind=RuneButton(targetbar,'BIND DRAGONWILDS · 3s',self.bind_game,height=36,kind='primary');self.global_bind.pack(side='left',padx=(0,7))
+        self.global_region=RuneButton(targetbar,'SELECT REGION',self.select_region,height=36);self.global_region.pack(side='left',padx=(0,10))
+        T.label(targetbar,var=self.targettext,color=MUTED,font=T.FONT_TINY,wrap=420).pack(side='left',fill='x',expand=True)
+        self.opacity=tk.IntVar(value=int(self.settings.get('opacity',60)))
+        sc=T.scale(targetbar,self.opacity,0,100,lambda *_:self.persist('opacity',self.opacity.get()));sc.configure(length=150);sc.pack(side='right')
+        T.label(targetbar,'UNFOCUSED OPACITY · 0 = minimize, use the in-game HUD',GOLD,('Segoe UI',8,'bold')).pack(side='right',padx=(0,8))
+        footer=tk.Frame(self.root,bg=BG);footer.pack(fill='x',padx=24,pady=(4,8))
+        T.label(footer,'CONTROL',GOLD,('Segoe UI',9,'bold')).pack(side='left',padx=(0,10))
         self.runbuttons={}
-        for slot,label in (('Preview','PREVIEW'),('Live','LIVE'),('Stop','STOP')):
-            b=RuneButton(footer,label,lambda s=slot:self.global_action(s),150 if slot!='Stop' else 120,48)
+        for slot,label,kind in (('Preview','PREVIEW','normal'),('Live','LIVE','primary'),('Stop','STOP','stop')):
+            b=RuneButton(footer,label,lambda s=slot:self.global_action(s),width=150 if slot!='Stop' else 110,height=44,kind=kind)
             b.pack(side='left',padx=(0,9));self.runbuttons[slot]=b
         self.status=tk.StringVar(value='STOPPED — choose a mode, bind the game, then start')
-        tk.Label(footer,text='STATE',bg=BG,fg=GOLD,font=('Segoe UI',9,'bold')).pack(side='left',padx=(10,7))
-        tk.Label(footer,textvariable=self.status,bg=BG,fg=GREEN,anchor='w',wraplength=430,font=('Segoe UI',10,'bold')).pack(side='left',fill='x',expand=True)
-        self.hint=tk.StringVar();self.hintlabel=tk.Label(self.root,textvariable=self.hint,bg=BG,fg=MUTED,font=('Segoe UI',9));self.hintlabel.pack(pady=(0,10))
+        T.label(footer,'STATE',GOLD,('Segoe UI',9,'bold')).pack(side='left',padx=(10,7))
+        T.label(footer,var=self.status,color=GREEN,font=('Segoe UI',10,'bold'),wrap=430).pack(side='left',fill='x',expand=True)
+        self.hint=tk.StringVar();self.hintlabel=T.label(self.root,var=self.hint,color=MUTED,font=T.FONT_SMALL,anchor='center');self.hintlabel.pack(pady=(0,10))
+        self.bindrow=tk.Frame(col2,bg=PANEL)   # kept for compatibility; game binding lives in the global bar only
         self.chrome=(header,modes,targetbar,footer,self.hintlabel);self.rightpanel=right;self.layout(True);self.apply_visibility()
         self.update_mode_fields()
         # Clicking anywhere that is not a text field takes keyboard focus off the entries ("click-off").
@@ -327,7 +317,7 @@ class App:
     def fit_settings(self):
         """Pick column layout by available width; show the scrollbar only when content is taller than the view."""
         c=self.settings_canvas;w=c.winfo_width()
-        if w>1 and not getattr(self,'measuring',False):self.layout(w>=2*self.COLW-40 if not self.twocol else w>=2*self.COLW-80)   # hysteresis
+        if w>1 and not getattr(self,'measuring',False):self.layout(getattr(self,'col2_used',True) and (w>=2*self.COLW-40 if not self.twocol else w>=2*self.COLW-80))   # hysteresis
         c.itemconfigure(self.settings_window,width=max(1,w))
         c.configure(scrollregion=(0,0,w,self.inner.winfo_reqheight()))
         need=self.inner.winfo_reqheight()>c.winfo_height()+1
@@ -335,8 +325,18 @@ class App:
         if need and not shown:self.scrollbar.pack(side='right',fill='y',before=c)
         elif not need and shown:self.scrollbar.pack_forget();c.yview_moveto(0)
     def wheel(self,e):
-        if self.scrollbar.winfo_ismapped() and str(e.widget).startswith(str(self.settings_canvas)):
-            self.settings_canvas.yview_scroll(int(-e.delta/120),'units')
+        path=str(e.widget)
+        for bar,canvas in ((self.scrollbar,self.settings_canvas),(getattr(self,'right_scrollbar',None),getattr(self,'right_canvas',None))):
+            if bar is not None and bar.winfo_ismapped() and path.startswith(str(canvas)):canvas.yview_scroll(int(-e.delta/120),'units')
+    def fit_right(self):
+        """Right panel: full width inside its canvas; scrollbar only when the content is taller than the view."""
+        c=getattr(self,'right_canvas',None)
+        if c is None:return
+        w=c.winfo_width();c.itemconfigure(self.right_window,width=max(1,w))
+        h=self.rightpanel.winfo_reqheight();c.configure(scrollregion=(0,0,w,h))
+        need=h>c.winfo_height()+1;shown=bool(self.right_scrollbar.winfo_ismapped())
+        if need and not shown:self.right_scrollbar.pack(side='right',fill='y',before=c)
+        elif not need and shown:self.right_scrollbar.pack_forget();c.yview_moveto(0)
     def natural_size(self):
         """Window size that shows every option without scrolling (two-column settings)."""
         self.measuring=True;self.layout(True)
@@ -346,7 +346,7 @@ class App:
         chrome=sum(w.winfo_reqheight() for w in self.chrome)+10+24+24+10
         right=sum(ch.winfo_reqheight() for ch in self.rightpanel.winfo_children())+60
         h=chrome+max(self.inner.winfo_reqheight(),right)+4
-        w=24+self.inner.winfo_reqwidth()+12+370+24+4
+        w=24+self.inner.winfo_reqwidth()+12+396+24+4
         return max(w,2*self.COLW+450),h
     def work_area(self):
         """(left, top, right, bottom) of the usable desktop (taskbar excluded)."""
@@ -430,10 +430,10 @@ class App:
         if self.save_job:self.root.after_cancel(self.save_job)
         self.save_job=self.root.after(400,self.settings.save)
     def check(self,parent,text,var,enabled=True,note=''):
-        b=tk.Checkbutton(parent,text=text+(note if not enabled else ''),variable=var,command=lambda:(self.stop('Speed options changed'),self.persist('speed_options',{k:v.get() for k,v in self.opt.items()})),bg=PANEL,fg=BONE,selectcolor='#15200e',activebackground=PANEL,activeforeground=GREEN,disabledforeground='#737765',anchor='w',font=('Segoe UI',9),state='normal' if enabled else 'disabled')
+        b=T.check(parent,text+(note if not enabled else ''),var,lambda:(self.stop('Speed options changed'),self.persist('speed_options',{k:v.get() for k,v in self.opt.items()})),enabled=enabled)
         b.pack(fill='x');b.basetext=b.cget('text');return b
     def build_speed(self,left):
-        self.text(left,'03  /  SPEED & LEARNING',12,GOLD).pack(fill='x',pady=(12,4))
+        T.heading(left,'SPEED & LEARNING',pady=(0,4)).pack(fill='x')
         saved_opts={} if self.safe else self.settings.get('speed_options',{})
         if not isinstance(saved_opts,dict):saved_opts={}
         self.opt={k:tk.BooleanVar(value=bool(saved_opts.get(k,False))) for k in ('fast_det','rec_only','memory','templates','single','dxgi','gpu')}
@@ -444,22 +444,23 @@ class App:
         self.optboxes['single']=self.check(left,'Single-scan confirm · faster, less safe',self.opt['single'])
         self.optboxes['dxgi']=self.check(left,'DXGI capture',self.opt['dxgi'],self.dxgi_ok,'  (dxcam missing: Setup.cmd → 1)')
         self.gpucheck=self.optboxes['gpu']=self.check(left,'GPU · DirectML',self.opt['gpu'],self.gpu_ok,'  (Setup.cmd → 2 first)')
-        row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=(6,0))
-        self.text(row,'Learned data limit · MB').pack(side='left')
+        row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=(8,0))
+        T.label(row,'Learned data limit · MB').pack(side='left')
         self.limit=tk.StringVar(value=str(self.settings.get('learned_limit_mb','4')))
-        tk.Entry(row,textvariable=self.limit,width=6,bg='#12170f',fg=BONE,insertbackground=GREEN,relief='flat',font=('Segoe UI',11)).pack(side='right')
+        T.entry(row,self.limit,6).pack(side='right')
         self.limit.trace_add('write',lambda *_:(self.stop('Learned data limit changed'),self.persist('learned_limit_mb',self.limit.get())))
         row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=4)
         self.learntext=tk.StringVar(value='Learned: —')
-        tk.Label(row,textvariable=self.learntext,bg=PANEL,fg=MUTED,anchor='w',font=('Segoe UI',9)).pack(side='left')
-        RuneButton(row,'CLEAR LEARNED',self.clear_learned,165,32).pack(side='right')
-        self.text(left,'Text span · keycap widths left of the keycap',10,GOLD).pack(fill='x',pady=(6,0))
+        T.label(row,var=self.learntext,color=MUTED,font=T.FONT_SMALL).pack(side='left')
+        RuneButton(row,'CLEAR LEARNED',self.clear_learned,height=30).pack(side='right')
+        T.heading(left,'TEXT SPAN').pack(fill='x',pady=(12,2))
+        T.caption(left,'How many keycap widths left of the keycap may hold the action text').pack(fill='x')
         self.span=tk.IntVar(value=int(self.settings.get('text_span',SPAN)))
-        tk.Scale(left,from_=4,to=30,orient='horizontal',variable=self.span,command=lambda *_:(self.stop('Text span changed'),self.persist('text_span',self.span.get())),bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN).pack(fill='x')
-        row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=(2,8))
-        RuneButton(row,'SUGGEST CROP',self.suggest_crop,177,38).pack(side='left')
+        T.scale(left,self.span,4,30,lambda *_:(self.stop('Text span changed'),self.persist('text_span',self.span.get()))).pack(fill='x')
+        row=tk.Frame(left,bg=PANEL);row.pack(fill='x',pady=(4,8))
+        RuneButton(row,'SUGGEST CROP',self.suggest_crop,height=34).pack(side='left')
         self.croptext=tk.StringVar(value='Scan a few prompts in PREVIEW first.')
-        tk.Label(row,textvariable=self.croptext,bg=PANEL,fg=MUTED,wraplength=170,justify='left',anchor='w',font=('Segoe UI',8)).pack(side='left',padx=8)
+        T.label(row,var=self.croptext,color=MUTED,font=T.FONT_TINY,wrap=200).pack(side='left',padx=8)
     def opts(self):
         o={k:v.get() for k,v in self.opt.items()}
         if getattr(self,'bench',None):o.update(self.bench.config['opts'])   # the configuration under test
@@ -490,54 +491,49 @@ class App:
               'Stats':'',
               'Aim':'Experimental visual target tracker: seeded boxes, head-candidate geometry, crosshair error, impact evidence and Scout logging; no automatic aiming.',
               'Scout':'Observational research: record cursor/crosshair visual probes, process telemetry and optional read-only memory watches on one timeline.',
-              'Fishing':'Bot 101: BAR + REEL region, manual cast/movement. F7 = New spot / Reacquire, F8 = emergency release. Advanced mode is staged and never requires an online LLM.'}
+              }
     # ---------------------------------------------------------------- STATS tab: automated tests
     METRICS=(('scan_ms','Scan time · ms',False),('detect_pct','Detection %',True),('agree_pct','Agreement with baseline %',True),
              ('confirm_ms','Time to decision · ms',False),('changes_per_min','Label changes / min (camera · info only)',None),('cpu_pct','CPU % (this app)',False))
     def build_stats_controls(self,left,show):
         S=('Stats',)
-        show(self.text(left,'01  /  AUTOMATED TEST',12,GOLD),S).pack(fill='x')
-        show(tk.Label(left,text='1. AUTO tab: bind the game, select the region.\n'
+        show(T.heading(left,'AUTOMATED TEST',pady=(0,4)),S).pack(fill='x')
+        show(T.caption(left,'1. AUTO tab: bind the game, select the region.\n'
             '2. Stand still in the water facing a prompt, e.g. Collect Water.\n'
             '3. RUN TEST (or \\ in the game), then click into the game and let go of mouse and keyboard.\n'
-            'RUN TEST ticks off every speed option in section 03 itself and tests the whole set: Baseline, each option '
-            'alone, then all of them together. Each configuration runs a STATIC phase (default 5 s), then a CAMERA phase '
-            '(default 5 s): the app sweeps the camera left/right the same way every time and brings it back. PREVIEW '
-            'only: no keys are sent. F8 or leaving the game aborts.',
-            bg=PANEL,fg=MUTED,justify='left',anchor='w',wraplength=410,font=('Segoe UI',9)),S).pack(fill='x',pady=(2,6))
+            'RUN TEST ticks off every speed option itself and tests the whole set: Baseline, each option '
+            'alone, then all of them together. Each configuration runs a STATIC phase, then a CAMERA phase '
+            'in which the app sweeps the camera left/right the same way every time and brings it back. PREVIEW '
+            'only: no keys are sent. F8 or leaving the game aborts.',wrap=410),S).pack(fill='x',pady=(2,6))
         self.bphase=tk.IntVar(value=int(self.settings.get('bench_phase',5)));self.bamp=tk.IntVar(value=int(self.settings.get('bench_amp',250)))
         self.bperiod=tk.IntVar(value=int(self.settings.get('bench_period',4)))
         for title,var,lo,hi,key in (('Seconds per phase',self.bphase,5,60,'bench_phase'),('Camera sweep · px each side',self.bamp,40,1200,'bench_amp'),
                                     ('Camera sweep period · s',self.bperiod,2,10,'bench_period')):
-            show(self.text(left,title,9,GOLD),S).pack(fill='x')
-            show(tk.Scale(left,from_=lo,to=hi,orient='horizontal',variable=var,command=lambda v,k=key,var=var:(self.persist(k,var.get()),self.update_plan()),
-                bg=PANEL,fg=BONE,troughcolor='#10150e',highlightthickness=0,activebackground=GREEN),S).pack(fill='x')
+            show(T.caption(left,title,color=GOLD),S).pack(fill='x',pady=(6,0))
+            show(T.scale(left,var,lo,hi,lambda v,k=key,var=var:(self.persist(k,var.get()),self.update_plan())),S).pack(fill='x')
         self.plantext=tk.StringVar()
-        show(tk.Label(left,textvariable=self.plantext,bg='#10150e',fg=BONE,justify='left',anchor='nw',wraplength=410,font=('Consolas',9)),S).pack(fill='x',pady=6)
-        row=show(tk.Frame(left,bg=PANEL),S);row.pack(fill='x')
-        tk.Label(row,text='Run/stop the benchmark from the global control bar below.',bg=PANEL,fg=MUTED,font=('Segoe UI',8)).pack(side='left')
+        show(T.card_text(left,self.plantext,wrap=410),S).pack(fill='x',pady=6)
         self.benchtext=tk.StringVar(value='No test running.')
-        show(tk.Label(left,textvariable=self.benchtext,bg=PANEL,fg=GREEN,justify='left',anchor='w',wraplength=410,font=('Segoe UI',9,'bold')),S).pack(fill='x',pady=6)
-        show(self.text(left,'Results table',9,GOLD),S).pack(fill='x')
+        show(T.label(left,var=self.benchtext,color=GREEN,font=('Segoe UI',9,'bold'),wrap=410),S).pack(fill='x',pady=(0,6))
+        show(T.caption(left,'Results table',color=GOLD),S).pack(fill='x')
         self.tabletext=tk.StringVar(value='—')
-        show(tk.Label(left,textvariable=self.tabletext,bg='#10150e',fg=BONE,justify='left',anchor='nw',font=('Consolas',8)),S).pack(fill='x')
+        show(T.card_text(left,self.tabletext,font=('Consolas',8),wrap=0),S).pack(fill='x')
     def build_stats_charts(self,left,show):
         S=('Stats',)
-        show(self.text(left,'02  /  CHARTS · static (solid) vs camera (outlined)',12,GOLD),S).pack(fill='x',pady=(0,4))
-        self.benchcanvas=show(tk.Canvas(left,height=560,bg='#10150e',highlightthickness=1,highlightbackground='#4c5035'),S)
+        show(T.heading(left,'CHARTS · static (solid) vs camera (outlined)',pady=(0,4)),S).pack(fill='x')
+        self.benchcanvas=show(tk.Canvas(left,height=560,bg=INSET,highlightthickness=1,highlightbackground=EDGE),S)
         self.benchcanvas.pack(fill='x');self.benchcanvas.bind('<Configure>',lambda e:self.draw_charts())
-        show(tk.Label(left,text='Colours compare each bar with Baseline in the same phase: green = better by more than 10 %, '
-            'red = worse by more than 10 %, gold = Baseline, grey = about the same (or info only). ★ / ✕ in AUTO → 03 mark suggested / worse options.',bg=PANEL,fg=MUTED,justify='left',anchor='w',
-            wraplength=410,font=('Segoe UI',8)),S).pack(fill='x',pady=4)
-    def build_stats_sets(self,right,show):
+        show(T.caption(left,'Colours compare each bar with Baseline in the same phase: green = better by more than 10 %, '
+            'red = worse by more than 10 %, gold = Baseline, grey = about the same (or info only). ★ / ✕ in AUTO → SPEED & LEARNING mark suggested / worse options.',wrap=410),S).pack(fill='x',pady=4)
+    def build_stats_sets(self,out,show):
         S=('Stats',)
-        show(self.text(right,'04  /  DATA SETS',12,GOLD),S).pack(fill='x')
-        self.runlist=show(tk.Listbox(right,height=6,bg='#10150e',fg=BONE,selectbackground='#384829',relief='flat',font=('Consolas',9),exportselection=False),S)
+        show(T.caption(out,'Data sets · newest first',color=GOLD),S).pack(fill='x')
+        self.runlist=show(T.listbox(out,height=6),S)
         self.runlist.pack(fill='x',pady=4);self.runlist.bind('<<ListboxSelect>>',lambda e:self.select_run())
         self.rectext=tk.StringVar(value='Run a test to get suggestions.')
-        show(tk.Label(right,textvariable=self.rectext,bg=PANEL,fg=BONE,justify='left',anchor='nw',wraplength=330,font=('Segoe UI',9)),S).pack(fill='x')
-        row=show(tk.Frame(right,bg=PANEL),S);row.pack(fill='x',pady=6)
-        RuneButton(row,'APPLY SUGGESTED',self.apply_suggested,170,36).pack(side='left')
+        show(T.label(out,var=self.rectext,font=T.FONT_SMALL,wrap=330,anchor='nw'),S).pack(fill='x')
+        row=show(tk.Frame(out,bg=PANEL),S);row.pack(fill='x',pady=6)
+        RuneButton(row,'APPLY SUGGESTED',self.apply_suggested,height=34).pack(side='left')
         self.runs=[];self.shown=None;self.suggestions={}
         self.root.after_idle(self.refresh_runs)
     def available_options(self):
@@ -638,7 +634,7 @@ class App:
                     bx=cx+(j-1)*(bw+2)+1;hgt=gh*v/top
                     col=self.bar_colour(cf['id'],v,base.get(ph,{}).get(key),higher)
                     if j==0:c.create_rectangle(bx,gy+gh-hgt,bx+bw,gy+gh,fill=col,outline=col)
-                    else:c.create_rectangle(bx,gy+gh-hgt,bx+bw,gy+gh,fill='#10150e',outline=col,width=2)
+                    else:c.create_rectangle(bx,gy+gh-hgt,bx+bw,gy+gh,fill=INSET,outline=col,width=2)
                     c.create_text(bx+bw/2,gy+gh-hgt-6,text=f'{v:.0f}',fill=BONE,font=('Segoe UI',7))
     @staticmethod
     def bar_colour(cid,v,b,higher):
@@ -665,19 +661,18 @@ class App:
             if kind=='suggest':self.opt[k].set(True)
             elif kind=='avoid':self.opt[k].set(False)
         self.persist('speed_options',{k:v.get() for k,v in self.opt.items()});self.stop('Suggested options applied in AUTO → 03');self.update_plan()
-    def build_fishing(self,left,show):
-        show(self.text(left,'01  /  FISHING · EXPERIMENTAL',12,GOLD),('Fishing',)).pack(fill='x')
-        show(self.text(left,'Bot 101 + staged Advanced fishing · runtime guidance below',9,MUTED),('Fishing',)).pack(fill='x',pady=(2,4))
+    def build_fishing(self,col1,col2,out,show):
         from fishing_ui import FishingPanel
-        controls=show(tk.Frame(left,bg=PANEL),('Fishing',));controls.pack(fill='x')
-        self.fishing_panel=FishingPanel(self,controls)
-        show(tk.Label(left,text='Runtime guidance appears above. Detailed instructions are in README.md and docs/FISHING.md.',bg=PANEL,fg=MUTED,justify='left',anchor='w',wraplength=410,font=('Segoe UI',9)),('Fishing',)).pack(fill='x',pady=(4,0))
-    def build_aim_lab(self,left,show):
-        controls=show(tk.Frame(left,bg=PANEL),('Aim',));controls.pack(fill='x')
-        self.aim_lab=AimLabPanel(self,controls,{'PANEL':PANEL,'GOLD':GOLD,'BONE':BONE,'GREEN':GREEN,'MUTED':MUTED})
-    def build_scout_lab(self,left,show):
-        controls=show(tk.Frame(left,bg=PANEL),('Scout',));controls.pack(fill='x')
-        self.scout_lab=ScoutLabPanel(self,controls,{'PANEL':PANEL,'GOLD':GOLD,'BONE':BONE,'GREEN':GREEN,'MUTED':MUTED})
+        controls=show(tk.Frame(col1,bg=PANEL),('Fishing',));controls.pack(fill='x')
+        extra=show(tk.Frame(col2,bg=PANEL),('Fishing',));extra.pack(fill='x')
+        self.fishing_panel=FishingPanel(self,controls,extra,out)
+    def build_aim_lab(self,col1,out,show):
+        controls=show(tk.Frame(col1,bg=PANEL),('Aim',));controls.pack(fill='x')
+        self.aim_lab=AimLabPanel(self,controls,T.COLORS,out)
+    def build_scout_lab(self,col1,col2,out,show):
+        controls=show(tk.Frame(col1,bg=PANEL),('Scout',));controls.pack(fill='x')
+        extra=show(tk.Frame(col2,bg=PANEL),('Scout',));extra.pack(fill='x')
+        self.scout_lab=ScoutLabPanel(self,controls,T.COLORS,extra,out)
     def visible(self,w):
         m=self.vis.get(w)
         return True if m is None else (m(self.mode) if callable(m) else self.mode in m)
@@ -685,17 +680,19 @@ class App:
         """Show only what matters for the current tab. Order is the original packing order."""
         if not hasattr(self,'packorder'):
             self.packorder=[(c,[(w,{k:v for k,v in w.pack_info().items() if k!='in'}) for w in c.pack_slaves()])
-                            for c in (*self.cols,self.bindrow,self.rightpanel)]
+                            for c in (*self.cols,self.output)]
         for c,items in self.packorder:
             for w,_ in items:w.pack_forget()
             for w,info in items:
                 if self.visible(w):w.pack(**info)
+        self.col2_used=any(self.visible(w) for w,_ in self.packorder[1][1])
         labels={'Repeat':('Repeat interval · ms','Press length · ms'),'Auto':('Repeat interval · ms','Tap length · ms'),'Hold':('','Hold duration · ms')}
         il,dl=labels.get(self.mode,('',''))
         if il:self.fieldlabels['interval'].configure(text=il)
         if dl:self.fieldlabels['duration'].configure(text=dl)
         self.modehelp.set(self.MODEHELP.get(self.mode,''))
-        if hasattr(self,'settings_canvas'):self.root.after_idle(self.fit_settings)
+        if hasattr(self,'tool_title'):self.tool_title.set(self.TOOL_TITLES.get(self.mode,self.mode.upper()))
+        if hasattr(self,'settings_canvas'):self.root.after_idle(self.fit_settings);self.root.after_idle(self.fit_right)
     def update_command_center(self):
         """Refresh the single cross-feature game/readiness/instruction surface."""
         if not hasattr(self,'common_game'):return
@@ -1244,11 +1241,12 @@ class App:
         cpu=self.proc.cpu_percent()/max(1,psutil.cpu_count());ram=self.proc.memory_info().rss/1024**2
         self.history.append((cpu,ram));self.metrictext.set(f'CPU {cpu:5.1f}%   RAM {ram:6.1f} MiB   {getattr(self,"engine","CPU")}\nScan {self.scan_ms:5.0f} ms   Inputs {self.ctrl.count}   {getattr(self,"capture_backend","mss")}')
         c=self.chart;c.delete('all');w=max(300,c.winfo_width())
-        for y in (22,48,74):c.create_line(0,y,w,y,fill='#303824')
+        h=int(c.cget('height'))
+        for y in (h*.25,h*.5,h*.75):c.create_line(0,y,w,y,fill='#303824')
         maxram=max(128,max(r for _,r in self.history)*1.1)
         for col,idx,scale in [(GREEN,0,100),('#c7a45b',1,maxram)]:
             pts=[]
-            for i,v in enumerate(self.history):pts.extend((i*(w-8)/89+4,84-min(1,v[idx]/scale)*64))
+            for i,v in enumerate(self.history):pts.extend((i*(w-8)/89+4,h-6-min(1,v[idx]/scale)*(h-22)))
             if len(pts)>=4:c.create_line(*pts,fill=col,width=2)
         c.create_text(6,10,text='CPU 0–100%',fill=GREEN,anchor='w',font=('Segoe UI',8))
         c.create_text(w-6,10,text=f'RAM 0–{maxram:.0f} MiB',fill=GOLD,anchor='e',font=('Segoe UI',8))

@@ -329,31 +329,27 @@ class AimTrackerSession:
 
 
 class AimLabPanel:
-    def __init__(self,app,parent,colors):
+    def __init__(self,app,parent,colors,output=None):
         self.app=app;self.tk=tk;self.c=colors;self.session=None;self.overlay=AimOverlay(app.root)
         self.status=tk.StringVar(value="Idle — bind game, START TRACKING, then press F6 while aiming at a target.")
         self.live=tk.StringVar(value="No target tracks yet.")
         self.box_w=tk.IntVar(value=int(app.settings.get("aim_seed_width",90)))
         self.box_h=tk.IntVar(value=int(app.settings.get("aim_seed_height",140)))
-        self._build(parent)
+        self._build(parent,output or parent)
 
-    def _build(self,p):
-        c=self.c
-        tk.Label(p,text="AIM LAB · EXPERIMENTAL",bg=c["PANEL"],fg=c["GOLD"],font=("Segoe UI",12,"bold"),anchor="w").pack(fill="x")
-        tk.Label(p,text="Visual target tracking + Scout telemetry. Draws boxes and a head-candidate band; never moves the mouse or fires.",
-                 bg=c["PANEL"],fg=c["MUTED"],wraplength=410,justify="left",anchor="w",font=("Segoe UI",9)).pack(fill="x",pady=(2,8))
-        row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
-        tk.Button(row,text="ACQUIRE (F6)",command=self.acquire).pack(side="left",padx=(0,3))
-        tk.Button(row,text="CLEAR TARGETS",command=self.clear).pack(side="left",padx=3)
-        tk.Label(row,text="Start/stop tracking from the global control bar below.",bg=c["PANEL"],fg=c["MUTED"],font=("Segoe UI",8)).pack(side="left",padx=8)
-        row=tk.Frame(p,bg=c["PANEL"]);row.pack(fill="x",pady=3)
-        tk.Label(row,text="Seed box W×H",bg=c["PANEL"],fg=c["BONE"]).pack(side="left")
-        tk.Spinbox(row,from_=24,to=400,textvariable=self.box_w,width=5,command=self._persist_size).pack(side="left",padx=(8,3))
-        tk.Spinbox(row,from_=24,to=500,textvariable=self.box_h,width=5,command=self._persist_size).pack(side="left")
-        for label,title in (("target","MARK TARGET"),("head","MARK HEAD"),("hit","MARK HIT"),("crit","MARK CRIT"),("miss","MARK MISS")):
-            tk.Button(row,text=title,command=lambda x=label:self.mark(x)).pack(side="left",padx=(5,0))
-        tk.Label(p,textvariable=self.status,bg=c["PANEL"],fg=c["GREEN"],justify="left",anchor="w",wraplength=410,font=("Segoe UI",9,"bold")).pack(fill="x",pady=(8,2))
-        tk.Label(p,textvariable=self.live,bg="#10150e",fg=c["BONE"],justify="left",anchor="nw",wraplength=410,font=("Consolas",8),height=8).pack(fill="x")
+    def _build(self,p,out):
+        import ui_theme as T
+        T.heading(p,'TRACKING',pady=(0,4)).pack(fill='x')
+        T.caption(p,'Visual target tracking with Scout telemetry: boxes and a head-candidate band. It never moves the mouse or fires. While tracking, F6 acquires the target under the crosshair.').pack(fill='x')
+        f,_=T.button_row(p,[('ACQUIRE (F6)',self.acquire),('CLEAR TARGETS',self.clear)],height=32);f.pack(fill='x',pady=(6,4))
+        row=tk.Frame(p,bg=p['bg']);row.pack(fill='x',pady=3)
+        T.label(row,'Seed box W × H · px').pack(side='left')
+        T.spin(row,self.box_w,24,400,5,self._persist_size).pack(side='left',padx=(8,3));T.spin(row,self.box_h,24,500,5,self._persist_size).pack(side='left')
+        T.heading(p,'MARKS').pack(fill='x',pady=(12,4))
+        T.caption(p,'Optional manual annotations; the preferred workflow is the LMB screenshot burst labeled later in labels.csv.').pack(fill='x')
+        f,_=T.button_row(p,[(title,lambda x=label:self.mark(x)) for label,title in (("target","TARGET"),("head","HEAD"),("hit","HIT"),("crit","CRIT"),("miss","MISS"))],height=30);f.pack(fill='x',pady=(4,0))
+        T.card_text(out,self.status,color=T.GREEN,font=T.FONT_SMALL,wrap=330,height=3).pack(fill='x')
+        T.card_text(out,self.live,font=('Consolas',8),wrap=330,height=7).pack(fill='x',pady=(6,0))
 
     def _persist_size(self):
         self.app.persist("aim_seed_width",self.box_w.get());self.app.persist("aim_seed_height",self.box_h.get())

@@ -1,3 +1,36 @@
+# 2.5.0-dev — research data gathering (Research POC)
+
+- **UI revamp (Warcraft-style command post, mirrors `site/index.html`).** One theme module (`src/orcpresser/ui_theme.py`):
+  palette, fonts, chamfered bronze `RuneButton`s with gold studs that size themselves to their label (no clipped captions),
+  framed panels, sunken output cards, dark ttk styles. The shell is header → tool tabs → settings panel (two columns when
+  wide, one when the tab has nothing for the second) → COMMAND CENTER / TOOL OUTPUT / RESOURCES (scrolls when needed) →
+  GAME & CAPTURE (with the unfocused-opacity slider) → CONTROL. Section numbering is gone; every tab shows one tool title,
+  feature panels no longer repeat their own title, the "start from the global bar" note or the opacity control, and
+  Fishing / Aim / Scout runtime messages moved from the settings column into TOOL OUTPUT. Fishing's Advanced cast
+  calibration and Scout's Cheat Engine / research-data controls live in the second settings column; parked Frida options
+  sit under their own heading. Feature logic is unchanged; verified with the unit suite and screenshots of every tab in
+  `--visual-preview` mode.
+
+- **Signal-source layer** (`src/orcpresser/game_signals.py`, `docs/GAME_SIGNALS.md`): memory candidates, JSONL bridge
+  records and future in-process hooks share one `SignalSample` shape and one `SignalHub` per Scout session. `memory.jsonl`
+  and `process.jsonl` formats are unchanged. A failing memory backend is logged once per distinct error and retried every
+  5 s instead of ten times per second.
+- **Shadow agreement:** each Fishing `fishing_decision` carries the latest fresh signals (`details.signals`); the analyzer
+  reports per-signal value counts per controller state with a purity score. The controller never reads the signals.
+- **Cheat Engine scan assistant (experimental, opt-in, Lua side unverified live):** `scan_assistant.py` turns the Fishing
+  state timeline into a bounded plan of first / changed / unchanged / dump scans written to
+  `data\telemetry\cheat_engine_commands.tsv`; the bridge (`orcish_scout_ce.lua`) runs them with a private memscan and
+  replies `scan_result` / `scan_dump`; survivors are added to the table. RESET SCAN restarts the plan.
+- **Simpler data gathering:** SCOUT LAB auto-imports `data\cheat-engine\OrcishScout.CT` when a session starts (opt-out),
+  RELOAD OrcishScout.CT, a data-source status line, ANALYZE LATEST SESSION and OPEN REPORTS. `Setup.cmd → D` (research
+  data check, no downloads) and `→ R` (report). F9 in Cheat Engine writes a `mark` on the stream.
+- **Analyzer:** bridge events are re-timed with the producer's own clock (`producer_time`), removing the 100–150 ms ingest
+  delay from Δ statistics; new *Shadow agreement* and *Cheat Engine scan assistant* sections.
+- **Docs:** `FISHING.md` no longer contradicts itself about PULL L/R (Bot 101 uses BAR feedback only; Advanced uses PULL);
+  the Fishing panel caption says the same per mode. `docs/PROJECT_REVIEW.md` records the October 2026 review.
+- Verified with 245 automated tests on Windows (28 new) and a Tk build of the full UI in `--visual-preview` mode. Not
+  tested against the live game or a live Cheat Engine session.
+
 # 2.4 — Orcish Dragonwilds Helper
 
 - **STATS tab now tests the whole option matrix itself.** RUN TEST no longer needs the speed options ticked

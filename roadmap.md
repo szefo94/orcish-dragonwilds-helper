@@ -47,7 +47,9 @@ Cheat Engine value/pointer scans while fishing
 -> validate across multiple launches, areas and a Dragonwilds update
 ```
 
-Next implementation step: pointer-chain memory watches (`[[MODULE+0xOFFSET]+0xA]+0xB:type`, Cheat Engine notation), because Fishing state is expected to live in heap objects that move every launch.
+Done so far: pointer-chain memory watches in Cheat Engine notation, Cheat Engine table import/auto-import, one signal-source layer for memory / bridges / hooks (`docs/GAME_SIGNALS.md`), the shadow-agreement report (controller state ↔ signal value per decision), producer-clock alignment of bridge events, and an experimental scan assistant that drives Cheat Engine's differential scans from the Fishing state timeline (Lua side unverified live).
+
+Next implementation step: **shadow mode** in the Fishing controller, behind a config flag: compute what the controller *would* do with a validated `phase` / `pull_direction` signal, log disagreements with vision, act on vision only. Promotion comes after shadow mode has run across launches and a Dragonwilds update.
 
 Do not expand controller dependence on game-internal signals until a candidate survives repeated launches and a Dragonwilds update. Promote only signals with enough evidence and graceful invalidation.
 

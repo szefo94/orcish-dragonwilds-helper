@@ -8,7 +8,9 @@ from fishing_overlay import FishingOverlay
 log=logging.getLogger('orcpresser')
 
 class FishingPanel:
-    def __init__(self,app,parent):
+    def __init__(self,app,parent,extra=None,output=None):
+        """parent: settings column 1 · extra: settings column 2 (Advanced cast calibration) · output: TOOL OUTPUT column."""
+        import ui_theme as T
         self.app=app;self.session=None;self.overlay=None
         saved=app.settings.get('fishing_cast_bracket',{})
         try:self.calibration=CastCalibration(float(saved.get('low',.1)),float(saved.get('high',1.2)))
@@ -23,34 +25,42 @@ class FishingPanel:
         self.show_overlay=tk.BooleanVar(value=bool(app.settings.get('fishing_show_overlay',False)))
         self.recurring=tk.BooleanVar(value=bool(app.settings.get('fishing_recurring',False)))
         self.trial=tk.BooleanVar(value=False);self.duration=tk.StringVar(value=str(app.settings.get('fishing_cast_ms',600)))
-        self.message=tk.StringVar(value='Fishing Bot 101: set BAR and PROMPT first. RESULT is recommended for No fish/depleted detection.')
-        bg=parent['bg']
-        def button(text,fn):tk.Button(parent,text=text,command=fn,bg='#384829',fg='#e6d8b0',activebackground='#526737',relief='flat').pack(fill='x',pady=2)
-        modes=tk.Frame(parent,bg=bg);modes.pack(fill='x',pady=(2,4))
+        self.message=tk.StringVar(value='Fishing Bot 101: calibrate BAR, REEL and STOP, check them in PREVIEW, then LIVE. RESULT lets the bot stop on No fish / depleted.')
+        extra=extra or parent;output=output or parent
+        changed=lambda key,var:(app.stop('Fishing settings changed'),app.persist(key,var.get()))
+        # --- column 1: mode, calibration, round options
+        T.heading(parent,'MODE',pady=(0,4)).pack(fill='x')
+        modes=tk.Frame(parent,bg=parent['bg']);modes.pack(fill='x')
         for value,title in [('101','FISHING BOT 101'),('advanced','ADVANCED · EXP')]:
-            tk.Radiobutton(modes,text=title,value=value,variable=self.mode,command=self.mode_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg).pack(side='left',expand=True,fill='x')
-        row=tk.Frame(parent,bg=bg);row.pack(fill='x')
+            T.radio(modes,title,self.mode,value,self.mode_changed).pack(side='left',padx=(0,16))
+        T.heading(parent,'CALIBRATION').pack(fill='x',pady=(12,4))
+        T.caption(parent,'BAR and REEL are required; STOP gates every Bot 101 round. PULL L / PULL R and RESULT are optional. Drag a box over the game; the old box stays visible while you redraw it.').pack(fill='x')
+        grid=tk.Frame(parent,bg=parent['bg']);grid.pack(fill='x',pady=(4,2))
         # SPOT was an early cast-location experiment. It is intentionally hidden/disabled: it did not add reliable Fishing 101 value.
-        for key,label in [('bar','BAR'),('prompt','REEL'),('active','STOP'),('left','PULL L'),('right','PULL R'),('result','RESULT')]:tk.Button(row,text=label,command=lambda n=key:self.select(n),bg='#302c22',fg='#e6d8b0').pack(side='left',expand=True,fill='x')
-        tk.Label(parent,text='CALIBRATION · BAR and REEL are required. Optional: STOP (waiting), PULL L/R (fight prompts), RESULT (catch/depleted), SPOT (Advanced).',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
-        self.overlay_box=tk.Checkbutton(parent,text='Show calibration overlay (BAR / REEL / STOP / PULL L / PULL R / RESULT)',variable=self.show_overlay,command=self.overlay_changed,bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.overlay_box.pack(fill='x')
-        self.recurring_box=tk.Checkbutton(parent,text='Recurring rounds · after catch/failure, wait for your next cast',variable=self.recurring,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_recurring',self.recurring.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.recurring_box.pack(fill='x')
-        self.record_box=tk.Checkbutton(parent,text='Record manual test (cropped images + A/D/LMB states)',variable=self.record,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_record',self.record.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.record_box.pack(fill='x')
-        self.auto_box=tk.Checkbutton(parent,text='Advanced: automatic cast from current position',variable=self.auto,command=lambda:(app.stop('Fishing settings changed'),app.persist('fishing_auto_cast',self.auto.get())),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.auto_box.pack(fill='x')
-        self.trial_box=tk.Checkbutton(parent,text='Advanced: trial cast only (one cast, then stop)',variable=self.trial,command=lambda:app.stop('Fishing settings changed'),bg=bg,fg='#e6d8b0',selectcolor='#15200e',activebackground=bg,anchor='w');self.trial_box.pack(fill='x')
-        tk.Label(parent,text='CONTROL LOGIC · PULL L/R drives A/D; BAR validates/falls back; Reel (Hold) releases A/D and overrides with LMB.',bg=bg,fg='#9ba087',justify='left',wraplength=365).pack(fill='x')
-        self.cast_row=row=tk.Frame(parent,bg=bg);row.pack(fill='x');tk.Label(row,text='Advanced cast hold · ms (50–3000)',bg=bg,fg='#e6d8b0').pack(side='left');self.cast_entry=tk.Entry(row,textvariable=self.duration,width=9);self.cast_entry.pack(side='right')
+        for i,(key,label) in enumerate([('bar','BAR'),('prompt','REEL'),('active','STOP'),('left','PULL L'),('right','PULL R'),('result','RESULT')]):
+            T.RuneButton(grid,label,lambda n=key:self.select(n),width=120,height=32).grid(row=i//3,column=i%3,padx=(0,6),pady=(0,6),sticky='w')
+        self.overlay_box=T.check(parent,'Show calibration overlay over the game',self.show_overlay,self.overlay_changed);self.overlay_box.pack(fill='x')
+        T.heading(parent,'ROUNDS').pack(fill='x',pady=(12,4))
+        self.recurring_box=T.check(parent,'Recurring rounds · after a catch or failure, wait for your next cast',self.recurring,lambda:changed('fishing_recurring',self.recurring),wrap=400);self.recurring_box.pack(fill='x')
+        self.record_box=T.check(parent,'Record manual test · cropped images + A/D/LMB states (PREVIEW only)',self.record,lambda:changed('fishing_record',self.record),wrap=400);self.record_box.pack(fill='x')
+        self.logic_text=tk.StringVar();T.caption(parent,'',var=self.logic_text).pack(fill='x',pady=(8,0))
+        T.RuneButton(parent,'NEW SPOT / REACQUIRE  (F7)',self.reacquire,height=32).pack(anchor='w',pady=(8,0))
+        # --- column 2: Advanced cast calibration (disabled in Bot 101)
+        T.heading(extra,'ADVANCED · CAST CALIBRATION',pady=(0,4)).pack(fill='x')
+        T.caption(extra,'Advanced mode only. Keep player, camera and rod fixed. USE SHORT / MID / LONG picks the next trial hold; WAS SHORT / LONG / HIT narrows the bracket until HIT stores the duration.').pack(fill='x')
+        self.auto_box=T.check(extra,'Automatic cast from the current position',self.auto,lambda:changed('fishing_auto_cast',self.auto));self.auto_box.pack(fill='x',pady=(4,0))
+        self.trial_box=T.check(extra,'Trial cast only · one cast, then stop',self.trial,lambda:app.stop('Fishing settings changed'));self.trial_box.pack(fill='x')
+        self.cast_row=row=tk.Frame(extra,bg=extra['bg']);row.pack(fill='x',pady=6)
+        T.label(row,'Cast hold · ms (50–3000)').pack(side='left');self.cast_entry=T.entry(row,self.duration,9);self.cast_entry.pack(side='right')
         self.duration.trace_add('write',self.duration_changed)
-        tk.Label(parent,text='CAST CALIBRATION · choose SHORT/MID/LONG for the next trial, then report SHORT/LONG/HIT so the bracket can converge.',bg=bg,fg='#9ba087',wraplength=365,justify='left').pack(fill='x',pady=(4,0))
         self.trial_buttons=[]
-        row=tk.Frame(parent,bg=bg);row.pack(fill='x',pady=3)
-        for kind in ('short','mid','long'):
-            b=tk.Button(row,text='USE '+kind.upper(),command=lambda k=kind:self.use_trial(k));b.pack(side='left',expand=True,fill='x');self.trial_buttons.append(b)
-        row=tk.Frame(parent,bg=bg);row.pack(fill='x')
-        for kind in ('short','hit','long'):
-            b=tk.Button(row,text='WAS '+kind.upper(),command=lambda k=kind:self.feedback(k));b.pack(side='left',expand=True,fill='x');self.trial_buttons.append(b)
-        button('RESET CAST BRACKET (100–1200 ms)',self.reset);button('NEW SPOT / REACQUIRE',self.reacquire)
-        tk.Label(parent,textvariable=self.message,bg=bg,fg='#98c657',wraplength=365,justify='left',anchor='w').pack(fill='x',pady=6)
+        for prefix,kinds,fn in (('USE ',('short','mid','long'),self.use_trial),('WAS ',('short','hit','long'),self.feedback)):
+            row=tk.Frame(extra,bg=extra['bg']);row.pack(fill='x',pady=(0,6))
+            for kind in kinds:
+                b=T.RuneButton(row,prefix+kind.upper(),lambda k=kind,f=fn:f(k),width=120,height=32);b.pack(side='left',padx=(0,6));self.trial_buttons.append(b)
+        b=T.RuneButton(extra,'RESET BRACKET  (100–1200 ms)',self.reset,height=32);b.pack(anchor='w');self.trial_buttons.append(b)
+        # --- output column: runtime guidance
+        T.card_text(output,self.message,color=T.GREEN,font=T.FONT_SMALL,wrap=330,height=7).pack(fill='x')
         self.mode_changed(initial=True)
     def ensure_overlay(self):
         if self.overlay is None:self.overlay=FishingOverlay(self.app.root)
@@ -80,10 +90,15 @@ class FishingPanel:
         advanced=self.mode.get()=='advanced'
         self.app.persist('fishing_mode',self.mode.get())
         state='normal' if advanced else 'disabled'
-        for w in [self.auto_box,self.trial_box,self.cast_entry,*self.trial_buttons]:w.configure(state=state)
+        for w in [self.auto_box,self.trial_box,self.cast_entry]:w.configure(state=state)
+        for b in self.trial_buttons:b.enabled=advanced;b.draw()
         if not advanced:self.trial.set(False)
         if not initial:self.app.stop('Fishing mode changed')
-        self.message.set('Advanced: BAR + REEL + optional RESULT/SPOT; auto-cast calibration available. Movement/pool navigation is not autonomous yet.' if advanced else 'Fishing Bot 101: set BAR + REEL + STOP. LIVE stays armed; STOP Fishing appearing is the ready/set/go gate. Cast, position, and move manually.')
+        # Bot 101 treats PULL L/R captions as fight-presence evidence only (both can be visible at once);
+        # BAR feedback chooses A/D. Advanced keeps PULL L/R as the preferred direction command.
+        self.logic_text.set('CONTROL LOGIC · Advanced: PULL L/R drives A/D; BAR validates/falls back; Reel (Hold) releases A/D and overrides with LMB.' if advanced else
+                            'CONTROL LOGIC · Bot 101: BAR red/blue chooses A/D (PULL L/R = fight presence only); Reel (Hold) releases A/D and overrides with LMB.')
+        self.message.set('Advanced: BAR + REEL + optional RESULT; automatic cast calibration available. Movement and pool navigation stay manual.' if advanced else 'Fishing Bot 101: BAR + REEL + STOP. LIVE stays armed; STOP Fishing appearing is the ready/set/go gate. Cast, position and move manually.')
     def save_bracket(self):self.app.persist('fishing_cast_bracket',{'low':self.calibration.low,'high':self.calibration.high,'confirmed':self.calibration.confirmed})
     def reset(self):self.app.stop();self.calibration=CastCalibration();self.save_bracket();self.message.set('Bracket reset; maintain a fixed player position and camera.')
     def reacquire(self):self.app.stop('New spot / camera changed');self.calibration=CastCalibration();self.save_bracket();self.message.set('Travel pause complete: cast timing invalidated. BAR/REEL screen regions remain saved; verify Preview before resuming.')
@@ -190,6 +205,16 @@ class FishingPanel:
                 return
             a.stop(error);return
         before_held=a.ctrl.held;before_state=a.ctrl.state;a.ctrl.observe(o,now)
+        # Shadow comparison only: the latest memory/Cheat Engine signals ride along with every decision so
+        # scout_analysis.py can tabulate state <-> value agreement. The controller never reads them.
+        lab=getattr(a,'scout_lab',None);side=getattr(lab,'sidecar',None)
+        signals={}
+        if side is not None:
+            try:signals=side.snapshot(now)
+            except Exception:signals={}
+        if lab is not None:
+            try:lab.observe_fishing_state(a.ctrl.state,now)
+            except Exception:log.exception('Scan assistant update failed')
         a.scout_event('vision','fishing_observation',{'color':o.color,'text':o.text[:240],'stop':info.get('active'),
             'pull_left':info.get('pull_left'),'pull_right':info.get('pull_right'),'pull_direction':info.get('pull_direction'),
             'pull_confidence':info.get('pull_confidence'),'pull_left_score':info.get('pull_left_score'),'pull_right_score':info.get('pull_right_score'),
@@ -200,8 +225,10 @@ class FishingPanel:
                      'pull_visual_stamp':info.get('pull_visual_stamp'),'reel_stamp':info.get('reel_stamp'),
                      'active_score':info.get('active_score'),'ocr_regions':info.get('ocr_regions'),
                      'ocr_ms':info.get('ocr_ms'),'backend':info.get('backend'),'diagnostic_image':info.get('diagnostic_image')},stream='vision')
+        decision_details={'previous_state':before_state,'previous_held':before_held,'reason':a.ctrl.reason,'preview':a.ctrl.preview}
+        if signals:decision_details['signals']=signals
         a.scout_event('controller','fishing_decision',{'state':a.ctrl.state,'held':a.ctrl.held,'running':a.ctrl.running},mono=now,
-            details={'previous_state':before_state,'previous_held':before_held,'reason':a.ctrl.reason,'preview':a.ctrl.preview},stream='controller')
+            details=decision_details,stream='controller')
         stop_text='YES' if info.get('active') is True else 'NO' if info.get('active') is False else 'N/A';active_score=info.get('active_score')
         score_text='' if active_score is None else f' {active_score:.0%}'
         left_text='YES' if info.get('pull_left') is True else 'NO' if info.get('pull_left') is False else 'N/A'

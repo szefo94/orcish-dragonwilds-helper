@@ -10,12 +10,14 @@ For repository-wide coding rules and the source-of-truth hierarchy, start with [
 | [../roadmap.md](../roadmap.md) | **Active roadmap** | Planned work, priorities, validation gates, intentionally deferred features |
 | [CHANGELOG.md](CHANGELOG.md) | **Historical record** | Release history, past behavior changes, verification notes |
 | [FRAMEWORK.md](FRAMEWORK.md) | **Architecture reference / partially historical** | Reusable architectural patterns and design rationale; verify concrete layout/version claims against current code |
+| [GAME_SIGNALS.md](GAME_SIGNALS.md) | **Architecture reference (active)** | The signal-source layer next to vision: memory candidates, JSONL bridges, in-process hooks; how to add a source; the gates from signal to control |
 | [AIM_RESEARCH.md](AIM_RESEARCH.md) | **Research** | Aim/target-tracking experiments, evidence and candidate approaches |
 | [SCOUT_RESEARCH.md](SCOUT_RESEARCH.md) | **Research** | Scout visual/process-telemetry investigation and design |
 | [SCOUT_CANDIDATES.md](SCOUT_CANDIDATES.md) | **Research evidence** | Semantic memory candidates and promotion/validation criteria |
 | [RESEARCH_DATA_GUIDE.md](RESEARCH_DATA_GUIDE.md) | **Research workflow** | Step-by-step collection of Fishing vision sessions and Cheat Engine memory candidates, reading the reports, validation checklist |
 | [INTERNAL_TELEMETRY.md](INTERNAL_TELEMETRY.md) | **Experimental research** | UE4SS/Frida/internal telemetry setup, observations and recovery experiments |
 | [PUBLICATION_REVIEW.md](PUBLICATION_REVIEW.md) | **Project/release review** | Public-repository publication checks |
+| [PROJECT_REVIEW.md](PROJECT_REVIEW.md) | **Project review (October 2026)** | Fishing logic review, data-gathering strategy review, optimization points, what was changed and what to do next |
 | [THIRD_PARTY.md](THIRD_PARTY.md) | **Reference** | Third-party components and related notes |
 
 ## Interpretation rules

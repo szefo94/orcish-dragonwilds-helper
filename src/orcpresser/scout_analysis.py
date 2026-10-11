@@ -149,8 +149,72 @@ def _candidate_correlations(domain,memory,vision,controller,lead_ms=500,lag_ms=1
     summary.sort(key=lambda x:(-x["matches"],abs(x.get("median_delta_ms") or 0)))
     return {"window_ms":{"lead":lead_ms,"lag":lag_ms},"matches":rows,"summary":summary[:50]}
 
+def align_producer_clock(events):
+    """Re-time bridge events with the producer's own clock where it is available.
+
+    The JSONL bridge stamps an event when Orcish *reads* it, which is up to one bridge flush interval
+    plus one tail poll after the producer wrote it (Cheat Engine: ~100-150 ms). Producers add
+    `producer_time` (seconds on their own monotonic clock). Both clocks run on the same machine, so
+    their offset is constant; the smallest observed (mono - producer_time) is the least-delayed
+    ingest and estimates it. Returns {provider: {"offset_s","samples","max_delay_ms"}} and sets
+    `e["aligned_mono"]` on every event that could be aligned; callers fall back to `mono`.
+    """
+    by={}
+    for e in events:
+        d=e.get("details") or {};pt=d.get("producer_time");m=e.get("mono")
+        if isinstance(pt,(int,float)) and isinstance(m,(int,float)) and math.isfinite(float(pt)):
+            by.setdefault(str(d.get("provider") or "unknown"),[]).append((float(m),float(pt)))
+    out={}
+    for provider,pairs in by.items():
+        offset=min(m-pt for m,pt in pairs)
+        out[provider]={"offset_s":offset,"samples":len(pairs),"max_delay_ms":max((m-pt-offset)*1000.0 for m,pt in pairs)}
+    for e in events:
+        d=e.get("details") or {};pt=d.get("producer_time");p=str(d.get("provider") or "unknown")
+        if p in out and isinstance(pt,(int,float)) and math.isfinite(float(pt)):e["aligned_mono"]=float(pt)+out[p]["offset_s"]
+    return out
+
+def _event_mono(e):
+    m=e.get("aligned_mono")
+    return m if isinstance(m,(int,float)) else e.get("mono")
+
+def shadow_agreement(controller):
+    """Tabulate controller state against the non-visual signals that rode along with each decision.
+
+    fishing_ui attaches `details.signals = {name: {role, value, source, age_ms}}` to every
+    `fishing_decision`. For each signal this counts how often every value was seen in every state and
+    reports a purity score: 1.0 means each state always showed one value, i.e. the signal explains the
+    state. Low purity means the value does not track what the controller saw. This is the agreement
+    report that precedes shadow mode (docs/GAME_SIGNALS.md); it decides nothing by itself.
+    """
+    table={}
+    for e in controller:
+        if e.get("signal")!="fishing_decision":continue
+        state=(e.get("value") or {}).get("state");signals=(e.get("details") or {}).get("signals") or {}
+        if not state or not isinstance(signals,dict):continue
+        for name,s in signals.items():
+            if not isinstance(s,dict):continue
+            item=table.setdefault(name,{"name":name,"role":s.get("role"),"source":s.get("source"),"states":{}})
+            vals=item["states"].setdefault(state,{})
+            key=json.dumps(s.get("value"),sort_keys=True,default=str)
+            vals[key]=vals.get(key,0)+1
+    rows=[]
+    for item in table.values():
+        total=sum(sum(v.values()) for v in item["states"].values())
+        dominant=sum(max(v.values()) for v in item["states"].values()) if total else 0
+        values={}
+        for state,v in item["states"].items():
+            for key,n in v.items():values.setdefault(key,{})[state]=n
+        ambiguous=[k for k,by_state in values.items() if len(by_state)>1]
+        rows.append({"name":item["name"],"role":item["role"],"source":item["source"],"samples":total,
+                     "purity":(dominant/total) if total else None,
+                     "states":{s:{json.loads(k):n for k,n in v.items()} for s,v in item["states"].items()},
+                     "values_seen_in_several_states":[json.loads(k) for k in ambiguous]})
+    rows.sort(key=lambda r:(-(r["purity"] or 0),-r["samples"],str(r["name"])))
+    return rows
+
 def _internal_summary(process,domain,vision,controller,lead_ms=500,lag_ms=150):
     events=[e for e in process if e.get("source")=="game_internal"]
+    clocks=align_producer_clock(events)
     by={}
     for e in events:
         d=e.get("details") or {};provider=d.get("provider") or "unknown";signal=e.get("signal") or "event"
@@ -162,7 +226,7 @@ def _internal_summary(process,domain,vision,controller,lead_ms=500,lag_ms=150):
     landmarks=_landmarks(domain,vision,controller)
     matches=[]
     for e in events:
-        tm=e.get("mono")
+        tm=_event_mono(e)
         if not isinstance(tm,(int,float)) or e.get("signal") not in ("function_call","property_change","state_change","event"):continue
         candidates=[]
         for lm in landmarks:
@@ -184,7 +248,7 @@ def _internal_summary(process,domain,vision,controller,lead_ms=500,lag_ms=150):
         ds=g.pop("deltas");s=stats(ds);g["median_delta_ms"]=s.get("median");g["p95_abs_delta_ms"]=percentile([abs(x) for x in ds],95);corr.append(g)
     corr.sort(key=lambda x:(-x["matches"],abs(x.get("median_delta_ms") or 0)))
     return {"events":len(events),"by_provider_signal":sorted(by.values(),key=lambda x:(x["provider"],x["signal"])),
-            "window_ms":{"lead":lead_ms,"lag":lag_ms},"matches":matches,"correlation":corr[:50]}
+            "window_ms":{"lead":lead_ms,"lag":lag_ms},"clock_alignment":clocks,"matches":matches,"correlation":corr[:50]}
 
 def analyze_session(session):
     session=Path(session)
@@ -212,6 +276,13 @@ def analyze_session(session):
             "manifest":manifest,"session_summary":summary}
     internal=_internal_summary(process,manifest.get("domain"),vision,controller)
     if internal.get("events"):report["game_internal"]=internal
+    shadow=shadow_agreement(controller)
+    if shadow:report["shadow_agreement"]=shadow
+    scan_commands=[e for e in annotations if e.get("signal")=="scan_command"]
+    if scan_commands:
+        replies=[e for e in process if e.get("source")=="game_internal" and e.get("signal") in ("scan_result","scan_error","scan_dump")]
+        report["scan_assistant"]={"commands":[{"mono":e.get("mono"),**{k:(e.get("value") or {}).get(k) for k in ("seq","cmd","arg","state","phase")}} for e in scan_commands],
+                                  "replies":[{"mono":e.get("mono"),"signal":e.get("signal"),"value":e.get("value"),"seq":(e.get("details") or {}).get("seq")} for e in replies]}
     if labels:
         labeled=[r for r in labels if (r.get("label") or "").strip()]
         counts={}
@@ -325,6 +396,20 @@ def markdown(report):
                     f"Window: internal event may lead landmark by up to {gi.get('window_ms',{}).get('lead')} ms or lag by {gi.get('window_ms',{}).get('lag')} ms."]
             for x in corr[:30]:
                 lines.append(f"- {x.get('provider')} {x.get('identity')} ↔ {x.get('landmark')} · matches={x.get('matches')} · median Δ={_fmt(x.get('median_delta_ms'))} ms · p95 |Δ|={_fmt(x.get('p95_abs_delta_ms'))} ms")
+        clocks=gi.get("clock_alignment") or {}
+        for provider,c in clocks.items():
+            lines.append(f"- Clock alignment {provider}: offset={c.get('offset_s'):.3f} s from {c.get('samples')} events, max ingest delay={_fmt(c.get('max_delay_ms'))} ms (matches use producer time)")
+    if "shadow_agreement" in report:
+        lines+=["","## Shadow agreement (controller state ↔ signal value)","",
+                "Purity 1.0 = every state always showed one value. Values listed under several states do not track the state."]
+        for r in report["shadow_agreement"][:30]:
+            per_state="; ".join(f"{s}: "+", ".join(f"{v}×{n}" for v,n in sorted(vals.items(),key=lambda x:-x[1])) for s,vals in r["states"].items())
+            lines.append(f"- {r.get('name')} ({r.get('role')}, {r.get('source')}) · samples={r.get('samples')} · purity={_fmt(None if r.get('purity') is None else r['purity']*100)}% · {per_state}")
+            if r.get("values_seen_in_several_states"):lines.append(f"  ambiguous values: {r['values_seen_in_several_states']}")
+    if "scan_assistant" in report:
+        sa=report["scan_assistant"];lines+=["","## Cheat Engine scan assistant","",f"- Commands sent: {len(sa.get('commands',[]))}",f"- Replies: {len(sa.get('replies',[]))}"]
+        for c in sa.get("commands",[])[:40]:lines.append(f"- {c.get('mono')}: #{c.get('seq')} {c.get('cmd')} {c.get('arg')} · {c.get('state')}/{c.get('phase')}")
+        for r in sa.get("replies",[])[:40]:lines.append(f"- {r.get('mono')}: reply #{r.get('seq')} {r.get('signal')} = {r.get('value')}")
     if "memory_candidates" in report:
         mc=report["memory_candidates"];lines+=["","## Semantic memory candidates",""]
         for x in mc.get("candidates",[]):

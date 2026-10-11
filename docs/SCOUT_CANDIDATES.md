@@ -118,7 +118,9 @@ That is the kind of signal worth validating across more sessions.
 
 - Candidate reads/transitions are recorded on the same monotonic timeline as visual/controller events.
 - Domain filtering is implemented for Fishing and Auto Presser research.
-- Analyzer correlation is implemented.
+- Analyzer correlation is implemented; bridge events are re-timed with the producer's clock when it is present.
+- Candidates, bridge records and future hooks share one signal layer (`docs/GAME_SIGNALS.md`); the latest fresh signals ride along with every Fishing decision for the analyzer's **shadow agreement** section (value counts per controller state, purity score).
+- `data\cheat-engine\OrcishScout.CT` is imported automatically when a session starts (SCOUT LAB, opt-out).
 - Automatic promotion into controller decisions is **not** implemented; promotion remains a manual engineering decision after validation.
 - Optional UE4SS/Frida events can be correlated through the separate internal-telemetry path documented in `INTERNAL_TELEMETRY.md`.
 

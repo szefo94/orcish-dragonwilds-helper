@@ -23,8 +23,8 @@ There are four activities. Do them in this order the first time:
 |---|---|---|
 | [A](#part-a--one-time-setup) | One-time setup | Once |
 | [B](#part-b--record-good-vision-sessions) | Record Fishing sessions (vision/OCR reference) | Just fishing |
-| [C](#part-c--find-memory-candidates-in-cheat-engine) | Find memory candidates in Cheat Engine | **High**, once per signal and after game updates |
-| [D](#part-d--record-memory-next-to-the-bot) | Record memory next to the bot | Low: open a table, or nothing after import |
+| [C](#part-c--find-memory-candidates-in-cheat-engine) | Find memory candidates in Cheat Engine | **High** by hand (C2), or *low* with the scan assistant (C0): you just fish |
+| [D](#part-d--record-memory-next-to-the-bot) | Record memory next to the bot | Low: open the table; saved tables are imported automatically |
 | [E](#part-e--read-the-results) | Read the analyzer report | A few minutes per session |
 
 ---
@@ -32,7 +32,7 @@ There are four activities. Do them in this order the first time:
 ## Part A — one-time setup
 
 1. **Install Orcish (Research POC).** Extract the Research POC ZIP into its own folder, run `Run.cmd` once (it installs Python packages), then close the app.
-2. **Run `Setup.cmd` → 7.** Dragonwilds can be open or closed. This installs/checks the research tools and creates:
+2. **Run `Setup.cmd` → D** (research data check; nothing is downloaded). Dragonwilds can be open or closed. It creates the files below and prints the next step. (`Setup.cmd` → 7 additionally installs the optional toolkit: Frida, x64dbg, ReClass.NET, Windows Performance Toolkit; none of it is needed for the Cheat Engine path.)
    - `data\cheat-engine\OrcishScout.CT`: your Cheat Engine table (created once, never overwritten);
    - `data\telemetry\`: where the Cheat Engine stream is written.
    Cheat Engine itself: if it is missing, the official download page opens; install it normally.
@@ -40,7 +40,7 @@ There are four activities. Do them in this order the first time:
 4. **Check SCOUT LAB settings once** (tab SCOUT LAB):
    - **Run independent Scout probes alongside Auto / Fishing / Aim**: on (default). Without it, Fishing records no memory or Cheat Engine data.
    - **Read JSONL bridges (UE4SS + Cheat Engine)**: on (default).
-5. **Run `Setup.cmd` → 8** to confirm: the Cheat Engine starter table is `[OK]`; the stream shows `[MISS] no data yet` until Part D.
+5. **Run `Setup.cmd` → D again** whenever something looks off. It checks the table, the stream, the saved candidates and the latest session, and tells you the one next step. The same information is on the SCOUT LAB tab under *Research data*.
 
 ---
 
@@ -92,7 +92,19 @@ This is the manual, iterative part. You do it once per signal, and again when a 
 1. Start Dragonwilds and load into the world near water.
 2. Open `data\cheat-engine\OrcishScout.CT` in Cheat Engine. Answer **Yes** when asked to run the table's Lua script. The bridge attaches to the game by itself (`RSDragonwilds-WinGDK-Shipping.exe` for Game Pass, `RSDragonwilds-Win64-Shipping.exe` for Steam). If it does not, use the computer icon → pick the Dragonwilds process. If the process cannot be opened, start Cheat Engine as Administrator.
 
-### C2. Scan for the fishing phase
+### C0. Let Orcish drive the scans (experimental)
+
+Orcish already knows the fishing phase from vision, so it can run the differential scan of C2 for you:
+
+1. SCOUT LAB → tick **Let Fishing states drive Cheat Engine scans**; leave *Value type* at **4 Bytes** (try **Byte** on a second pass if nothing survives).
+2. Open `OrcishScout.CT` in Cheat Engine (C1) **before** starting Fishing, so the bridge is listening.
+3. Start Fishing in **PREVIEW** and fish manually, as in Part B. Keep the *Research data* line on the SCOUT LAB tab (or the HUD) in view: it shows `scan assistant: scans=N/60 · survivors=…`.
+4. What happens: once a phase has been stable for 1.5 s (idle, waiting for a bite, or fight; never REEL), Orcish sends *first scan: unknown initial value*; after every phase change it sends *changed*; while a phase stays stable it sends up to two *unchanged* scans spaced 4 s apart. Each scan runs inside Cheat Engine (the window freezes for a moment; that is normal). When 64 or fewer addresses survive, Orcish asks for a **dump**: the survivors are written to the Scout stream and, when there are at most 16, added to your table under *Orcish scan hits*. From then on the bridge streams their values, and Part E shows how they line up with the fishing landmarks.
+5. Nothing survived or everything looked like noise? **RESET SCAN**, change *Value type*, fish a few more rounds. Scans only run while the plan is not done; a session without Cheat Engine open simply logs a `timeout` and tries again on the next phase (after two Cheat Engine errors the plan stops and says so in the status line).
+
+The assistant never writes memory and never touches your own scan tab; it only runs scans Cheat Engine would run for you. Its Lua side has not yet been exercised against a live Cheat Engine session: if a `scan_error` appears in the stream, copy its text into an issue.
+
+### C2. Scan for the fishing phase (by hand)
 
 The phase is most likely a small integer (an enum) that steps through a few values as fishing progresses. You don't know the values, so scan by *change*:
 
@@ -148,8 +160,8 @@ Use this while candidates are still changing (Part C in progress):
 1. Game running, `OrcishScout.CT` open in Cheat Engine with its script running.
 2. Start Fishing in Orcish (PREVIEW or LIVE).
 3. Every table record's value change is written to `data\telemetry\cheat_engine.jsonl` (checked every 100 ms) and recorded into the Fishing session's `process.jsonl`.
-4. Mark moments from Cheat Engine's Lua console (`Table → Show Cheat Table Lua Script` is for the table script; use **Memory View → Tools → Lua Engine** for a console): `OrcishScoutCE.mark("bite looked late")`. Marks land on the same timeline.
-5. `Setup.cmd` → 8 shows the stream as `[OK] Cheat Engine stream: N lines, last 'property_change' Xs ago`.
+4. Mark moments with **F9** (writes `mark: hotkey`) or, for a text, from Cheat Engine's Lua console (`Table → Show Cheat Table Lua Script` is for the table script; use **Memory View → Tools → Lua Engine** for a console): `OrcishScoutCE.mark("bite looked late")`. Marks land on the same timeline.
+5. `Setup.cmd` → D shows the stream as `[OK] Cheat Engine stream: N lines, last 'property_change' Xs ago`.
 
 Prefix a record's description with `-` to leave it out of the stream. `OrcishScoutCE.stop()` / `OrcishScoutCE.start()` pause and resume it.
 
@@ -157,8 +169,8 @@ Prefix a record's description with `-` to leave it out of the stream. `OrcishSco
 
 Use this once a pointer chain survives restarts:
 
-1. SCOUT LAB → in the **Semantic candidate** row set the domain to **fishing** → **IMPORT CE TABLE** → choose your `.CT`.
-2. The status line says how many records were imported and which were skipped and why.
+1. Save the table in Cheat Engine (`File → Save`, keep it as `data\cheat-engine\OrcishScout.CT`). **That is all.** With *Auto-import OrcishScout.CT when a session starts* on (SCOUT LAB, default), every Fishing session imports its records as `fishing` candidates when it starts. **RELOAD OrcishScout.CT** does the same on demand; **IMPORT CE TABLE…** picks another file, under the domain selected in the candidate row.
+2. The SCOUT LAB status line says how many records were imported and skipped (also in the session's `system.jsonl` as `ce_table_auto_import`).
 3. From now on every Fishing session reads these candidates by itself (about 10 per second) into `memory.jsonl`; Cheat Engine can stay closed.
 4. **First time only: check the conversion.** With Cheat Engine still open, fish one round and compare a value Scout recorded (in the report, `values=[...]`) with what Cheat Engine shows for the same record. If they differ, the pointer offset order is wrong. Report it, it is a one-line fix.
 
@@ -178,6 +190,8 @@ Types: `u8 u16 u32 i32 u64 i64 ptr f32 f64`. See [SCOUT_CANDIDATES.md](SCOUT_CAN
 
 ## Part E — read the results
 
+SCOUT LAB → **ANALYZE LATEST SESSION** (or `Setup.cmd` → R) writes the report for the newest session; **OPEN REPORTS** opens the folder. From the command line:
+
 ```bat
 .\.venv\Scripts\python.exe src\orcpresser\scout_analysis.py --latest
 .\.venv\Scripts\python.exe src\orcpresser\scout_analysis.py --all
@@ -190,6 +204,8 @@ Sections that matter here:
 | Report section | Source | What to look at |
 |---|---|---|
 | **Game-internal telemetry** | Cheat Engine stream (D1) | Counts and values seen per signal (`property_change`, `record_added`, ...). **Internal event ↔ landmark matches**: which vision/state landmark each record's value changes sit next to |
+| **Shadow agreement** | signals attached to each controller decision (memory + Cheat Engine) | per signal: how often each value was seen in each controller state, and a **purity** score. 1.0 = every state always showed one value. Values listed as *ambiguous* appear in several states and do not track the state |
+| **Cheat Engine scan assistant** | C0 | the commands Orcish sent and Cheat Engine's replies (survivor counts, dump) |
 | **Semantic memory candidates** | Imported candidates (D2) | `success` % (reads that worked), `transitions`, `values`. **Candidate ↔ transition matches** |
 | **Independent Scout sidecar** | Orcish memory reads | `memory_success_pct`: near 0 means reads fail (see troubleshooting) |
 
@@ -200,7 +216,7 @@ fishing phase ↔ state:FIGHT · matches=14 · median Δ=-180 ms · p95 |Δ|=240
 ```
 
 - **matches**: how many value changes landed near that landmark. A change may lead a landmark by up to 500 ms or lag it by up to 150 ms to count.
-- **median Δ**: negative means **memory changed before** vision/state saw it. That is the valuable case: memory can warn the bot early.
+- **median Δ**: negative means **memory changed before** vision/state saw it. That is the valuable case: memory can warn the bot early. Cheat Engine events are timed with Cheat Engine's own clock (the report's *Clock alignment* line shows the offset used), so the bridge's 100–150 ms file delay does not count against them.
 - **p95 |Δ|**: small and stable means consistent timing.
 
 **What a good candidate looks like**, over several sessions:
@@ -231,7 +247,9 @@ A candidate is not wired into live control until all of these hold (see [SCOUT_C
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Setup 8: `Cheat Engine stream: no data yet` | Table script not running, or not attached | Reopen `OrcishScout.CT`, answer Yes; check the Lua Engine window for `[OrcishScout] Cheat Engine bridge writing to ...` |
+| Setup D: `Cheat Engine stream: no data yet` | Table script not running, or not attached | Reopen `OrcishScout.CT`, answer Yes; check the Lua Engine window for `[OrcishScout] Cheat Engine bridge writing to ...` |
+| Scan assistant shows `waiting for Cheat Engine (#n …)` for a long time | Table not open, or the bridge was started before the command file existed (it listens from the next start) | Open `OrcishScout.CT`; the plan times out after 25 s and resends on the next phase. `scan_error: no first scan yet` means the same: the plan restarts by itself |
+| Scan assistant: `survivors` never drops below a few thousand | Value type wrong, or the phase enum is not a plain integer | RESET SCAN, try **Byte**; fish more rounds (every *changed*/*unchanged* pair removes timers and noise) |
 | Stream has `wrong_process` | Cheat Engine is attached to another process | Attach to Dragonwilds; the bridge resumes automatically |
 | Stream has only `heartbeat`, no `property_change` | Table empty, or all records skipped | Add addresses; remove a leading `-` from descriptions |
 | No memory data in Fishing sessions | **Run independent Scout probes** off, or candidates imported under another domain | Turn it on; re-import with domain **fishing** |

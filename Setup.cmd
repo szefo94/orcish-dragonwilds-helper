@@ -20,6 +20,8 @@ echo   6  Clean up old files            backups, old zips, caches - shows what f
 echo   7  Install telemetry toolkit      Frida + UE4SS + research tools
 echo   8  Telemetry toolkit status       check everything without installing
 echo   9  Recover UE4SS for WinGDK        install current experimental UE4SS safely
+echo   D  Research data check             Cheat Engine table + stream + latest session, no downloads
+echo   R  Research report                 analyze the latest Scout session
 echo   Q  Quit
 echo.
 set "ACTION="
@@ -33,6 +35,8 @@ if "%ACTION%"=="6" set "ACTION=clean"
 if "%ACTION%"=="7" set "ACTION=telemetry"
 if "%ACTION%"=="8" set "ACTION=telemetry-check"
 if "%ACTION%"=="9" set "ACTION=ue4ss-experimental"
+if /i "%ACTION%"=="d" set "ACTION=research-check"
+if /i "%ACTION%"=="r" set "ACTION=research-report"
 if /i "%ACTION%"=="q" exit /b 0
 
 :dispatch
@@ -45,7 +49,9 @@ if /i "%ACTION%"=="clean" goto clean
 if /i "%ACTION%"=="telemetry" goto telemetry
 if /i "%ACTION%"=="telemetry-check" goto telemetry_check
 if /i "%ACTION%"=="ue4ss-experimental" goto ue4ss_experimental
-echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean^|telemetry^|telemetry-check^|ue4ss-experimental]
+if /i "%ACTION%"=="research-check" goto research_check
+if /i "%ACTION%"=="research-report" goto research_report
+echo Unknown option "%ACTION%". Use: Setup.cmd [install^|gpu^|cpu^|safe^|test^|clean^|telemetry^|telemetry-check^|ue4ss-experimental^|research-check^|research-report]
 goto end_fail
 
 :install
@@ -146,6 +152,18 @@ if not "%RC%"=="0" (
   goto end_fail
 )
 echo   UE4SS recovery finished successfully.
+goto end_ok
+
+:research_check
+if not exist "%PY%" goto noinstall
+"%PY%" src\orcpresser\research_setup.py doctor
+if errorlevel 1 goto failed
+goto end_ok
+
+:research_report
+if not exist "%PY%" goto noinstall
+"%PY%" src\orcpresser\research_setup.py report
+if errorlevel 1 goto failed
 goto end_ok
 
 :nopython
